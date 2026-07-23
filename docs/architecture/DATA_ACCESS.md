@@ -110,6 +110,7 @@ PandaData SDK / competition skill layer:
 | `stock_status_change` | `get_stock_status_change` | data-availability (ST states) |
 | `factor_library` | `get_factor` | homogeneity-decay (correlation, IC) |
 | `trade_calendar` | `get_trade_cal` / `get_prev_trade_date` | intake, all checks |
+| `financial_disclosures` | `get_fina_forecast` / `get_fina_performance` | data-availability (real `info_date`) |
 | `fina_reports` | `get_fina_reports` (`is_latest=False`) | data-availability (disclosure versions) |
 
 Adapter-level requirements carried over from the product design:
@@ -118,6 +119,8 @@ Adapter-level requirements carried over from the product design:
   the adapter cache, not the vendor API.
 - **Bounded concurrency + backoff**: rate limits exist but are unpublished;
   the adapter owns bounded parallelism and finite exponential backoff on 429.
-- **Known data gaps** (design around, do not work around): no announcement
-  dates on financial data (report-period semantics only); industry
-  constituents carry inclusion dates but no exclusion dates.
+- **Known data gaps** (design around, do not work around): the current
+  `get_fina_reports` tool contract has report-period semantics and exposes no
+  announcement-date parameter; forecast and performance interfaces do expose
+  `info_date`. Industry constituents carry inclusion dates but no exclusion
+  dates.

@@ -26,7 +26,7 @@ strategy / factor input
   → verdict + evidence pack + recovery conditions (A2A Artifact)
 ```
 
-Product design docs (Chinese): [docs/product/PROPOSAL.md](docs/product/PROPOSAL.md) · [docs/product/ARCHITECTURE.md](docs/product/ARCHITECTURE.md) · [docs/product/PIPELINE.md](docs/product/PIPELINE.md)
+Product design docs (Chinese, English at delivery): [PROPOSAL](docs/product/PROPOSAL.md) (why) · [CHECKS](docs/product/CHECKS.md) (the five audits) · [VERDICT_SPEC](docs/product/VERDICT_SPEC.md) (output contract) · [DATA_NOTES](docs/product/DATA_NOTES.md) (platform facts & on-site checklist) · [DEMO](docs/product/DEMO.md) (delivery plan) · [ARCHITECTURE](docs/product/ARCHITECTURE.md) · [PIPELINE](docs/product/PIPELINE.md)
 
 ## Technology
 

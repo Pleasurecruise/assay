@@ -1,7 +1,5 @@
 # 系统架构
 
-> English version: [ARCHITECTURE_EN.md](ARCHITECTURE_EN.md)
-
 > 状态：🚧 框架草稿，随开发迭代。本文档画"盒子"——系统由哪些模块构成、各自职责与依赖；模块之间怎么"流动"见 [PIPELINE.md](PIPELINE.md)。
 
 ## 1. 模块总览
@@ -61,7 +59,7 @@
 | `regime_dependency` | 市场环境划分 + 分环境收益统计 | Backtester + Data Layer |
 | `homogeneity_decay` | 与因子库相关性 + IC 逐年衰减 | Data Layer |
 
-统一输出：`{ 检查项, 结论: 通过/有保留通过/不通过/证据不足, 关键数字, 置信度 }`
+统一输出：`{ id, conclusion: pass/pass_with_reservations/fail/insufficient_evidence/not_applicable, confidence, evidence, missingEvidence }`（字段语义见 [VERDICT_SPEC.md](VERDICT_SPEC.md)）。
 
 ### Moiré（交叉验证）
 
@@ -73,7 +71,7 @@
 
 - 日线 + 复权因子，pandas 向量化，单变体毫秒级
 - 支持：参数化调仓规则、成本分档、市场环境切片、指定历史股票池
-- 存在理由：官方回测 Skill 输出契约未公开（详见 proposal §3）
+- 存在理由：官方回测 Skill 输出契约未公开（详见 DATA_NOTES.md §1）
 
 ### Data Layer
 
@@ -89,7 +87,8 @@
 
 - 检查模块之间**零依赖**（并行独立运行，Moiré 是唯一汇聚点）
 - 检查模块只依赖 Backtester 和 Data Layer 两个基础设施
-- LLM（DeepSeek V4 Pro）只出现在 Intake（解析）、Moiré（实验设计）、Report（行文）三处；所有数字结论来自计算，不来自模型
+- LLM（DeepSeek V4 Pro，赛道硬性要求）只出现在 Intake（解析）、Moiré（实验设计）、Report（行文）三处；所有数字结论来自计算，不来自模型
+- 火山低延时 Seed 模型仅可考虑用于辅助分类，混用边界待现场确认（DATA_NOTES §2 问题 7）；Ark 端点路由见根 README "Model Configuration"
 
 ## 4. 产品模块 → 仓库落位
 
@@ -105,7 +104,7 @@
 | Backtester | `services/` 侧（Python，pandas 向量化；与 panda-adapter 同边界原则：DataFrame 不跨进程，经 Arrow/JSON 契约输出） | Python | 待建 |
 | Data Layer | `services/panda-adapter`（已启动）+ `packages/finance-tools`（TS 工具封装，待建；工具清单见 `docs/architecture/DATA_ACCESS.md` 的 Tool Roadmap） | Python + TS | 部分完成 |
 
-运行时基座（每任务隔离 Agent 实例、工具 read/write/exec 分级、审计事件、19 分钟上限）见 `docs/architecture/RUNTIME.md`——其无状态与限时设计和本方案 §7 的工程决策一致。
+运行时基座（每任务隔离 Agent 实例、工具 read/write/exec 分级、审计事件、19 分钟上限）见 `docs/architecture/RUNTIME.md`；产品阶段预算与降级规则见 [PIPELINE.md](PIPELINE.md)。
 
 ## 5. 检查项 ↔ Agent 映射
 
