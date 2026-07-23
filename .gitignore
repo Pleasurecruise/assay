@@ -11,3 +11,6 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/
+
+# Local-only competition reference material (contains plaintext event tokens) — never commit
+reference/

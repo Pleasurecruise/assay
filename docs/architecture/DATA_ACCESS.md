@@ -94,3 +94,30 @@ to a versioned JSON or Arrow contract before crossing the process boundary.
 This phase installs the SDK and implements its guarded initialization lifecycle.
 It does not yet start a network listener. The transport and TypeScript
 `packages/finance-tools` client are the next data-access milestone.
+
+## Tool Roadmap (product-driven)
+
+The five audit checks (see `docs/product/ARCHITECTURE.md`) require these
+read-tier tools beyond `market_data`, all verified available in the
+PandaData SDK / competition skill layer:
+
+| Tool ID | SDK method | Consumed by |
+| --- | --- | --- |
+| `market_data` | `get_market_data` | all backtest-based checks |
+| `adj_factor` | `get_adj_factor` | backtester (price adjustment) |
+| `index_weights` | `get_index_weights` | data-availability (survivorship bias) |
+| `trade_list` | `get_trade_list` | data-availability (tradability) |
+| `stock_status_change` | `get_stock_status_change` | data-availability (ST states) |
+| `factor_library` | `get_factor` | homogeneity-decay (correlation, IC) |
+| `trade_calendar` | `get_trade_cal` / `get_prev_trade_date` | intake, all checks |
+| `fina_reports` | `get_fina_reports` (`is_latest=False`) | data-availability (disclosure versions) |
+
+Adapter-level requirements carried over from the product design:
+
+- **Shared query cache**: identical queries across concurrent checks must hit
+  the adapter cache, not the vendor API.
+- **Bounded concurrency + backoff**: rate limits exist but are unpublished;
+  the adapter owns bounded parallelism and finite exponential backoff on 429.
+- **Known data gaps** (design around, do not work around): no announcement
+  dates on financial data (report-period semantics only); industry
+  constituents carry inclusion dates but no exclusion dates.
