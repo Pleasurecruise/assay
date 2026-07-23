@@ -1,0 +1,26 @@
+[project]
+name = "assay-panda-adapter"
+version = "0.1.0"
+description = "Guarded PandaData SDK boundary for Assay"
+requires-python = ">=3.10"
+dependencies = [
+  "panda_data==0.0.12",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/panda_adapter"]
+
+[tool.uv]
+# panda_data 0.0.12 declares numpy<2, but NumPy 1.26 cannot run on the
+# repository's mise-managed Python 3.14. Keep this override local and remove it
+# once the vendor publishes Python 3.14-compatible metadata.
+override-dependencies = [
+  "numpy>=2.3.3",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

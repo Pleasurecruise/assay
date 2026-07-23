@@ -1,0 +1,12 @@
+.idea
+node_modules/
+.bun/
+dist/
+coverage/
+.env
+!.env.example
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/

@@ -1,0 +1,11 @@
+{
+  "name": "@assay/runtime-cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@assay/agent-runtime": "workspace:*",
+    "@assay/agents": "workspace:*",
+    "@oh-my-pi/pi-catalog": "17.0.8"
+  }
+}
