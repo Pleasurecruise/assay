@@ -11,9 +11,11 @@ resolves contradictions through discriminating follow-up experiments, then
 returns a five-level verdict (`KEEP / WATCH / QUARANTINE / RETIRE /
 UNVERIFIABLE`) with reproducible numeric evidence and recovery conditions.
 
-The current implementation is the runtime and PandaData-adapter foundation.
-The five audit agents, Moiré orchestration, backtester, and A2A gateway remain
-roadmap items documented under `docs/product/`.
+The current implementation includes the runtime foundation, five isolated
+audit-agent definitions, their typed parallel fan-out boundary, and the
+PandaData-adapter foundation. Data and backtest tools, Intake, Moiré
+orchestration, reporting, and the A2A gateway remain roadmap items documented
+under `docs/product/`.
 
 While every other agent produces alpha, Assay verifies it. Auditing is a closed-loop complex task, naturally stateless per A2A call, and the track's compliance rules (no return claims, mandatory risk disclosure) describe our product rather than constrain it.
 
@@ -26,7 +28,7 @@ strategy / factor input
   → verdict + evidence pack + recovery conditions (A2A Artifact)
 ```
 
-Product design docs (Chinese, English at delivery): [PROPOSAL](docs/product/PROPOSAL.md) (why) · [CHECKS](docs/product/CHECKS.md) (the five audits) · [VERDICT_SPEC](docs/product/VERDICT_SPEC.md) (output contract) · [DATA_NOTES](docs/product/DATA_NOTES.md) (platform facts & on-site checklist) · [DEMO](docs/product/DEMO.md) (delivery plan) · [ARCHITECTURE](docs/product/ARCHITECTURE.md) · [PIPELINE](docs/product/PIPELINE.md)
+Product design docs: [PROPOSAL](docs/product/PROPOSAL.md) (why) · [CHECKS](docs/product/CHECKS.md) (the five audits) · [VERDICT_SPEC](docs/product/VERDICT_SPEC.md) (output contract) · [DATA_NOTES](docs/product/DATA_NOTES.md) (platform facts & on-site checklist) · [DEMO](docs/product/DEMO.md) (delivery plan) · [ARCHITECTURE](docs/product/ARCHITECTURE.md) · [PIPELINE](docs/product/PIPELINE.md)
 
 ## Technology
 
@@ -45,11 +47,11 @@ apps/
 packages/
   contracts/         Stable contracts shared by runtime, A2A, and tool layers
   agent-runtime/     oh-my-pi adapter, agent registry, audit events, and tool policy
-  agents/            Bootstrap agent definitions; target audit agents are documented in docs/product/
+  agents/            Five audit agents and the typed parallel Main-Agent boundary
 services/
   panda-adapter/     Guarded Python boundary for the PandaData SDK
 docs/
-  product/           Product design: proposal, architecture, pipeline (Chinese)
+  product/           Product design: proposal, architecture, pipeline
   architecture/      Engineering decisions and roadmap
   development/       Engineering conventions
 reference/           Local-only competition material (git-ignored; contains event tokens)
@@ -109,8 +111,11 @@ git-ignored `reference/model-api-guide.md`.
 
 See [Agent Runtime Architecture](docs/architecture/RUNTIME.md) for the detailed
 design and [Naming Conventions](docs/development/NAMING.md) for repository-wide
-naming rules. See [Toolchain](docs/development/TOOLCHAIN.md) for version and
-command policy.
+naming rules. See [Testing Standard](docs/development/TESTING.md) for unit and
+integration test boundaries,
+[Parallel Check E2E Test](docs/development/E2E_TESTING.md) for the opt-in
+real-model fan-out test, and [Toolchain](docs/development/TOOLCHAIN.md) for
+version and command policy.
 
 ## Disclaimer
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { AgentRegistry } from "./registry";
-import { ToolPolicy, resolveToolApproval } from "./policy";
+import { ToolPolicy, resolveToolApproval } from "../src/policy";
+import { AgentRegistry } from "../src/registry";
 
 describe("AgentRegistry", () => {
   test("rejects duplicate agent ids", () => {

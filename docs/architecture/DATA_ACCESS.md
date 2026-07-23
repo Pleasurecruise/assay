@@ -101,17 +101,17 @@ The five audit checks (see `docs/product/ARCHITECTURE.md`) require these
 read-tier tools beyond `market_data`, all verified available in the
 PandaData SDK / competition skill layer:
 
-| Tool ID | SDK method | Consumed by |
-| --- | --- | --- |
-| `market_data` | `get_market_data` | all backtest-based checks |
-| `adj_factor` | `get_adj_factor` | backtester (price adjustment) |
-| `index_weights` | `get_index_weights` | data-availability (survivorship bias) |
-| `trade_list` | `get_trade_list` | data-availability (tradability) |
-| `stock_status_change` | `get_stock_status_change` | data-availability (ST states) |
-| `factor_library` | `get_factor` | homogeneity-decay (correlation, IC) |
-| `trade_calendar` | `get_trade_cal` / `get_prev_trade_date` | intake, all checks |
-| `financial_disclosures` | `get_fina_forecast` / `get_fina_performance` | data-availability (real `info_date`) |
-| `fina_reports` | `get_fina_reports` (`is_latest=False`) | data-availability (disclosure versions) |
+| Tool ID                 | SDK method                                   | Consumed by                             |
+| ----------------------- | -------------------------------------------- | --------------------------------------- |
+| `market_data`           | `get_market_data`                            | all backtest-based checks               |
+| `adj_factor`            | `get_adj_factor`                             | backtester (price adjustment)           |
+| `index_weights`         | `get_index_weights`                          | data-availability (survivorship bias)   |
+| `trade_list`            | `get_trade_list`                             | data-availability (tradability)         |
+| `stock_status_change`   | `get_stock_status_change`                    | data-availability (ST states)           |
+| `factor_library`        | `get_factor`                                 | homogeneity-decay (correlation, IC)     |
+| `trade_calendar`        | `get_trade_cal` / `get_prev_trade_date`      | intake, all checks                      |
+| `financial_disclosures` | `get_fina_forecast` / `get_fina_performance` | data-availability (real `info_date`)    |
+| `fina_reports`          | `get_fina_reports` (`is_latest=False`)       | data-availability (disclosure versions) |
 
 Adapter-level requirements carried over from the product design:
 

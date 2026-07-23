@@ -34,11 +34,22 @@
       "version": "0.0.0",
       "dependencies": {
         "@assay/agent-runtime": "workspace:*",
+        "@assay/contracts": "workspace:*",
       },
     },
     "packages/contracts": {
       "name": "@assay/contracts",
       "version": "0.0.0",
+    },
+    "tests/e2e": {
+      "name": "@assay/checks-e2e",
+      "version": "0.0.0",
+      "dependencies": {
+        "@assay/agent-runtime": "workspace:*",
+        "@assay/agents": "workspace:*",
+        "@assay/contracts": "workspace:*",
+        "@oh-my-pi/pi-catalog": "17.0.8",
+      },
     },
   },
   "packages": {
@@ -49,6 +60,8 @@
     "@assay/agent-runtime": ["@assay/agent-runtime@workspace:packages/agent-runtime"],
 
     "@assay/agents": ["@assay/agents@workspace:packages/agents"],
+
+    "@assay/checks-e2e": ["@assay/checks-e2e@workspace:tests/e2e"],
 
     "@assay/contracts": ["@assay/contracts@workspace:packages/contracts"],
 

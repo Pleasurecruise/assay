@@ -3,11 +3,13 @@
   "private": true,
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "tests/*"
   ],
   "type": "module",
   "scripts": {
     "check": "vp check && vp test && bun run sdk:test",
+    "e2e:checks": "bun run tests/e2e/src/index.ts",
     "fmt": "vp fmt . --write",
     "fmt:check": "vp fmt --check",
     "typecheck": "vp check --no-fmt --no-lint",

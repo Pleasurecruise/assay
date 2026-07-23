@@ -1,46 +1,56 @@
-# 演示与交付计划
+# Demo and Delivery Plan
 
-> 提交物设计、演示原则、MVP 分层。提交清单硬性要求见 [PROPOSAL.md](PROPOSAL.md) §2；示例任务的预期输出形态见 [CHECKS.md](CHECKS.md) §3 和 [VERDICT_SPEC.md](VERDICT_SPEC.md)。
+> See [PROPOSAL.md](PROPOSAL.md) for delivery constraints,
+> [CHECKS.md](CHECKS.md) for expected check behavior, and
+> [VERDICT_SPEC.md](VERDICT_SPEC.md) for output shape.
 
-## 1. 三个示例任务（对应提交清单要求）
+## 1. Example Tasks
 
-1. 审计一个正常动量策略——报告有褒有贬，展示公允性；
-2. 审计一个**故意构造的过拟合因子**——现场识破并给出可复算的证据，演示视频高潮；
-3. 对比审计两个策略并排序——展示决策支持价值，并触发一次 `UNVERIFIABLE` 或交叉验证。
+1. Audit a normal momentum strategy and show both supporting and opposing
+   evidence.
+2. Audit a deliberately overfit factor and expose it with reproducible
+   evidence.
+3. Compare two same-kind subjects, rank robustness, and trigger either a Moiré
+   follow-up or an `UNVERIFIABLE` result.
 
-## 2. 演示原则
+## 2. Demo Requirements
 
-必须展示：
+Show:
 
-- 真实数据/Skill 调用；
-- 检查项之间的分工与矛盾处理（Moiré 追加实验至少出现一次）；
-- 确定性的结论规则（档位来自规则合成，不是 LLM 打分）；
-- 清晰的假设与风险提示；
-- 结构化 Artifact（不只是自然语言结论）；
-- 20 分钟内稳定完成；
-- 至少一次 `UNVERIFIABLE` 或"状态不升级"，证明系统不为制造戏剧性结论而存在。
+- real data and tool calls;
+- visible division of work across independent checks;
+- at least one Moiré discriminating experiment;
+- deterministic verdict rules rather than LLM scoring;
+- assumptions, limitations, and risk disclosure;
+- a structured Artifact in addition to prose;
+- stable completion within 20 minutes;
+- at least one honest refusal or non-upgrade.
 
-不应展示：
+Do not show:
 
-- 无限循环辩论；
-- 只靠 LLM 自评分下结论；
-- 把相关性说成因果；
-- 自动执行交易；
-- 宣称收益。
+- unbounded agent debate;
+- LLM self-scoring as evidence;
+- correlation described as causation;
+- automatic trading;
+- return promises.
 
-## 3. MVP 分层
+## 3. Delivery Milestones
 
-- **第一层（可运行开发里程碑，不作为完整赛道提交）**：A2A 骨架 + Agent Card + 任务解析 + 参数稳健性/交易成本两项检查（只依赖自建回测器）+ 简单汇总报告；
-- **第二层（合格提交基线）**：补齐 `audit_strategy` 五项检查 + Moiré 矛盾检测与追加实验 + 五档结论；
-- **第三层（彩蛋）**：报告可视化打磨、过拟合靶子因子、现场审计其他参赛队策略。
+1. **Runtime milestone:** five isolated check agents, parallel runner, typed
+   contracts, and tests. Data and backtest tools may still be absent, so honest
+   runs return `insufficient_evidence`.
+2. **Submission baseline:** A2A gateway, Intake, Backtester, all data tools,
+   five checks, Moiré follow-ups, verdict aggregation, and final Artifacts.
+3. **Polish:** visual evidence pages, a controlled overfit target, comparison
+   audit, and resilient deployment.
 
-## 4. 提交物清单（对照赛道要求逐项勾）
+## 4. Submission Checklist
 
-- [ ] Agent Card URL 公开可访问（`/.well-known/agent-card.json`）
-- [ ] 服务可被平台调用，评审期间稳定在线
-- [ ] ≥3 个示例任务已测试（§1）
-- [ ] 说明文档：使用场景、架构、Skills 调用方式、结果展示
-- [ ] 演示视频完整展示核心流程
-- [ ] 使用的数据 Skills / 投研 Skills 清单
-- [ ] 输出含风险提示（VERDICT_SPEC §3 已内建）
-- [ ] GitHub 仓库链接或邮件材料发送至 `code@pandaai.online`
+- [ ] Public Agent Card and supported A2A interface URL
+- [ ] Service remains reachable during review
+- [ ] At least three tested example tasks
+- [ ] Usage, architecture, skill, and output documentation
+- [ ] Demo video showing the complete flow
+- [ ] Data and research skill inventory
+- [ ] Risk disclosure in every final Artifact
+- [ ] Repository or requested delivery package submitted to the organizer

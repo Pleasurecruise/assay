@@ -1,66 +1,152 @@
-# Assay｜策略可信度审计 Agent
+# Assay: Strategy Credibility Audit Agent
 
-> 状态：方案已收敛（更新于 2026-07-23）。<br>
-> 赛道原文：[PandaAI 7.22 ADVX 赛道](<../../reference/track-brief/track-brief.md>)　·　数据文档：[PandaAI 数据 API](https://www.pandaaiquant.com/data-service/api-docs?api=data_overview)
->
-> 本目录文档分工：**PROPOSAL**（为什么做）· [CHECKS](CHECKS.md)（查什么）· [STRATEGY_SPEC](STRATEGY_SPEC.md)（输入契约）· [VERDICT_SPEC](VERDICT_SPEC.md)（输出契约）· [DATA_NOTES](DATA_NOTES.md)（数据事实与现场清单）· [DEMO](DEMO.md)（演示与交付）· [ARCHITECTURE](ARCHITECTURE.md)（怎么搭）· [PIPELINE](PIPELINE.md)（怎么流）
+> Status: product direction converged on 2026-07-23. Competition brief:
+> [PandaAI AdventureX Track Brief](https://ncn9g4d5xvof.feishu.cn/docx/YYsadGRNYopqOVxLFFrcorJjnzd).
+> Data documentation:
+> [PandaAI Data API](https://www.pandaaiquant.com/data-service/api-docs).
 
-## 1. Purpose｜为什么存在
+This directory is split by question:
 
-AI 正在把交易策略的生产成本压向零：一句话生成一个因子，一分钟得到一条漂亮的回测曲线，任何人都做得到。但验证一个策略是否可信的成本没有降——它仍然依赖专家经验、机构里不成文的怀疑清单和大量手工检验。**生产与验证的成本剪刀差，意味着伪 Alpha 的供给正在爆炸，而市场消化它的能力没有增长。** 一个回测年化 18% 的策略，可能藏着挑出来的参数、偷看未来的股票池、会被交易成本吃光的收益、对某段行情的隐性豪赌——生产它的人往往自己也不知道。
+- **PROPOSAL**: why the product should exist;
+- [CHECKS](CHECKS.md): what it audits;
+- [VERDICT_SPEC](VERDICT_SPEC.md): what it returns;
+- [DATA_NOTES](DATA_NOTES.md): verified data facts and open questions;
+- [DEMO](DEMO.md): how it is demonstrated and delivered;
+- [ARCHITECTURE](ARCHITECTURE.md): how components are separated;
+- [PIPELINE](PIPELINE.md): how one request flows through the system.
 
-Assay 为此存在：
+## 1. Purpose
 
-> **让策略的可信度成为可验证的东西，而不是被宣称的东西。**
+AI is pushing the cost of producing trading strategies toward zero. A prompt
+can generate a factor and a polished backtest curve in minutes. The cost of
+deciding whether that result is credible has not fallen at the same rate: it
+still depends on expert judgment, institutional checklists, and extensive
+manual testing.
 
-把机构级的尽调直觉——查过拟合、查前视、查成本、查环境依赖、查信号衰减——固化成标准化、可复算、可解释的自动审计，让"这个结果可不可信"从一个稀缺的专家判断，变成一次几分钟的检查。
+This widening gap between production and verification increases the supply of
+false alpha faster than the market's ability to evaluate it. A strategy
+claiming 18% annual return may hide selected parameters, future-aware
+constituents, transaction-cost erosion, or an implicit bet on one historical
+regime. Its author may not know which defect is present.
 
-## 2. Audience｜给谁用
+Assay exists to make strategy credibility verifiable rather than merely
+claimed. It turns institutional due-diligence instincts into standardized,
+reproducible, and explainable automated checks:
 
-**主受众（现在就能用）：独立研究员与量化爱好者。** 最容易被回测骗的人，恰恰是没有机构风控流程的人；AI 策略生成工具越普及，这个人群越大，而他们拿到漂亮曲线后的第一个问题永远是同一个——"这是真的吗？"今天这个问题只能靠自己踩坑或论坛求教，Assay 给他们补上缺失的那道机构级质检。
+- parameter overfitting;
+- look-ahead and point-in-time data errors;
+- realistic transaction costs;
+- market-regime dependency;
+- signal homogeneity and decay.
 
-**愿景受众（赛道叙事）：Agent 生态本身。** 当策略由 Agent 批量生产，验证也必须由 Agent 完成——人工尽调跟不上机器的产量。Assay 以 A2A 协议暴露审计能力，任何策略生成 Agent 都可以在交付前调用它质检自己的产出。**生产 Agent 与验证 Agent 的分工，是我们相信未来会真实发生的工作流**——这正是本赛道"从未见过、却相信未来会发生"要找的东西。
+## 2. Audience
 
-## 3. What it is｜是什么
+### Primary Audience
 
-> **Assay｜策略可信度审计 Agent**<br>
-> 所有人在造"发现 Alpha"的 Agent，我们做验证 Alpha 是否可信的试金石。完整策略审计并行运行五项独立检查；因子审计按适用检查档案运行。**Moiré Protocol** 交叉验证环节处理检查结论之间的矛盾，最终输出五档使用建议 + 可复算的证据数据 + 恢复条件。
+Independent researchers and quantitative enthusiasts can use Assay now. They
+are most exposed to convincing backtests because they do not have an
+institutional risk process. As AI strategy-generation tools spread, their
+first question remains the same: "Is this result real?" Assay provides the
+missing verification layer.
 
-一句话定位：所有人在淘金，我们卖试金石（Assay）；试金的方法，是多项独立检查的互相印证（Moiré）。
+### Agent-Ecosystem Audience
 
-## 4. Non-goals｜明确不做
+When agents produce strategies at machine scale, verification must also run at
+machine scale. Assay exposes one audit capability through A2A so a
+strategy-producing agent can validate its output before delivery.
 
-不荐股、不预测涨跌、不生成或优化策略、不执行交易、不承诺任何收益。
+The separation between production agents and verification agents is the
+future workflow Assay is designed for. Internal check agents remain private
+implementation details; the complete audit is the public A2A capability.
 
-这不是能力清单的空缺，是产品立场：**审计者不能同时是生产者**，否则结论的独立性无从谈起——正如会计师事务所不能替客户记账再审计自己的账。附带的工程含义：全系统没有任何 write/exec 级副作用工具（见 `../architecture/RUNTIME.md` 的工具分级）。这组 non-goals 同时就是赛道合规条款（不得宣称收益、不得构成投资建议、输出必须含风险提示）的直接映射——合规对我们不是约束，是产品说明书。
+## 3. Product
 
-## 5. Why this track｜为什么选这个方向参赛
+**Assay is a strategy-credibility audit agent.**
 
-- **避开拥挤**：赛道官方列出的六类方向（因子挖掘、策略生成、投研助手、组合管理、多 Agent 流水线）会是现场最拥挤的赛道，且大家共用同一套官方 Skills，产出高度同质化。所有人生产答案，没有人验证答案。
-- **贴合评分**：评审实际打分的四件事——完成复杂任务的闭环、真实的多 Agent 协作机制（"不仅仅是简单串联"）、充分使用平台数据与 Skills、"从未见过却相信未来会发生"的产品——本方案逐项命中（见 §6）。
-- **不押注未证实的数据**：全部检查项只依赖已核验证实的数据接口（见 [DATA_NOTES](DATA_NOTES.md)），现场任何数据缺口只影响单个检查子项，不动摇产品。
+Most competition agents attempt to discover alpha. Assay tests whether an
+alpha claim survives independent scrutiny. A strategy audit runs five checks
+in parallel. A factor audit runs the applicable profile. The Moiré Protocol
+then investigates material disagreements with discriminating experiments.
 
-## 6. 赛道硬约束与评分映射
+The output contains:
 
-硬约束：
+- a deterministic five-level verdict;
+- reproducible evidence;
+- explicit missing evidence and limitations;
+- recovery conditions and review triggers;
+- structured and human-readable Artifacts.
 
-- 以 **A2A Remote Agent** 形式提交：自行托管服务 + 公开可访问的 Agent Card URL，评审期间保持在线；
-- 底座模型统一 **DeepSeek V4 Pro**；
-- 单任务总响应 **≤ 20 分钟**；
-- 处理自然语言任务，输出过程与结果清晰、可解释；
-- 提交需含 ≥3 个示例任务、说明文档、演示视频、使用的 Skills 清单。
+## 4. Non-Goals
 
-评分映射：
+Assay does not:
 
-| 评审关注 | 本方案的回应 |
-| --- | --- |
-| 完成一项复杂任务而非聊天 | 输入策略 → 30+ 次变体回测 + 逐日核对 → 结构化结论，闭环明确 |
-| 协作机制而非简单串联 | 检查项独立运行互不通信；矛盾触发追加实验；结论由实验合成而非投票（见 [CHECKS](CHECKS.md)） |
-| 充分利用数据与 Skills | 行情/复权/指数权重/可交易名单/ST 状态/因子库/交易日历全部用上（见 [DATA_NOTES](DATA_NOTES.md)） |
-| 从未见过的产品 | 现场唯一做"验证层"而非"生产层"的作品；生产 Agent 调用验证 Agent 质检产出（§2 愿景）；演示可现场识破伪 Alpha |
+- recommend securities;
+- predict market direction;
+- generate or optimize strategies;
+- execute trades;
+- promise returns.
 
-## 7. 命名
+These are product boundaries, not missing features. An auditor cannot also be
+the producer without weakening independence, just as an auditor should not
+prepare and then audit the same books.
 
-- 项目名 **Assay**：冶金试金术语——检验矿石里的金是真金还是黄铁矿。一词双关"检验"与"含金量"。
-- 交叉验证机制 **Moiré Protocol**：摩尔纹——两层格纹叠加时浮现的第三种图案；单个视角看不见的结构，在多个视角的叠加中显形。
-- 结论量表 **Verdict Scale**：五档使用建议，每档附升档条件（定义见 [VERDICT_SPEC](VERDICT_SPEC.md)）。
+The runtime consequence is that audit agents do not receive tools that create
+orders or mutate trading systems. Tool tiers and side-effect policy are
+defined in [RUNTIME.md](../architecture/RUNTIME.md).
+
+## 5. Why This Track
+
+- **A verification layer is differentiated.** Common track directions produce
+  factors, strategies, research, portfolios, or generic multi-agent flows.
+  Assay evaluates their credibility.
+- **The collaboration is substantive.** Checks run independently rather than
+  serially echoing one another. Disagreement triggers an experiment, and
+  synthesis follows evidence rather than voting.
+- **Compliance matches the product.** No return promises, no investment
+  advice, and mandatory risk disclosure are natural properties of an audit.
+- **Data gaps are contained.** Each check depends only on verified data
+  capabilities. A missing interface degrades one result to
+  `insufficient_evidence` instead of corrupting the complete audit.
+
+## 6. Track Constraints
+
+The current project records these delivery constraints from the competition
+materials:
+
+- submit a hosted A2A Remote Agent with a publicly reachable Agent Card;
+- use DeepSeek V4 Pro as the required foundation model;
+- complete one request within 20 minutes;
+- accept natural-language tasks and expose an understandable process and
+  result;
+- provide at least three examples, documentation, a demo video, and a list of
+  used skills.
+
+These facts must be reconfirmed against the latest organizer material before
+submission because the supplied Feishu page is dynamically rendered and may
+not be accessible to automated documentation tooling.
+
+## 7. Evaluation Mapping
+
+| Evaluation concern             | Assay response                                                                                   |
+| ------------------------------ | ------------------------------------------------------------------------------------------------ |
+| Complete a complex task        | Strategy input, fixed experiment plan, parallel checks, cross-validation, and final Artifact     |
+| Real multi-agent collaboration | Independent branches, bounded follow-ups, and evidence-based synthesis                           |
+| Use platform data and skills   | Market data, adjustment factors, historical weights, tradability, status, factors, and calendars |
+| Novel product value            | A verification layer that other strategy-producing agents can call before delivery               |
+
+## 8. Naming
+
+- **Assay** is the metallurgical process used to distinguish valuable ore from
+  pyrite and measure its content.
+- **Moiré Protocol** refers to a pattern that appears only when separate grids
+  overlap: structure invisible from one view can emerge from several.
+- **Verdict Scale** is the deterministic recommendation scale defined in
+  [VERDICT_SPEC.md](VERDICT_SPEC.md).
+
+The verdict levels are:
+
+- `KEEP`
+- `WATCH`
+- `QUARANTINE`
+- `RETIRE`
+- `UNVERIFIABLE`

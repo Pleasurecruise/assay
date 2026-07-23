@@ -1,0 +1,187 @@
+import type {
+  AuditCheckAgentRequest,
+  AuditCheckId,
+  AuditCheckResult,
+  ParallelAuditChecksRequest,
+  ParallelAuditChecksResult,
+  RuntimeTaskRequest,
+  RuntimeTaskResult,
+} from "@assay/contracts";
+import {
+  AUDIT_CHECK_IDS,
+  AUDIT_CHECK_SCHEMA_VERSION,
+  parseAuditCheckResult,
+} from "@assay/contracts";
+
+const DEFAULT_CHECK_TIMEOUT_MS = 10 * 60 * 1_000;
+
+export interface AuditCheckTaskRunner {
+  run(request: RuntimeTaskRequest, options?: { signal?: AbortSignal }): Promise<RuntimeTaskResult>;
+}
+
+export interface ParallelCheckRunOptions {
+  signal?: AbortSignal;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function validateRequest(request: ParallelAuditChecksRequest): void {
+  if (request.schemaVersion !== AUDIT_CHECK_SCHEMA_VERSION) {
+    throw new Error("Unsupported check schema version");
+  }
+  if (!request.auditId.trim()) {
+    throw new Error("auditId cannot be empty");
+  }
+  if (!request.subject.id.trim()) {
+    throw new Error("subject.id cannot be empty");
+  }
+  if (!request.subject.input.trim()) {
+    throw new Error("subject.input cannot be empty");
+  }
+  if (request.skill === "audit_strategy" && request.subject.kind !== "strategy") {
+    throw new Error("audit_strategy requires a strategy subject");
+  }
+  if (request.skill === "audit_factor" && request.subject.kind !== "factor") {
+    throw new Error("audit_factor requires a factor subject");
+  }
+}
+
+function isApplicable(request: ParallelAuditChecksRequest, checkId: AuditCheckId): boolean {
+  if (request.skill === "audit_strategy") {
+    return true;
+  }
+  if (checkId !== "cost-stress") {
+    return true;
+  }
+  return request.subject.hasPortfolioConstruction === true;
+}
+
+function notApplicable(checkId: AuditCheckId): AuditCheckResult {
+  return {
+    id: checkId,
+    conclusion: "not_applicable",
+    confidence: null,
+    evidence: [],
+    missingEvidence: [],
+  };
+}
+
+function insufficientEvidence(checkId: AuditCheckId, reason: string): AuditCheckResult {
+  return {
+    id: checkId,
+    conclusion: "insufficient_evidence",
+    confidence: 0,
+    evidence: [],
+    missingEvidence: [
+      {
+        requirement: `${checkId} check execution`,
+        reason,
+        sourceRefs: [`runtime-error:${checkId}`],
+      },
+    ],
+  };
+}
+
+function buildAgentInput(request: AuditCheckAgentRequest): string {
+  return [
+    "执行下面 JSON 中分配的单项审计。只使用你自己的工具和该请求内容；",
+    "不得引用或推测其他检查结果。严格按 system prompt 的 JSON 契约输出。",
+    JSON.stringify(request),
+  ].join("\n");
+}
+
+/**
+ * Main-agent boundary for the five independent checks.
+ *
+ * All applicable calls are started together with Promise.all. Each receives
+ * only AuditCheckAgentRequest, never sibling output. Failures are converted
+ * into insufficient_evidence so one branch cannot cancel successful siblings.
+ */
+export class ParallelAuditCheckRunner {
+  readonly #taskRunner: AuditCheckTaskRunner;
+  readonly #defaultTimeoutMs: number;
+
+  constructor(taskRunner: AuditCheckTaskRunner, defaultTimeoutMs = DEFAULT_CHECK_TIMEOUT_MS) {
+    if (defaultTimeoutMs <= 0) {
+      throw new Error("defaultTimeoutMs must be greater than zero");
+    }
+    this.#taskRunner = taskRunner;
+    this.#defaultTimeoutMs = defaultTimeoutMs;
+  }
+
+  async run(
+    request: ParallelAuditChecksRequest,
+    options: ParallelCheckRunOptions = {},
+  ): Promise<ParallelAuditChecksResult> {
+    validateRequest(request);
+    if (options.signal?.aborted) {
+      throw options.signal.reason ?? new Error("Parallel checks aborted before start");
+    }
+
+    const startedAt = new Date().toISOString();
+    const traceId = request.traceId ?? crypto.randomUUID();
+    const checks = await Promise.all(
+      AUDIT_CHECK_IDS.map((checkId) => {
+        if (!isApplicable(request, checkId)) {
+          return Promise.resolve(notApplicable(checkId));
+        }
+        return this.#runOne(request, checkId, traceId, options.signal);
+      }),
+    );
+
+    return {
+      schemaVersion: AUDIT_CHECK_SCHEMA_VERSION,
+      auditId: request.auditId,
+      subjectId: request.subject.id,
+      traceId,
+      checks,
+      startedAt,
+      completedAt: new Date().toISOString(),
+    };
+  }
+
+  async #runOne(
+    request: ParallelAuditChecksRequest,
+    checkId: AuditCheckId,
+    traceId: string,
+    signal?: AbortSignal,
+  ): Promise<AuditCheckResult> {
+    const budget = request.budgets?.[checkId];
+    const agentRequest: AuditCheckAgentRequest = {
+      schemaVersion: AUDIT_CHECK_SCHEMA_VERSION,
+      auditId: request.auditId,
+      checkId,
+      skill: request.skill,
+      subject: request.subject,
+      ...(request.dataAsOf === undefined ? {} : { dataAsOf: request.dataAsOf }),
+      ...(budget === undefined ? {} : { budget }),
+    };
+
+    try {
+      const result = await this.#taskRunner.run(
+        {
+          id: `${request.auditId}:${checkId}`,
+          traceId,
+          agentId: checkId,
+          input: buildAgentInput(agentRequest),
+          timeoutMs: budget?.timeoutMs ?? this.#defaultTimeoutMs,
+          metadata: {
+            ...request.metadata,
+            auditId: request.auditId,
+            subjectId: request.subject.id,
+            checkId,
+          },
+        },
+        { signal },
+      );
+      return parseAuditCheckResult(JSON.parse(result.output) as unknown, checkId);
+    } catch (error) {
+      if (signal?.aborted) {
+        throw signal.reason ?? error;
+      }
+      return insufficientEvidence(checkId, errorMessage(error));
+    }
+  }
+}

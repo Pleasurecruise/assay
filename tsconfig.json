@@ -18,5 +18,5 @@
       "@assay/agents": ["./packages/agents/src/index.ts"]
     }
   },
-  "include": ["apps/**/*.ts", "packages/**/*.ts"]
+  "include": ["apps/**/*.ts", "packages/**/*.ts", "tests/**/*.ts"]
 }

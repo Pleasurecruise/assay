@@ -22,7 +22,7 @@ if (!model) {
   throw new Error(`Model "${provider}/${modelId}" is not present in the bundled oh-my-pi catalog`);
 }
 
-const agentId = Bun.env.ASSAY_AGENT_ID ?? "coordinator";
+const agentId = Bun.env.ASSAY_AGENT_ID ?? "param-robustness";
 const runtime = new AgentRuntime({
   model,
   registry: new AgentRegistry(agentDefinitions),

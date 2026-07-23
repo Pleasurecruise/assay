@@ -1,73 +1,109 @@
-# 审计链路
+# Audit Pipeline
 
-> 状态：🚧 框架草稿，随开发迭代。本文档画"箭头"——一次审计请求从进入到返回的完整流动、时间预算与降级路径；模块本身的职责见 [ARCHITECTURE.md](ARCHITECTURE.md)。
->
-> 本文以 `audit_strategy` 的五检查档案为默认链路；`audit_factor` 与 `compare_robustness` 复用同一控制流，但检查集合与结果数量按 [CHECKS.md](CHECKS.md) 的 Skill 档案确定。
+> Status: evolving with the implementation. This document defines request
+> flow, budgets, and degradation. See [ARCHITECTURE.md](ARCHITECTURE.md) for
+> component boundaries.
 
-## 1. 端到端时序
+## 1. End-to-End Sequence
 
-赛道硬约束为 20 分钟；运行时硬上限为 19 分钟。下表按 18 分钟执行预算分配，另留 1 分钟用于硬停止与结果返回：
+The competition limit is 20 minutes. The runtime hard limit is 19 minutes,
+with an 18-minute operating budget:
 
-| 阶段 | 预算 | 内容 | 并行度 |
-| --- | --- | --- | --- |
-| ① 任务解析 | 1 min | 识别策略 → 检查计划 → 回测次数分配 | — |
-| ② 五项检查 | 9-10 min | 各检查独立取数、跑变体、出结构化结果 | 5 路并行 |
-| ③ 交叉验证 | 2-3 min | 矛盾检测 → 追加实验（≤2 组）→ 结论合成 | 追加实验可并行 |
-| ④ 报告生成 | 2 min | 五档结论 + 证据包 + JSON Artifact | — |
-| 冗余 | 2 min | 网络波动、限流重试 | — |
+| Stage       | Budget   | Work                                              | Parallelism                    |
+| ----------- | -------- | ------------------------------------------------- | ------------------------------ |
+| Intake      | 1 min    | Parse subject, fix plan, allocate variants        | Sequential                     |
+| Five checks | 9-10 min | Fetch data, run variants, emit structured results | Up to five branches            |
+| Moiré       | 2-3 min  | Detect disputes and run at most two follow-ups    | Follow-ups may run in parallel |
+| Report      | 2 min    | Verdict, evidence pack, and JSON Artifact         | Sequential                     |
+| Reserve     | 2 min    | Network jitter and bounded retries                | —                              |
 
-原则：回测次数在阶段 ① 按预算**分死**，不跑到哪算哪；任何阶段超时按 §4 降级，永不空手返回。
+Variant counts are fixed during Intake. The runtime does not keep adding work
+until the clock runs out.
 
-## 2. 数据流
+## 2. Data Flow
 
+```text
+Natural-language request
+  │
+  ▼
+Intake → CheckPlan { subject, variant budgets, data requirements }
+  │
+  ├─→ param-robustness ──┐
+  ├─→ data-availability ─┤
+  ├─→ cost-stress ───────┼─→ AuditCheckResult × 5
+  ├─→ regime-dependency ─┤
+  └─→ homogeneity-decay ─┘
+  │
+  ▼
+Moiré → disputes → discriminating experiments → refined results
+  │
+  ▼
+Deterministic verdict + report
+  ├─→ Markdown Artifact Part
+  └─→ structured JSON Artifact Part
 ```
-自然语言任务
-  │  ① Intake：LLM 解析
-  ▼
-CheckPlan { 策略画像, 各检查的变体配额, 数据需求清单 }
-  │  ② 并行分发
-  ├─→ 参数稳健性 ──┐
-  ├─→ 数据可得性 ──┤    每路独立调用 Data Layer / Backtester
-  ├─→ 交易成本   ──┼─→ CheckResult × 5
-  ├─→ 环境依赖   ──┤    { 结论, 关键数字, 置信度 }
-  └─→ 同质化衰减 ──┘
-  │  ③ Moiré
-  ▼
-矛盾对列表 → 追加实验设计（LLM）→ 重跑（计算）→ 合成结论
-  │  ④ Report
-  ▼
-Verdict { 五档结论, 检查明细, 未决问题, 恢复条件, 局限声明 }
-  ├─→ Markdown 报告（人读）
-  └─→ JSON DataPart（A2A Artifact，机器可读）
-```
 
-## 3. 关键控制点
+The implemented fan-out boundary accepts `ParallelAuditChecksRequest` and
+returns `ParallelAuditChecksResult`. It starts all applicable checks together
+and preserves canonical result ordering.
 
-- **阶段 ② 互不通信**：五项检查看不到彼此的结果，保证结论独立性（Moiré 有效性的前提）
-- **LLM/计算边界**：结论数字全部来自计算；LLM 只负责解析（①）、实验设计（③）、行文（④）
-- **缓存**：相同数据查询（如同一区间行情）跨检查共享，只取一次
-- **限流应对**：Data Layer 统一有界并发；429/超时 → 指数退避，有限次重试
+## 3. Control Points
 
-## 4. 降级路径
+- During the independent phase, branches cannot see sibling results.
+- Every branch gets a fresh oh-my-pi Agent instance.
+- A shared `traceId` correlates the batch; each branch has its own task ID.
+- Runtime and tool events may stream internally, but the final check result is
+  accepted only after JSON contract validation.
+- One branch failure becomes `insufficient_evidence`; it does not reject the
+  complete batch.
+- Caller cancellation aborts all live branches.
+- Immutable data queries may share a cache. Agent messages and conclusions may
+  not.
+- Data rate limits are handled with bounded concurrency, caching, and finite
+  exponential backoff.
 
-额度或时间紧张时按序缩减，**只减规模、不减机制**：
+## 4. A2A Mapping
 
-1. 变体数量（30 次 → 15 次，邻域粒度变粗）
-2. 历史区间（5 年 → 3 年）
-3. 图表数量（保留数字表格）
+One external A2A Task represents one complete audit, not one internal check.
 
-以下永不裁剪（是产品差异所在）：
+1. The gateway creates or acknowledges a Task.
+2. Intake and fan-out progress are published as status updates.
+3. Cancellation is propagated to the fan-out `AbortSignal`.
+4. Final machine-readable and human-readable results are published as
+   Artifacts.
+5. The Task enters a terminal state only after Artifact publication succeeds
+   or the audit fails or is canceled.
 
-- 当前 Skill 档案的必需检查一项不少（`audit_strategy` 为五项；数据拿不到 → 该项标"证据不足"，不是跳过）
-- Moiré 矛盾检测不裁剪；追加实验通常从 2 组降到 1 组。若 16 分钟硬切换使实验尚未开始，则允许降到 0，但必须保留 unresolved 分歧、降低置信度，并在关键证据不足时返回 `UNVERIFIABLE`
-- `UNVERIFIABLE` 拒绝机制与局限声明
+The A2A specification distinguishes interaction Messages from task outputs.
+Assay therefore does not rely on Message history as the result store.
 
-## 5. 失败与边界情形
+## 5. Degradation
 
-| 情形 | 处理 |
-| --- | --- |
-| 输入无法解析为可回测策略 | 返回 `UNVERIFIABLE` + 缺失信息清单，不猜 |
-| 某数据接口全程不可用 | 对应检查标"证据不足"，其余照常，报告注明 |
-| 单项检查超时 | 取已完成的变体出部分结论，置信度打折 |
-| 总时间逼近 16 min | 跳过未开始的追加实验，立即进入报告阶段 |
-| 重复提交同一策略 | 幂等键包含规范化输入、检查档案、数据截止日与版本、代码版本、合同版本；任一变化即缓存未命中，未变化时才返回缓存结果 |
+When quota or time becomes tight, reduce scale in this order:
+
+1. Variant count, for example 30 to 15.
+2. Historical window, for example five years to three.
+3. Chart count while retaining numeric tables.
+
+Never remove:
+
+- a required check from the active skill profile;
+- Moiré dispute detection;
+- the `UNVERIFIABLE` refusal path;
+- assumptions, limitations, and risk disclosure.
+
+Moiré follow-ups may fall from two to one. At the 16-minute cutover, follow-ups
+that have not started may be skipped, but unresolved disputes must remain
+visible and confidence must be reduced.
+
+## 6. Failure Semantics
+
+| Condition                                            | Result                                                                                                    |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Subject cannot be parsed                             | `UNVERIFIABLE` with required input fields                                                                 |
+| One data API remains unavailable                     | Affected check is `insufficient_evidence`; siblings continue                                              |
+| One check times out after partial variants           | Return partial evidence with reduced confidence when valid                                                |
+| One check returns invalid JSON or the wrong Agent ID | Affected check is `insufficient_evidence`                                                                 |
+| Caller cancels the audit                             | Abort all branches; do not disguise cancellation as missing evidence                                      |
+| Clock reaches the report cutover                     | Skip unstarted follow-ups and report unresolved disputes                                                  |
+| Identical request is submitted again                 | Reuse only when normalized input, profile, data date/version, code revision, and schema version all match |

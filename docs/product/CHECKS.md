@@ -1,80 +1,124 @@
-# 检查项规格
+# Audit Check Specification
 
-> 五项独立检查 + Moiré 交叉验证的规格与完整示例。检查结论的取值与最终输出契约见 [VERDICT_SPEC.md](VERDICT_SPEC.md)；数据接口的可用性依据见 [DATA_NOTES.md](DATA_NOTES.md)；模块落位与 Agent 映射见 [ARCHITECTURE.md](ARCHITECTURE.md) §4-5。
+> This document defines the five independent checks and Moiré
+> cross-validation. See [VERDICT_SPEC.md](VERDICT_SPEC.md) for result fields,
+> [DATA_NOTES.md](DATA_NOTES.md) for verified data capabilities, and
+> [ARCHITECTURE.md](ARCHITECTURE.md) for code placement.
 
-Skill 检查档案：
+## 1. Skill Profiles
 
-| Skill | 必需检查 | 条件检查 |
-| --- | --- | --- |
-| `audit_strategy` | 五项全部执行 | — |
-| `audit_factor` | 参数稳健性、数据可得性、市场环境依赖、同质化与衰减 | 仅当输入给出可交易组合构造时执行交易成本 |
-| `compare_robustness` | 对每个同类型输入分别执行对应档案，再比较 Verdict 与证据 | 混合策略/因子输入时拒绝比较并返回 `UNVERIFIABLE` |
+| Skill                | Required checks                                                                          | Conditional checks                                           |
+| -------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `audit_strategy`     | All five checks                                                                          | None                                                         |
+| `audit_factor`       | Parameter robustness, data availability, regime dependency, homogeneity and decay        | Cost stress only when the input defines a tradable portfolio |
+| `compare_robustness` | Run the matching profile for every same-kind subject, then compare verdicts and evidence | Mixed strategy and factor inputs return `UNVERIFIABLE`       |
 
-## 1. 检查项清单
+Every result still lists all five canonical check IDs. Checks outside the
+active profile use `not_applicable`.
 
-| 检查项 | 回答的问题 | 数据来源（均已核验证实） | 可行性 |
-| --- | --- | --- | --- |
-| 参数稳健性检查 | 收益是策略逻辑带来的，还是这组参数恰好在历史上运气好？ | 自建向量化回测器 + `get_market_data` + `get_adj_factor`；参数邻域扰动、时间窗平移的变体矩阵 | ✅ 可行 |
-| 数据可得性检查 | 回测用到的每个信息，在当时的时间点真的能拿到吗？ | 股票池核对：`get_index_weights` 历史区间；可交易性核对：`get_trade_list` / `get_stock_status_change`；财务：预告/快报用 `info_date`，季度报告用法定披露期限启发式 + `is_latest` 多版本 | ⚠️ 降级可用；DATA_NOTES 问题 1 通过则补季报真实公告日核对 |
-| 交易成本压力测试 | 扣完现实的交易费用后还剩多少收益？成本到多高收益归零？ | 自建回测器的成本参数分档（常规费率、冲击成本、悲观情形）+ 换手率测算 | ✅ 可行 |
-| 市场环境依赖分析 | 收益来自各种市场环境，还是全靠某一段特殊行情？ | 行情/指数数据划分市场环境（波动率/趋势/大小盘，无前视）→ 分环境统计收益 | ✅ 可行（数据地基最扎实） |
-| 同质化与衰减分析 | 这个信号是新发现，还是已被广泛使用、正在失效的老信号？ | `get_factor` 平台因子库 + 自算相关性、IC/RankIC 逐年衰减 | ✅ 可行 |
-| 交叉验证环节（Moiré） | 各项检查的结论矛盾时，矛盾背后是什么更细的结构？ | 零数据依赖，纯编排逻辑 | ✅ 可行（追加实验 ≤2 组封顶） |
+## 2. Check Definitions
 
-## 2. 工作流
+| Check                  | Question                                                                    | Evidence source                                                                        | Feasibility                                        |
+| ---------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Parameter robustness   | Does performance survive nearby parameters and shifted sample windows?      | Vectorized Backtester, `get_market_data`, `get_adj_factor`                             | Feasible                                           |
+| Data availability      | Was every input actually available at each historical decision time?        | Historical index weights, trade lists, status changes, and financial disclosure timing | Feasible with a quarterly-report timing limitation |
+| Cost stress            | What remains after realistic fees and impact, and where is break-even cost? | Backtester cost tiers and measured turnover                                            | Feasible                                           |
+| Regime dependency      | Is performance broad or concentrated in one market environment?             | Point-in-time trend, volatility, and style regimes                                     | Feasible                                           |
+| Homogeneity and decay  | Is the signal incremental, or crowded and decaying?                         | Platform factor library, correlation, annual IC/RankIC                                 | Feasible                                           |
+| Moiré cross-validation | What finer structure explains material disagreement between checks?         | Orchestration and at most two follow-up experiments                                    | Feasible                                           |
 
+### Parameter Robustness
+
+- Build a predeclared neighborhood around every material parameter.
+- Shift the sample start and end dates without selecting the best window.
+- Report original performance, neighborhood distribution, retention ratios,
+  and completed variant count.
+- Fail only on reproducible sensitivity, not on model intuition.
+
+### Data Availability
+
+- Reconstruct the point-in-time universe for every rebalance.
+- Check tradability and status changes on the decision date.
+- Use actual `info_date` for forecasts and performance bulletins.
+- Until a verified quarterly-report announcement field exists, use the
+  statutory-deadline heuristic and declare the limitation.
+
+### Transaction-Cost Stress
+
+- Measure annual turnover from generated holdings.
+- Re-run no-cost, baseline, impact-adjusted, and pessimistic tiers.
+- Estimate the cost multiplier or rate at which expected return reaches zero.
+- A factor without portfolio construction is `not_applicable`, not `pass`.
+
+### Market-Regime Dependency
+
+- Define regimes only with information available at the time.
+- Slice by trend, volatility, and relevant style dimensions.
+- Report observations and performance in every regime.
+- Identify concentration without converting correlation into causation.
+
+### Homogeneity and Decay
+
+- Compare the signal with the platform factor library.
+- Compute annual IC and RankIC on consistent universes and horizons.
+- Report trend and uncertainty, not only first-versus-last values.
+- Separate high similarity from measured decay; they are related hypotheses,
+  not the same conclusion.
+
+## 3. Execution Contract
+
+```text
+Input strategy or factor
+  ↓
+Intake fixes subject, data requirements, variant counts, and budgets
+  ↓
+Applicable checks run concurrently and cannot communicate
+  ↓
+Each returns { id, conclusion, confidence, evidence, missingEvidence }
+  ↓
+Moiré detects material disputes and may request at most two follow-ups
+  ↓
+Deterministic rules produce verdict, recovery conditions, and Artifacts
 ```
-输入：策略/因子（自然语言、因子表达式或代码）
-  ↓
-① 任务解析：识别策略类型和依赖数据 → 生成检查计划，
-   按 18 分钟执行预算分配各检查项的回测次数（运行时硬上限 19 分钟）
-  ↓
-② 当前 Skill 档案要求的检查并行独立运行（互相不通信），各出结构化结果：
-   { id, conclusion: pass/pass_with_reservations/fail/insufficient_evidence/not_applicable,
-     confidence, evidence, missingEvidence }
-  ↓
-③ 交叉验证（Moiré）：
-   结论一致 → 直接采纳；
-   结论矛盾 → 设计一个能区分两种解释的追加实验（如"分市场环境
-   重跑参数扰动"），用实验结果合成更精确的结论；
-   追加实验后仍说不清 → 标记"证据不足"，原样写进报告，不硬给结论
-  ↓
-④ 汇总输出：五档使用建议 + 各检查证据 + 未决问题 + 恢复条件 + 风险提示
-   （输出契约见 VERDICT_SPEC.md）
-```
 
-时间预算的逐阶段分配与降级路径见 [PIPELINE.md](PIPELINE.md)。
+The check-agent response is untrusted JSON. The host validates:
 
-## 3. 完整示例
+- the expected Agent ID;
+- conclusion and confidence domains;
+- reproducible evidence for `pass`, `pass_with_reservations`, and `fail`;
+- an explicit missing-evidence explanation for `insufficient_evidence`;
+- null confidence and empty evidence for `not_applicable`.
 
-一次审计从输入到输出的完整走查。
+## 4. Worked Example
 
-**输入任务**：
+Input:
 
-> "策略：在沪深 300 成分股里，每月底买入过去 20 天涨幅最大的 50 只，等权持有一个月。2021-2025 回测年化 18%、夏普 1.9。评估这个结果是否可信。"
+> Within the CSI 300, buy the 50 stocks with the highest trailing 20-day
+> return at each month-end, equal weight them for one month, and assess a
+> claimed 2021-2025 annual return of 18% with Sharpe 1.9.
 
-**示例中的五项检查与预期结果**：
+Expected check behavior:
 
-1. **参数稳健性**：动量窗口试 14/17/20/23/26 天、持仓数试 30-70 只、回测起点前后各挪 6 个月，共约 30 次回测。结果：原参数夏普 1.9，17 天掉到 0.7，23 天掉到 0.5，起点前移 6 个月掉到 0.6——邻域平均只有原点的 35%，参数大概率是从历史里挑出来的。**结论：不通过。**
-2. **数据可得性**：逐调仓日核对。发现策略用 2025 年的沪深 300 名单套回 2021 年——37 只股票当时尚未入选（幸存者偏差）。用 `get_index_weights` 查出各时点真实成分并修正后重跑：年化 18% → 13.8%。**结论：不通过，附修正后数字。**
-3. **交易成本**：年换手约 12 倍。分档重跑：不计成本 18% → 常规费率 14.1% → 加冲击成本 9.8% → 悲观情形 6.2%；成本达常规费率 2.9 倍时收益归零。**结论：有保留通过——策略没死，但合理预期应按 10% 左右评估。**
-4. **市场环境依赖**：按波动率/趋势/大小盘划分环境后分组统计：趋势上涨月份年化 +34%，震荡月份 -2%，下跌月份 -8%——全部收益来自约 40% 的趋势时段。**结论：有保留通过，须注明"趋势行情依赖型"。**
-5. **同质化与衰减**：与平台因子库标准动量因子相关性 0.93（不是新信号）；IC 从 2021 年 0.05 衰减到 2025 年 0.018（预测能力五年降六成）。**结论：不通过。**
+1. **Parameter robustness:** test momentum windows 14/17/20/23/26, holdings
+   30-70, and sample shifts. If nearby Sharpe averages only 35% of the
+   original, return a reproducible failure.
+2. **Data availability:** reconstruct historical CSI 300 membership. If 37
+   future constituents were used and correction changes annual return from
+   18% to 13.8%, fail with the affected dates and symbols.
+3. **Cost stress:** if annual turnover is 12 times and performance falls from
+   13.8% to 9.8% with impact, return a reserved pass with the full cost curve.
+4. **Regime dependency:** if gains occur only in roughly 40% of trending
+   months while flat and down regimes lose money, return a reserved pass.
+5. **Homogeneity and decay:** if correlation with standard momentum is 0.93
+   and IC declines from 0.05 to 0.018, fail with factor and yearly references.
 
-**示例中的交叉验证**：检查 1 说参数极不稳健，检查 4 说趋势市里表现稳定——矛盾。追加实验"分市场环境重跑参数扰动"：趋势市里各组参数夏普 1.2-1.6（稳健），震荡市里 -0.1 到 -1.3（极敏感）。合成结论：**参数不稳健的问题只发生在震荡市**——比任何单项检查都精确，直接告诉使用者停用条件。
+Suppose parameter robustness fails overall while the regime check finds
+stable trending-market performance. Moiré requests one discriminating
+experiment: rerun the parameter neighborhood inside each predeclared regime.
+If the result is robust in trends and unstable in flat markets, it refines the
+finding to "parameter fragility is concentrated in flat regimes." This is an
+experiment-backed synthesis, not a vote.
 
-**最终输出**（报告 + 同内容的结构化 JSON，经 A2A Artifact 返回；结构定义见 VERDICT_SPEC.md）：
-
-> **总体结论：QUARANTINE 暂停使用（置信度 0.8）**<br>
-> 宣称年化 18%；经修正与压力测试后合理预期约 8-10%，且仅在趋势行情下成立。
->
-> | 检查项 | 结论 | 关键数字 |
-> | --- | --- | --- |
-> | 参数稳健性 | 不通过 | 邻域夏普仅为原点 35%（细分：仅震荡市不稳健） |
-> | 数据可得性 | 不通过 | 37 只未来成分股；修正后 18%→13.8% |
-> | 交易成本 | 有保留通过 | 年换手 12 倍；含冲击成本 13.8%→9.8% |
-> | 环境依赖 | 有保留通过 | 收益全部来自趋势市（约 40% 时段） |
-> | 同质化与衰减 | 不通过 | 与经典动量相关 0.93；IC 五年衰减 64% |
->
-> **恢复条件**（满足后可重审升为 WATCH）：改用历史时点成分股池；调仓降为季度以压低换手；增加震荡市减仓规则；去除与经典动量重合的成分并重新验证增量信号。<br>
-> **本次审计的局限**：财务可得性按法定披露期限估算（平台暂无真实公告日）；冲击成本为估算值。
+A plausible final verdict is `QUARANTINE`, with recovery conditions to use
+point-in-time constituents, reduce turnover, add a flat-regime control, and
+demonstrate incremental signal beyond standard momentum.

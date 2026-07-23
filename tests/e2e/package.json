@@ -1,0 +1,12 @@
+{
+  "name": "@assay/checks-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@assay/agent-runtime": "workspace:*",
+    "@assay/agents": "workspace:*",
+    "@assay/contracts": "workspace:*",
+    "@oh-my-pi/pi-catalog": "17.0.8"
+  }
+}
