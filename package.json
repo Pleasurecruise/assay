@@ -1,23 +1,28 @@
 {
   "name": "assay",
   "private": true,
-  "type": "module",
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
+  "type": "module",
   "scripts": {
-    "check": "bun run typecheck && bun run test && bun run sdk:test",
-    "typecheck": "tsc --noEmit",
-    "test": "bun test",
+    "check": "vp check && vp test && bun run sdk:test",
+    "fmt": "vp fmt . --write",
+    "fmt:check": "vp fmt --check",
+    "typecheck": "vp check --no-fmt --no-lint",
+    "test": "vp test",
     "runtime": "bun run apps/runtime-cli/src/index.ts",
-    "sdk:sync": "uv sync --project services/panda-adapter --python python",
-    "sdk:doctor": "uv run --project services/panda-adapter --python python python -m panda_adapter doctor",
-    "sdk:init": "uv run --project services/panda-adapter --python python python -m panda_adapter initialize",
-    "sdk:test": "uv run --project services/panda-adapter --python python python -m unittest discover -s services/panda-adapter/tests"
+    "sdk:sync": "uv sync --project services/panda-adapter",
+    "sdk:doctor": "uv run --project services/panda-adapter python -m panda_adapter doctor",
+    "sdk:init": "uv run --project services/panda-adapter python -m panda_adapter initialize",
+    "sdk:test": "uv run --project services/panda-adapter python -m unittest discover -s services/panda-adapter/tests"
   },
   "devDependencies": {
-    "@types/bun": "^1.3.14",
-    "typescript": "^5.9.3"
-  }
+    "@types/bun": "1.3.14",
+    "typescript": "7.0.2",
+    "vite-plus": "0.2.6",
+    "vitest": "4.1.10"
+  },
+  "packageManager": "bun@1.3.14"
 }

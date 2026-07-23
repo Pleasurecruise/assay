@@ -3,34 +3,20 @@
     "target": "ES2024",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "lib": [
-      "ES2024",
-      "DOM"
-    ],
-    "types": [
-      "bun"
-    ],
+    "lib": ["ES2024", "DOM"],
+    "types": ["bun"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "useUnknownInCatchVariables": true,
     "skipLibCheck": true,
+    "noEmit": true,
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
-    "baseUrl": ".",
     "paths": {
-      "@assay/contracts": [
-        "packages/contracts/src/index.ts"
-      ],
-      "@assay/agent-runtime": [
-        "packages/agent-runtime/src/index.ts"
-      ],
-      "@assay/agents": [
-        "packages/agents/src/index.ts"
-      ]
+      "@assay/contracts": ["./packages/contracts/src/index.ts"],
+      "@assay/agent-runtime": ["./packages/agent-runtime/src/index.ts"],
+      "@assay/agents": ["./packages/agents/src/index.ts"]
     }
   },
-  "include": [
-    "apps/**/*.ts",
-    "packages/**/*.ts"
-  ]
+  "include": ["apps/**/*.ts", "packages/**/*.ts"]
 }

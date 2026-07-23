@@ -1,8 +1,4 @@
-import type {
-  ToolApproval,
-  ToolApprovalDecision,
-  ToolTier,
-} from "@oh-my-pi/pi-agent-core";
+import type { ToolApproval, ToolApprovalDecision, ToolTier } from "@oh-my-pi/pi-agent-core";
 
 export interface ToolAuthorizationRequest {
   agentId: string;
@@ -14,9 +10,7 @@ export interface ToolAuthorizationRequest {
   reason?: string;
 }
 
-export type ToolAuthorizer = (
-  request: ToolAuthorizationRequest,
-) => boolean | Promise<boolean>;
+export type ToolAuthorizer = (request: ToolAuthorizationRequest) => boolean | Promise<boolean>;
 
 export interface ToolPolicyDecision {
   allowed: boolean;
@@ -50,18 +44,12 @@ export class ToolPolicy {
       return { allowed: true, tier, reason };
     }
 
-    const allowed = this.authorize
-      ? await this.authorize({ ...request, tier, reason })
-      : false;
+    const allowed = this.authorize ? await this.authorize({ ...request, tier, reason }) : false;
 
     return {
       allowed,
       tier,
-      reason:
-        reason ??
-        (allowed
-          ? undefined
-          : `${tier} tools require an explicit host approval`),
+      reason: reason ?? (allowed ? undefined : `${tier} tools require an explicit host approval`),
     };
   }
 }

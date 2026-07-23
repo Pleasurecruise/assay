@@ -4,11 +4,7 @@ import type {
   RuntimeTaskRequest,
   RuntimeTaskResult,
 } from "@assay/contracts";
-import {
-  Agent,
-  type AgentMessage,
-  type AgentOptions,
-} from "@oh-my-pi/pi-agent-core";
+import { Agent, type AgentMessage, type AgentOptions } from "@oh-my-pi/pi-agent-core";
 import type { Model } from "@oh-my-pi/pi-ai";
 import { AgentRegistry } from "./registry";
 import { ToolPolicy } from "./policy";
@@ -101,7 +97,7 @@ export class AgentRuntime {
         ...payload,
         taskId,
         traceId,
-        sequence: sequence += 1,
+        sequence: (sequence += 1),
         timestamp: new Date().toISOString(),
       };
       events.push(event);
@@ -139,8 +135,7 @@ export class AgentRuntime {
           return undefined;
         }
 
-        const reason =
-          decision.reason ?? `${decision.tier} tool call was denied`;
+        const reason = decision.reason ?? `${decision.tier} tool call was denied`;
         await emit({
           type: "policy.denied",
           agentId: definition.id,

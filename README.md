@@ -5,7 +5,8 @@ A multi-agent system for financial research. The current phase establishes an au
 ## Technology
 
 - Monorepo: Bun workspaces
-- Toolchain management: mise (`latest` Bun, Node.js, Python, and uv)
+- Toolchain management: mise (`latest` Bun, Node.js, and uv; latest Python 3.12 patch)
+- TypeScript toolchain: Vite+ for formatting, linting, type checking, and tests
 - Agent runtime: `@oh-my-pi/pi-agent-core`
 - Model integration: `@oh-my-pi/pi-ai` and `@oh-my-pi/pi-catalog`
 - Python: a separate adapter boundary for the PandaData SDK and quantitative workloads
@@ -34,6 +35,9 @@ mise exec -- bun install
 mise exec -- bun run sdk:sync
 mise exec -- bun run check
 ```
+
+All npm registry dependencies are exact-pinned. Vite+ uses Bun as the package
+manager through the root `packageManager` declaration.
 
 Initialize PandaData before starting any service that uses market data:
 
@@ -66,7 +70,8 @@ mise exec -- bun run runtime -- "Analyze current market risks and identify the m
 
 See [Agent Runtime Architecture](docs/architecture/RUNTIME.md) for the detailed
 design and [Naming Conventions](docs/development/NAMING.md) for repository-wide
-naming rules.
+naming rules. See [Toolchain](docs/development/TOOLCHAIN.md) for version and
+command policy.
 
 ## References
 

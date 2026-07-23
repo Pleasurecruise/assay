@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { AgentRegistry } from "./registry";
 import { ToolPolicy, resolveToolApproval } from "./policy";
 
@@ -34,21 +34,13 @@ describe("ToolPolicy", () => {
   };
 
   test("allows read tools without approval", async () => {
-    const decision = await new ToolPolicy().evaluate(
-      baseRequest,
-      "read",
-      {},
-    );
+    const decision = await new ToolPolicy().evaluate(baseRequest, "read", {});
     expect(decision.allowed).toBe(true);
     expect(decision.tier).toBe("read");
   });
 
   test("denies undeclared tools as exec", async () => {
-    const decision = await new ToolPolicy().evaluate(
-      baseRequest,
-      undefined,
-      {},
-    );
+    const decision = await new ToolPolicy().evaluate(baseRequest, undefined, {});
     expect(decision.allowed).toBe(false);
     expect(decision.tier).toBe("exec");
   });
@@ -67,8 +59,7 @@ describe("ToolPolicy", () => {
 
   test("resolves dynamic approval declarations", () => {
     const approval = resolveToolApproval(
-      (args) =>
-        (args as { dryRun?: boolean }).dryRun ? "read" : "exec",
+      (args) => ((args as { dryRun?: boolean }).dryRun ? "read" : "exec"),
       { dryRun: true },
     );
     expect(approval).toBe("read");

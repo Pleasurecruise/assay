@@ -1,7 +1,4 @@
-import type {
-  AgentState,
-  AgentTool,
-} from "@oh-my-pi/pi-agent-core";
+import type { AgentState, AgentTool } from "@oh-my-pi/pi-agent-core";
 
 export interface AgentDefinition {
   id: string;
@@ -44,9 +41,7 @@ export class AgentRegistry {
   get(id: string): AgentDefinition {
     const definition = this.#definitions.get(id);
     if (!definition) {
-      throw new Error(
-        `Unknown agent "${id}". Available agents: ${this.ids().join(", ")}`,
-      );
+      throw new Error(`Unknown agent "${id}". Available agents: ${this.ids().join(", ")}`);
     }
     return definition;
   }

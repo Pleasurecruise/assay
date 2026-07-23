@@ -32,12 +32,16 @@ The adapter currently pins `panda_data==0.0.12`. Updating the SDK is an explicit
 dependency change and must be followed by adapter tests and a data-contract
 review.
 
-PandaData 0.0.12 also declares `numpy<2`, but that legacy NumPy line cannot run
-on the repository's `latest` Python 3.14 toolchain. The adapter therefore owns a
-documented uv override to a Python 3.14-compatible NumPy 2.x release. The
-override must be removed when PandaData publishes compatible dependency
-metadata. A successful dependency resolution is not sufficient: `sdk:doctor`
-must import the real SDK before the adapter is considered installable.
+The package metadata for PandaData 0.0.12 declares Python 3.10 or newer, while
+the SDK's own package documentation requires Python 3.12 or newer. It also pins
+`numpy<2`; the NumPy 1.26 line supports Python only through 3.12. Assay
+therefore uses the latest Python 3.12 patch through mise and constrains this
+adapter to `>=3.12,<3.13`. This follows the intersection of the vendor's
+documented and transitive runtime constraints without overriding dependency
+metadata.
+
+A successful dependency resolution is not sufficient: `sdk:doctor` must import
+the real SDK before the adapter is considered installable.
 
 ## Initialization Contract
 
