@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import type { AgentTool } from "@assay/agent-runtime";
 import { describe, expect, test } from "vitest";
 import { createAuditCheckAgentDefinitions } from "../src/definitions";
 import {
@@ -114,7 +115,17 @@ describe("run_experiment tool", () => {
   });
 
   test("exposes only the approved coarse tool to each wired check", () => {
-    const definitions = createAuditCheckAgentDefinitions({ experimentProcess: mockProcess });
+    const genericFinanceTools = [
+      "assay_strategy_backtest",
+      "panda_market_data",
+      "panda_factor",
+      "panda_index_weights",
+      "panda_trade_calendar",
+    ].map((name) => ({ name }) as AgentTool);
+    const definitions = createAuditCheckAgentDefinitions({
+      availableTools: genericFinanceTools,
+      experimentProcess: mockProcess,
+    });
     const toolsById = Object.fromEntries(
       definitions.map((definition) => [
         definition.id,

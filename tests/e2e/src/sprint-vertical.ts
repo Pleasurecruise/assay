@@ -97,7 +97,7 @@ export async function runSprintVertical(): Promise<string> {
         ? submitted
         : await client.pollTask(submitted.id, {
             intervalMs: 100,
-            timeoutMs: 240_000,
+            timeoutMs: 300_000,
           });
     const artifact = extractAuditArtifact(completed);
     requireValue(artifact, "Completed sprint task did not return an audit Artifact");

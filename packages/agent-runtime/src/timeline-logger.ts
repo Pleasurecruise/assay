@@ -1,0 +1,104 @@
+import type { RuntimeEvent } from "@assay/contracts";
+
+export interface RuntimeTimelineLoggerOptions {
+  readonly now?: () => number;
+  readonly write?: (line: string) => void;
+}
+
+interface ToolStart {
+  readonly agentKey: string;
+  readonly startedAt: number;
+}
+
+function agentKey(event: RuntimeEvent): string {
+  return `${event.traceId}\u0000${event.taskId}\u0000${event.agentId}`;
+}
+
+function toolKey(event: RuntimeEvent & { toolCallId: string }): string {
+  return `${agentKey(event)}\u0000${event.toolCallId}`;
+}
+
+function durationMs(startedAt: number | undefined, finishedAt: number): number {
+  return Math.max(0, Math.round(finishedAt - (startedAt ?? finishedAt)));
+}
+
+/**
+ * Emit credential-safe runtime timing records.
+ *
+ * Agent text, tool arguments/results, and provider errors are deliberately
+ * excluded. JSON encoding also prevents untrusted identifiers from injecting
+ * additional log lines.
+ */
+export function createRuntimeTimelineLogger(
+  options: RuntimeTimelineLoggerOptions = {},
+): (event: RuntimeEvent) => void {
+  const now = options.now ?? Date.now;
+  const write = options.write ?? ((line: string) => process.stderr.write(line));
+  const agentStarts = new Map<string, number>();
+  const toolStarts = new Map<string, ToolStart>();
+
+  return (event): void => {
+    const observedAt = now();
+    const currentAgentKey = agentKey(event);
+    const base = {
+      traceId: event.traceId,
+      taskId: event.taskId,
+      agentId: event.agentId,
+    };
+
+    if (event.type === "agent.started") {
+      agentStarts.set(currentAgentKey, observedAt);
+      write(`[assay-runtime] ${JSON.stringify({ ...base, phase: "agent_started" })}\n`);
+      return;
+    }
+
+    if (event.type === "tool.started") {
+      toolStarts.set(toolKey(event), {
+        agentKey: currentAgentKey,
+        startedAt: observedAt,
+      });
+      write(
+        `[assay-runtime] ${JSON.stringify({
+          ...base,
+          phase: "tool_started",
+          toolName: event.toolName,
+          elapsedMs: durationMs(agentStarts.get(currentAgentKey), observedAt),
+        })}\n`,
+      );
+      return;
+    }
+
+    if (event.type === "tool.completed") {
+      const currentToolKey = toolKey(event);
+      const started = toolStarts.get(currentToolKey);
+      toolStarts.delete(currentToolKey);
+      write(
+        `[assay-runtime] ${JSON.stringify({
+          ...base,
+          phase: "tool_finished",
+          toolName: event.toolName,
+          durationMs: durationMs(started?.startedAt, observedAt),
+          isError: event.isError,
+        })}\n`,
+      );
+      return;
+    }
+
+    if (event.type === "agent.completed" || event.type === "agent.failed") {
+      write(
+        `[assay-runtime] ${JSON.stringify({
+          ...base,
+          phase: "agent_finished",
+          outcome: event.type === "agent.completed" ? "completed" : "failed",
+          durationMs: durationMs(agentStarts.get(currentAgentKey), observedAt),
+        })}\n`,
+      );
+      agentStarts.delete(currentAgentKey);
+      for (const [key, started] of toolStarts) {
+        if (started.agentKey === currentAgentKey) {
+          toolStarts.delete(key);
+        }
+      }
+    }
+  };
+}

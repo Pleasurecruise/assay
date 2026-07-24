@@ -227,12 +227,21 @@ export class AgentRuntime {
 
     const requestedTimeout = request.timeoutMs ?? this.#maxRunMs;
     const timeoutMs = Math.min(requestedTimeout, this.#maxRunMs);
-    const timeout = setTimeout(() => {
-      agent.abort(new Error(`Task exceeded ${timeoutMs}ms deadline`));
-    }, timeoutMs);
+    const timeoutError = new Error(`Task exceeded ${timeoutMs}ms deadline`);
+    timeoutError.name = "TimeoutError";
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_resolve, reject) => {
+      timeout = setTimeout(() => {
+        // Returning from the runtime deadline is independent of whether a
+        // specific tool has implemented subprocess cancellation. The latter
+        // remains a separate resource-cleanup responsibility.
+        agent.abort(timeoutError);
+        reject(timeoutError);
+      }, timeoutMs);
+    });
 
     try {
-      await agent.prompt(request.input);
+      await Promise.race([agent.prompt(request.input), deadline]);
       output ||= lastAssistantText(agent.state.messages);
 
       if (agent.state.error) {
@@ -268,7 +277,9 @@ export class AgentRuntime {
       });
       throw error;
     } finally {
-      clearTimeout(timeout);
+      if (timeout !== undefined) {
+        clearTimeout(timeout);
+      }
       options.signal?.removeEventListener("abort", externalAbort);
       unsubscribe();
       agent.abort();

@@ -14,7 +14,8 @@ import {
 } from "@assay/contracts";
 import { planMoireExperiments, type MoireExperiment } from "./moire";
 
-const DEFAULT_CHECK_TIMEOUT_MS = 10 * 60 * 1_000;
+export const HARD_CHECK_DEADLINE_MS = 120_000;
+const DEFAULT_CHECK_TIMEOUT_MS = HARD_CHECK_DEADLINE_MS;
 const CHECK_EXECUTION_FAILURE_REASON = "Check execution failed before a valid result was produced.";
 
 export interface AuditCheckTaskRunner {
@@ -93,7 +94,10 @@ function notApplicable(checkId: AuditCheckId): AuditCheckResult {
   };
 }
 
-function insufficientEvidence(checkId: AuditCheckId): AuditCheckResult {
+function insufficientEvidence(
+  checkId: AuditCheckId,
+  reason = CHECK_EXECUTION_FAILURE_REASON,
+): AuditCheckResult {
   return {
     id: checkId,
     conclusion: "insufficient_evidence",
@@ -102,11 +106,18 @@ function insufficientEvidence(checkId: AuditCheckId): AuditCheckResult {
     missingEvidence: [
       {
         requirement: `${checkId} check execution`,
-        reason: CHECK_EXECUTION_FAILURE_REASON,
+        reason,
         sourceRefs: [`runtime-error:${checkId}`],
       },
     ],
   };
+}
+
+function isTimeoutFailure(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.name === "TimeoutError" || /\b(?:deadline|timed?\s*out|timeout)\b/i.test(error.message))
+  );
 }
 
 function buildAgentInput(
@@ -221,6 +232,7 @@ export class ParallelAuditCheckRunner {
     },
   ): Promise<AuditCheckResult> {
     const budget = request.budgets?.[checkId];
+    const timeoutMs = Math.min(budget?.timeoutMs ?? this.#defaultTimeoutMs, HARD_CHECK_DEADLINE_MS);
     const agentRequest: AuditCheckAgentRequest = {
       schemaVersion: AUDIT_CHECK_SCHEMA_VERSION,
       auditId: request.auditId,
@@ -238,7 +250,7 @@ export class ParallelAuditCheckRunner {
           traceId,
           agentId: checkId,
           input: buildAgentInput(agentRequest, followUp),
-          timeoutMs: budget?.timeoutMs ?? this.#defaultTimeoutMs,
+          timeoutMs,
           metadata: {
             ...request.metadata,
             auditId: request.auditId,
@@ -259,7 +271,12 @@ export class ParallelAuditCheckRunner {
       if (signal?.aborted) {
         throw signal.reason ?? error;
       }
-      return insufficientEvidence(checkId);
+      return insufficientEvidence(
+        checkId,
+        isTimeoutFailure(error)
+          ? `Check exceeded its ${String(timeoutMs)}ms deadline before producing a valid result.`
+          : CHECK_EXECUTION_FAILURE_REASON,
+      );
     }
   }
 }

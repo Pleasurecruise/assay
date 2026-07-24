@@ -133,39 +133,16 @@ export interface AuditCheckAgentDefinitionOptions {
   readonly availabilityProcess?: ExperimentProcessConfig;
 }
 
-const toolsByCheck: Readonly<Record<AuditCheckId, readonly string[]>> = {
-  // The three wired checks each have one bounded, authoritative capability.
-  // General PandaData tools remain available only to the checks that have not
-  // yet received a dedicated deterministic runner.
-  "param-robustness": [],
-  "data-availability": [],
-  "cost-stress": [],
-  "regime-dependency": [
-    "assay_strategy_backtest",
-    "panda_market_data",
-    "panda_index_weights",
-    "panda_trade_calendar",
-  ],
-  "homogeneity-decay": [
-    "assay_strategy_backtest",
-    "panda_market_data",
-    "panda_factor",
-    "panda_index_weights",
-    "panda_trade_calendar",
-  ],
-};
-
 export function createAuditCheckAgentDefinitions(
   options: AuditCheckAgentDefinitionOptions = {},
 ): readonly AgentDefinition[] {
-  const availableTools = new Map((options.availableTools ?? []).map((tool) => [tool.name, tool]));
   const experimentProcess = options.experimentProcess ?? defaultExperimentProcessConfig();
   const availabilityProcess = options.availabilityProcess ?? experimentProcess;
   return (Object.keys(checkPrompts) as AuditCheckId[]).map((id) => {
-    const tools: AgentTool[] = toolsByCheck[id].flatMap((name) => {
-      const tool = availableTools.get(name);
-      return tool ? [tool] : [];
-    });
+    // CHECKS_WIRING §2/§3 have not landed their dedicated deterministic
+    // capabilities. General finance tools stay implemented and advertised,
+    // but are not registered on either agent until those contracts exist.
+    const tools: AgentTool[] = [];
     const experimentKind =
       id === "param-robustness" || id === "cost-stress" ? experimentKindByCheck[id] : undefined;
     if (id === "data-availability") {

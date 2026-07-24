@@ -8,7 +8,7 @@ import type {
 import { AUDIT_CHECK_IDS, AUDIT_CHECK_SCHEMA_VERSION } from "@assay/contracts";
 import { describe, expect, test } from "vitest";
 import type { AuditCheckTaskRunner } from "../src/parallel-check-runner";
-import { ParallelAuditCheckRunner } from "../src/parallel-check-runner";
+import { HARD_CHECK_DEADLINE_MS, ParallelAuditCheckRunner } from "../src/parallel-check-runner";
 
 function checkResult(id: AuditCheckId): AuditCheckResult {
   return {
@@ -109,6 +109,48 @@ describe("ParallelAuditCheckRunner", () => {
       "Check execution failed before a valid result was produced.",
     );
     expect(result.checks.filter((check) => check.conclusion === "pass")).toHaveLength(4);
+  });
+
+  test("caps every requested branch deadline at 120 seconds", async () => {
+    const dispatched: RuntimeTaskRequest[] = [];
+    const taskRunner: AuditCheckTaskRunner = {
+      async run(request) {
+        dispatched.push(request);
+        return runtimeResult(request, JSON.stringify(checkResult(request.agentId as AuditCheckId)));
+      },
+    };
+    const request = {
+      ...strategyRequest(),
+      budgets: {
+        "cost-stress": {
+          timeoutMs: HARD_CHECK_DEADLINE_MS * 5,
+        },
+      },
+    };
+
+    await new ParallelAuditCheckRunner(taskRunner, HARD_CHECK_DEADLINE_MS * 5).run(request);
+
+    expect(dispatched).toHaveLength(AUDIT_CHECK_IDS.length);
+    expect(dispatched.every((item) => item.timeoutMs === HARD_CHECK_DEADLINE_MS)).toBe(true);
+  });
+
+  test("explains a branch deadline as insufficient evidence", async () => {
+    const taskRunner: AuditCheckTaskRunner = {
+      async run(request) {
+        if (request.agentId === "data-availability") {
+          throw new Error(`Task exceeded ${String(request.timeoutMs)}ms deadline`);
+        }
+        return runtimeResult(request, JSON.stringify(checkResult(request.agentId as AuditCheckId)));
+      },
+    };
+
+    const result = await new ParallelAuditCheckRunner(taskRunner).run(strategyRequest());
+    const timedOut = result.checks.find((check) => check.id === "data-availability");
+
+    expect(timedOut?.conclusion).toBe("insufficient_evidence");
+    expect(timedOut?.missingEvidence[0]?.reason).toBe(
+      "Check exceeded its 120000ms deadline before producing a valid result.",
+    );
   });
 
   test("does not expose runtime error details in missing evidence", async () => {

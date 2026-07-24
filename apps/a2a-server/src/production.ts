@@ -1,4 +1,4 @@
-import { AgentRegistry, AgentRuntime } from "@assay/agent-runtime";
+import { AgentRegistry, AgentRuntime, createRuntimeTimelineLogger } from "@assay/agent-runtime";
 import { createAuditCheckAgentDefinitions, ParallelAuditCheckRunner } from "@assay/agents";
 import { createPandaDataTools, PandaDataProcessGateway } from "@assay/finance-tools";
 import { ArkResponsesStrategyParser, StrategyIntake } from "@assay/intake";
@@ -52,6 +52,7 @@ export function createProductionA2AApp(config: ProductionA2AConfig): AssayA2AApp
       createAuditCheckAgentDefinitions({ availableTools: pandaDataTools }),
     ),
     getApiKey: () => config.arkApiKey,
+    onEvent: createRuntimeTimelineLogger(),
   });
   const runner = new ParallelAuditCheckRunner(runtime);
   const executor = new AssayAgentExecutor({
