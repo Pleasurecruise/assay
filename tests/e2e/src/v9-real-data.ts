@@ -31,6 +31,8 @@ const V9_DATASET_NAMES = [
 interface V9DatasetSnapshot {
   readonly status: string;
   readonly mode?: string;
+  readonly reasonCode?: string;
+  readonly assumptions?: readonly string[];
 }
 
 export interface V9CacheSnapshot {
@@ -99,6 +101,16 @@ async function inspectV9Cache(): Promise<V9CacheSnapshot> {
           {
             status: raw.status,
             ...(typeof raw.mode === "string" ? { mode: raw.mode } : {}),
+            ...(typeof raw.reasonCode === "string"
+              ? { reasonCode: raw.reasonCode }
+              : {}),
+            ...(Array.isArray(raw.assumptions) &&
+            raw.assumptions.every(
+              (assumption) =>
+                typeof assumption === "string" && assumption.length > 0,
+            )
+              ? { assumptions: raw.assumptions }
+              : {}),
           },
         ];
       }),
