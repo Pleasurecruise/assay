@@ -12,7 +12,11 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from panda_adapter.audit_cache import IndexDailyCache, V9_CACHE_VERSION
+from panda_adapter.audit_cache import (
+    IndexDailyCache,
+    PitMembershipCache,
+    V9_CACHE_VERSION,
+)
 from panda_adapter.availability_audit import (
     PIT_DATASET_VERSION,
     PIT_SNAPSHOT_SCHEMA_VERSION,
@@ -281,6 +285,33 @@ class MoireM1KnownAnswerTest(unittest.TestCase):
             self.assertEqual(
                 second_evidence["grid"]["mode"],
                 "fixed_grid_rerun",
+            )
+
+            pit_proxy = run_moire_request(
+                {"kind": "regime_slice_of_grid", "spec": spec},
+                panel_loader=lambda _: panel,
+                index_loader=lambda: None,
+                membership_loader=lambda: PitMembershipCache(
+                    snapshots={dates[0]: frozenset(panel.adjusted_close.columns)},
+                    cache_version="synthetic-pit-v1",
+                ),
+                grid_runner=lambda *args, **kwargs: self.fail(
+                    "PIT proxy must reuse complete grid artifacts"
+                ),
+                backtest_artifact_root=backtest_root,
+                moire_artifact_root=root / "moire-pit-proxy",
+            )
+            pit_evidence = json.loads(
+                moire_artifact_path(
+                    pit_proxy["sourceRef"],
+                    root=root / "moire-pit-proxy",
+                ).read_text(encoding="utf-8")
+            )
+            self.assertTrue(
+                any(
+                    "future constituents cannot enter" in value
+                    for value in pit_evidence["assumptions"]
+                )
             )
 
     def test_ambiguous_artifact_candidates_force_fixed_grid_rerun(

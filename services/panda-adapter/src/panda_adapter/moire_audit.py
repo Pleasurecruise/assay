@@ -23,8 +23,10 @@ import pandas as pd
 
 from .audit_cache import (
     IndexDailyCache,
+    PitMembershipCache,
     V9_CACHE_VERSION,
     load_index_daily_cache,
+    load_pit_membership_cache,
 )
 from .availability_audit import PIT_DATASET_VERSION
 from .engine.artifacts import (
@@ -67,6 +69,7 @@ AvailabilityMode = Literal["full_pit", "degraded_remove_only"]
 GridRunner = Callable[..., dict[str, Any]]
 CostLadderRunner = Callable[..., dict[str, Any]]
 IndexLoader = Callable[[], IndexDailyCache | None]
+MembershipLoader = Callable[[], PitMembershipCache]
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +89,7 @@ def run_moire_request(
         load_cached_market_panel
     ),
     index_loader: IndexLoader = load_index_daily_cache,
+    membership_loader: MembershipLoader = load_pit_membership_cache,
     grid_runner: GridRunner = run_grid,
     cost_ladder_runner: CostLadderRunner = run_cost_ladder,
     backtest_artifact_root: Path | None = None,
@@ -107,6 +111,7 @@ def run_moire_request(
             spec,
             panel_loader=panel_loader,
             index_loader=index_loader,
+            membership_loader=membership_loader,
             grid_runner=grid_runner,
             backtest_artifact_root=backtest_artifact_root,
             moire_artifact_root=moire_artifact_root,
@@ -128,6 +133,7 @@ def run_regime_slice_of_grid(
         load_cached_market_panel
     ),
     index_loader: IndexLoader = load_index_daily_cache,
+    membership_loader: MembershipLoader = load_pit_membership_cache,
     grid_runner: GridRunner = run_grid,
     backtest_artifact_root: Path | None = None,
     moire_artifact_root: Path | None = None,
@@ -184,12 +190,19 @@ def run_regime_slice_of_grid(
 
     cached_index = index_loader()
     if cached_index is None:
-        index_close = _constituent_equal_weight_proxy(panel.adjusted_close)
+        membership_cache = membership_loader()
+        index_close = _constituent_equal_weight_proxy(
+            panel.adjusted_close,
+            membership_cache.snapshots,
+        )
         label_assumption = (
             "The prepared index cache was unavailable; labels use the "
-            "authorized cached-constituent equal-weight proxy."
+            f"authorized {membership_cache.cache_version} PIT-constituent "
+            "equal-weight proxy. A snapshot becomes eligible only after its "
+            "effective date, so future constituents cannot enter earlier "
+            "proxy returns."
         )
-        index_identity = "constituent_proxy"
+        index_identity = f"constituent_proxy:{membership_cache.cache_version}"
     else:
         index_close = cached_index.close
         label_assumption = (
