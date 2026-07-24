@@ -292,12 +292,8 @@ export class ParallelAuditCheckRunner {
       auditId: request.auditId,
       traceId,
       subjectId: request.subject.id,
-      ...(request.skill === "audit_strategy"
-        ? { frozenStrategySpec: request.subject.input }
-        : {}),
-      ...(request.metadata?.specHash === undefined
-        ? {}
-        : { specHash: request.metadata.specHash }),
+      ...(request.skill === "audit_strategy" ? { frozenStrategySpec: request.subject.input } : {}),
+      ...(request.metadata?.specHash === undefined ? {} : { specHash: request.metadata.specHash }),
     };
     const refinements = await Promise.all(
       experiments.map(async (experiment) => {
@@ -312,8 +308,7 @@ export class ParallelAuditCheckRunner {
           return {
             checkId: experiment.checkId,
             refinedByMoire:
-              `[${experiment.id}][unresolved] 判别实验未完成，` +
-              "该矛盾仍可能改变最终判决。",
+              `[${experiment.id}][unresolved] 判别实验未完成，` + "该矛盾仍可能改变最终判决。",
           };
         }
       }),

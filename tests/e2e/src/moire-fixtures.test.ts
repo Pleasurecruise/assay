@@ -33,9 +33,7 @@ describe("v9 Moiré mechanism archive", () => {
       artifacts[0]?.results[0]?.checks.find((check) => check.id === "param-robustness")
         ?.refinedByMoire,
     ).toContain("[M1][resolved]");
-    const m2Cost = artifacts[1]?.results[0]?.checks.find(
-      (check) => check.id === "cost-stress",
-    );
+    const m2Cost = artifacts[1]?.results[0]?.checks.find((check) => check.id === "cost-stress");
     expect(m2Cost?.conclusion).toBe("pass_with_reservations");
     expect(m2Cost?.refinedByMoire).toContain("[M2][resolved]");
     assertOutputSafe(bundle);

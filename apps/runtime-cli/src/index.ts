@@ -1,8 +1,5 @@
 import { AgentRegistry, AgentRuntime } from "@assay/agent-runtime";
-import {
-  createAuditCheckAgentDefinitions,
-  type ExperimentProcessConfig,
-} from "@assay/agents";
+import { createAuditCheckAgentDefinitions, type ExperimentProcessConfig } from "@assay/agents";
 import {
   AUDIT_CHECK_IDS,
   canonicalizeStrategySpec,
@@ -57,9 +54,7 @@ const model =
         contextWindow: 64_000,
         maxTokens: 8_192,
       })
-    : getBundledModels(provider as GeneratedProvider).find(
-        (candidate) => candidate.id === modelId,
-      );
+    : getBundledModels(provider as GeneratedProvider).find((candidate) => candidate.id === modelId);
 if (model === undefined) {
   throw new Error(`Model "${provider}/${modelId}" is not available to the runtime CLI`);
 }

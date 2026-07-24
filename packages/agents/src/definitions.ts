@@ -19,10 +19,7 @@ import {
   defaultExperimentProcessConfig,
   type ExperimentProcessConfig,
 } from "./run-experiment-tool";
-import {
-  createRunHomogeneityTool,
-  HOMOGENEITY_AUDIT_SOURCE_REF,
-} from "./run-homogeneity-tool";
+import { createRunHomogeneityTool, HOMOGENEITY_AUDIT_SOURCE_REF } from "./run-homogeneity-tool";
 import { createRunRegimeSplitTool, REGIME_SPLIT_SOURCE_REF } from "./run-regime-split-tool";
 
 const medium = "medium" as AgentDefinition["thinkingLevel"];

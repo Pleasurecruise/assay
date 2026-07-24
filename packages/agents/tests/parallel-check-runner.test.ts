@@ -8,10 +8,7 @@ import type {
 import { AUDIT_CHECK_IDS, AUDIT_CHECK_SCHEMA_VERSION } from "@assay/contracts";
 import { describe, expect, test } from "vitest";
 import { MOIRE_EVIDENCE_METRICS } from "../src/moire";
-import type {
-  AuditCheckTaskRunner,
-  MoireExperimentExecutor,
-} from "../src/parallel-check-runner";
+import type { AuditCheckTaskRunner, MoireExperimentExecutor } from "../src/parallel-check-runner";
 import { HARD_CHECK_DEADLINE_MS, ParallelAuditCheckRunner } from "../src/parallel-check-runner";
 
 function checkResult(id: AuditCheckId): AuditCheckResult {
@@ -486,9 +483,7 @@ describe("ParallelAuditCheckRunner", () => {
 
     const result = await new ParallelAuditCheckRunner(taskRunner).run(strategyRequest());
 
-    expect(
-      result.checks.every((check) => check.conclusion === "insufficient_evidence"),
-    ).toBe(true);
+    expect(result.checks.every((check) => check.conclusion === "insufficient_evidence")).toBe(true);
     expect(result.checks.every((check) => check.refinedByMoire === undefined)).toBe(true);
   });
 

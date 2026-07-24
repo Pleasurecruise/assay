@@ -119,10 +119,7 @@ function parseComparison(value: unknown, index: number): HomogeneityComparison {
 
 function parseAnnualIc(value: unknown, index: number): AnnualInformationCoefficient {
   const path = `annualIc[${String(index)}]`;
-  if (
-    !isRecord(value) ||
-    !hasExactKeys(value, ["year", "observations", "pearsonIc", "rankIc"])
-  ) {
+  if (!isRecord(value) || !hasExactKeys(value, ["year", "observations", "pearsonIc", "rankIc"])) {
     throw new Error(
       `run_homogeneity ${path} must contain exactly year, observations, pearsonIc, rankIc`,
     );
@@ -161,18 +158,14 @@ function parseResult(stdout: string): HomogeneityAuditResult {
     throw new Error(`run_homogeneity response must contain exactly ${RESULT_KEYS.join(", ")}`);
   }
   if (parsed.contractVersion !== AUDIT_TOOL_CONTRACT_VERSION) {
-    throw new Error(
-      `run_homogeneity contractVersion must equal ${AUDIT_TOOL_CONTRACT_VERSION}`,
-    );
+    throw new Error(`run_homogeneity contractVersion must equal ${AUDIT_TOOL_CONTRACT_VERSION}`);
   }
   const engineVersion = nonEmptyString(parsed.engineVersion, "engineVersion");
   if (parsed.kind !== "homogeneity") {
     throw new Error("run_homogeneity response.kind must equal homogeneity");
   }
   if (parsed.mode !== "full_factor_library" && parsed.mode !== "classic_only") {
-    throw new Error(
-      "run_homogeneity response.mode must be full_factor_library or classic_only",
-    );
+    throw new Error("run_homogeneity response.mode must be full_factor_library or classic_only");
   }
   if (!Array.isArray(parsed.comparisons)) {
     throw new Error("run_homogeneity comparisons must be an array");
@@ -180,7 +173,12 @@ function parseResult(stdout: string): HomogeneityAuditResult {
   const comparisons = parsed.comparisons.map(parseComparison);
   const expectedComparators =
     parsed.mode === "full_factor_library" ? HOMOGENEITY_COMPARATORS : CLASSIC_COMPARATORS;
-  if (!sameMembers(comparisons.map((comparison) => comparison.comparator), expectedComparators)) {
+  if (
+    !sameMembers(
+      comparisons.map((comparison) => comparison.comparator),
+      expectedComparators,
+    )
+  ) {
     throw new Error(
       `run_homogeneity ${parsed.mode} comparisons must contain each approved comparator exactly once`,
     );

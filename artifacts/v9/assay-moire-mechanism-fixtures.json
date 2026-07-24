@@ -136,9 +136,7 @@
               }
             },
             "defaultsApplied": [],
-            "parsingAssumptions": [
-              "The fixture uses the frozen canonical strategy shape."
-            ]
+            "parsingAssumptions": ["The fixture uses the frozen canonical strategy shape."]
           }
         ],
         "comparison": null,
@@ -291,9 +289,7 @@
               }
             },
             "defaultsApplied": [],
-            "parsingAssumptions": [
-              "The fixture uses the frozen canonical strategy shape."
-            ]
+            "parsingAssumptions": ["The fixture uses the frozen canonical strategy shape."]
           }
         ],
         "comparison": null,

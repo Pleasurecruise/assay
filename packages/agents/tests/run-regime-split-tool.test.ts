@@ -2,10 +2,7 @@ import { fileURLToPath } from "node:url";
 import type { CanonicalStrategySpec } from "@assay/contracts";
 import { describe, expect, test } from "vitest";
 import { createAuditCheckAgentDefinitions } from "../src/definitions";
-import {
-  REGIME_SPLIT_SOURCE_REF,
-  runRegimeSplitSubprocess,
-} from "../src/run-regime-split-tool";
+import { REGIME_SPLIT_SOURCE_REF, runRegimeSplitSubprocess } from "../src/run-regime-split-tool";
 
 const mockProcess = {
   command: process.execPath,

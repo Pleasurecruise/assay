@@ -3,11 +3,7 @@ import { promisify } from "node:util";
 import type { AgentExecutor } from "@a2a-js/sdk/server";
 import { afterEach, describe, expect, test } from "vitest";
 import type { Server } from "node:http";
-import {
-  ASSAY_A2A_JSON_RPC_PATH,
-  ASSAY_A2A_REST_PATH,
-  createAssayA2AApp,
-} from "../src/server";
+import { ASSAY_A2A_JSON_RPC_PATH, ASSAY_A2A_REST_PATH, createAssayA2AApp } from "../src/server";
 
 const execFileAsync = promisify(execFile);
 let server: Server | undefined;
