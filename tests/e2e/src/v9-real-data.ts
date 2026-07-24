@@ -29,6 +29,8 @@ export const V9_PRICE_SOURCE_MODE = "factor-close-with-validated-official-post-f
 export const V9_PRIMARY_CLOSE_SOURCE_REF = "pandadata:get_factor(close)";
 export const V9_FALLBACK_CLOSE_SOURCE_REF = "pandadata:get_stock_daily_post(close)";
 export const V9_FALLBACK_PROVENANCE_SCHEMA_VERSION = "assay-base-official-post-fallback-index-v1";
+export const V9_EXPECTED_PIT_POINTS = 37;
+export const V9_EXPECTED_COMPLETED_MONTH_ENDS = 36;
 export const V9_REAL_INPUT =
   "沪深 300 每月底买过去 20 天涨幅最大的 50 只，等权持有，宣称年化 18% 夏普 1.9";
 export const V9_REAL_ARTIFACT_PATH = "artifacts/v9/assay-real-data-run.json";
@@ -548,6 +550,41 @@ async function inspectPriceSources(
   );
 }
 
+export function assertV9PitTimelineManifest(value: unknown, dataAsOf: string): void {
+  requireValue(isRecord(value), "v9 PIT timeline metadata must be an object");
+  requireValue(
+    value.status === "ready" &&
+      typeof value.path === "string" &&
+      value.path.startsWith("pit-availability-v1/"),
+    "v9 PIT timeline is not a ready frozen-cache dataset",
+  );
+  requireValue(
+    value.completedMonthEnds === V9_EXPECTED_COMPLETED_MONTH_ENDS &&
+      Array.isArray(value.terminalAsOf) &&
+      value.terminalAsOf.length === 1 &&
+      value.terminalAsOf[0] === dataAsOf,
+    "v9 PIT timeline must contain 36 completed month ends plus the terminal as-of point",
+  );
+  requireValue(isRecord(value.quality), "v9 PIT timeline omitted quality evidence");
+  const memberCounts = value.quality.memberCounts;
+  requireValue(
+    value.quality.pointCount === V9_EXPECTED_PIT_POINTS &&
+      value.quality.terminalAsOfIsNotMonthEnd === true &&
+      isRecord(memberCounts) &&
+      Object.keys(memberCounts).length === V9_EXPECTED_PIT_POINTS &&
+      Object.hasOwn(memberCounts, dataAsOf) &&
+      Object.entries(memberCounts).every(
+        ([date, count]) =>
+          /^\d{4}-\d{2}-\d{2}$/.test(date) &&
+          typeof count === "number" &&
+          Number.isInteger(count) &&
+          count >= 250 &&
+          count <= 350,
+      ),
+    "v9 PIT timeline does not prove all 37 bounded membership observations",
+  );
+}
+
 export async function inspectV9Cache(): Promise<V9CacheInspection> {
   const bytes = await readFile(resolve(V9_MANIFEST_PATH));
   const manifest: unknown = JSON.parse(bytes.toString("utf8"));
@@ -577,14 +614,10 @@ export async function inspectV9Cache(): Promise<V9CacheInspection> {
       isRecord(manifestDatasets.pitTimeline),
     "v9 cache manifest omitted hard-gate dataset metadata",
   );
+  assertV9PitTimelineManifest(manifestDatasets.pitTimeline, manifest.window.end);
   const basePanelPath = safeCachePath(
     manifestDatasets.basePanel.path,
     "v9 cache manifest.datasets.basePanel.path",
-  );
-  requireValue(
-    typeof manifestDatasets.pitTimeline.path === "string" &&
-      manifestDatasets.pitTimeline.path.startsWith("pit-availability-v1/"),
-    "v9 PIT dataset path is not rooted at the frozen PIT cache",
   );
   const pitCacheRoot = safeCachePath("pit-availability-v1", "v9 PIT cache root");
   const priceSources = await inspectPriceSources(manifestDatasets.basePanel);
