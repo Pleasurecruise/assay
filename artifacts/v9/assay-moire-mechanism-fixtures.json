@@ -1,0 +1,313 @@
+{
+  "schemaVersion": "moire-mechanism-fixture-v1",
+  "artifactRole": "moire-mechanism-fixture",
+  "generatedAt": "2026-07-24T15:45:00.000Z",
+  "fixtures": [
+    {
+      "fixtureId": "M1-regime-slice-of-grid-v1",
+      "executionTemplate": "regime_slice_of_grid",
+      "artifact": {
+        "schemaVersion": "1.1.0",
+        "kind": "strategy_audit",
+        "auditId": "audit_moire_m1_fixture",
+        "generatedAt": "2026-07-24T15:45:00.000Z",
+        "results": [
+          {
+            "subjectId": "strategy_moire_m1_fixture",
+            "verdict": "QUARANTINE",
+            "confidence": 0.8,
+            "summary": "The M1 mechanism fixture refined the location of parameter fragility without changing the agent conclusion.",
+            "checks": [
+              {
+                "id": "param-robustness",
+                "conclusion": "fail",
+                "confidence": 0.8,
+                "evidence": [
+                  {
+                    "metric": "neighborhoodSharpeRetention",
+                    "value": 0.35,
+                    "unit": "ratio",
+                    "sourceRefs": ["artifact:fixture/param-grid"]
+                  }
+                ],
+                "missingEvidence": [],
+                "refinedByMoire": "[M1][resolved] 参数脆弱性集中于非主导环境。 dominant=up-normal:0.750000; others=down-high=0.300000,down-normal=0.250000; sourceRef=artifact:fixture/grid-daily-returns"
+              },
+              {
+                "id": "data-availability",
+                "conclusion": "pass",
+                "confidence": 0.9,
+                "evidence": [
+                  {
+                    "metric": "futureConstituentCount",
+                    "value": 0,
+                    "unit": "count",
+                    "sourceRefs": ["artifact:fixture/pit-audit"]
+                  }
+                ],
+                "missingEvidence": []
+              },
+              {
+                "id": "cost-stress",
+                "conclusion": "pass",
+                "confidence": 0.9,
+                "evidence": [
+                  {
+                    "metric": "pessimisticAnnualReturn",
+                    "value": 0.08,
+                    "unit": "fraction/year",
+                    "sourceRefs": ["artifact:fixture/cost-ladder"]
+                  }
+                ],
+                "missingEvidence": []
+              },
+              {
+                "id": "regime-dependency",
+                "conclusion": "pass_with_reservations",
+                "confidence": 0.85,
+                "evidence": [
+                  {
+                    "metric": "dominantEnvironment.pnlShare",
+                    "value": 0.76,
+                    "unit": "ratio",
+                    "sourceRefs": ["artifact:fixture/regime-split"]
+                  }
+                ],
+                "missingEvidence": []
+              },
+              {
+                "id": "homogeneity-decay",
+                "conclusion": "pass",
+                "confidence": 0.9,
+                "evidence": [
+                  {
+                    "metric": "summary.maxAbsMeanSpearman",
+                    "value": 0.4,
+                    "unit": "absolute correlation",
+                    "sourceRefs": ["artifact:fixture/homogeneity"]
+                  }
+                ],
+                "missingEvidence": []
+              }
+            ],
+            "moire": {
+              "disputesOpened": 1,
+              "resolved": [
+                "[M1][resolved] 参数脆弱性集中于非主导环境。 dominant=up-normal:0.750000; others=down-high=0.300000,down-normal=0.250000; sourceRef=artifact:fixture/grid-daily-returns"
+              ],
+              "unresolved": []
+            },
+            "recoveryConditions": [
+              {
+                "scope": "param-robustness",
+                "condition": "收窄参数敏感面或加环境过滤"
+              }
+            ],
+            "reviewTriggers": [],
+            "assumptionsAndLimits": [
+              "Synthetic known-answer mechanism fixture; no market claim is made."
+            ],
+            "strategySpec": {
+              "specVersion": "1",
+              "universe": {
+                "index": "000300.SH"
+              },
+              "signal": {
+                "kind": "template",
+                "template": "momentum",
+                "params": {
+                  "window": 20
+                }
+              },
+              "selection": {
+                "topN": 50,
+                "weighting": "equal"
+              },
+              "rebalance": {
+                "frequency": "monthly",
+                "at": "close"
+              },
+              "window": {
+                "start": "20230101",
+                "end": "20251231"
+              },
+              "costs": {
+                "model": "standard"
+              }
+            },
+            "defaultsApplied": [],
+            "parsingAssumptions": [
+              "The fixture uses the frozen canonical strategy shape."
+            ]
+          }
+        ],
+        "comparison": null,
+        "claimComparison": null,
+        "riskDisclosure": [
+          "This is a technical robustness audit, not investment advice or a return promise."
+        ],
+        "provenance": {
+          "inputHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "dataAsOf": "2026-07-24",
+          "dataSources": [],
+          "codeRevision": "moire-mechanism-fixture-v1"
+        }
+      }
+    },
+    {
+      "fixtureId": "M2-corrected-cost-ladder-v1",
+      "executionTemplate": "corrected_cost_ladder",
+      "artifact": {
+        "schemaVersion": "1.1.0",
+        "kind": "strategy_audit",
+        "auditId": "audit_moire_m2_fixture",
+        "generatedAt": "2026-07-24T15:45:00.000Z",
+        "results": [
+          {
+            "subjectId": "strategy_moire_m2_fixture",
+            "verdict": "QUARANTINE",
+            "confidence": 0.8,
+            "summary": "The M2 mechanism fixture used the PIT-corrected cost tier while preserving the original agent conclusion.",
+            "checks": [
+              {
+                "id": "param-robustness",
+                "conclusion": "pass",
+                "confidence": 0.9,
+                "evidence": [
+                  {
+                    "metric": "neighborhoodSharpeRetention",
+                    "value": 0.85,
+                    "unit": "ratio",
+                    "sourceRefs": ["artifact:fixture/param-grid"]
+                  }
+                ],
+                "missingEvidence": []
+              },
+              {
+                "id": "data-availability",
+                "conclusion": "fail",
+                "confidence": 0.85,
+                "evidence": [
+                  {
+                    "metric": "corrected.delta",
+                    "value": -0.03,
+                    "unit": "annual return",
+                    "sourceRefs": ["artifact:fixture/pit-audit"]
+                  }
+                ],
+                "missingEvidence": []
+              },
+              {
+                "id": "cost-stress",
+                "conclusion": "pass_with_reservations",
+                "confidence": 0.8,
+                "evidence": [
+                  {
+                    "metric": "pessimisticAnnualReturn",
+                    "value": 0.02,
+                    "unit": "fraction/year",
+                    "sourceRefs": ["artifact:fixture/cost-ladder"]
+                  }
+                ],
+                "missingEvidence": [],
+                "refinedByMoire": "[M2][resolved] PIT 修正后成本结论档位翻转，以修正版为准。 original=pass_with_reservations; corrected=fail; sourceRef=artifact:fixture/pit-corrected-cost-ladder"
+              },
+              {
+                "id": "regime-dependency",
+                "conclusion": "pass",
+                "confidence": 0.9,
+                "evidence": [
+                  {
+                    "metric": "dominantEnvironment.pnlShare",
+                    "value": 0.55,
+                    "unit": "ratio",
+                    "sourceRefs": ["artifact:fixture/regime-split"]
+                  }
+                ],
+                "missingEvidence": []
+              },
+              {
+                "id": "homogeneity-decay",
+                "conclusion": "pass",
+                "confidence": 0.9,
+                "evidence": [
+                  {
+                    "metric": "summary.maxAbsMeanSpearman",
+                    "value": 0.4,
+                    "unit": "absolute correlation",
+                    "sourceRefs": ["artifact:fixture/homogeneity"]
+                  }
+                ],
+                "missingEvidence": []
+              }
+            ],
+            "moire": {
+              "disputesOpened": 1,
+              "resolved": [
+                "[M2][resolved] PIT 修正后成本结论档位翻转，以修正版为准。 original=pass_with_reservations; corrected=fail; sourceRef=artifact:fixture/pit-corrected-cost-ladder"
+              ],
+              "unresolved": []
+            },
+            "recoveryConditions": [
+              {
+                "scope": "data-availability",
+                "condition": "改用 PIT 成分池重跑"
+              },
+              {
+                "scope": "cost-stress",
+                "condition": "降低调仓频率/换手后复审"
+              }
+            ],
+            "reviewTriggers": [],
+            "assumptionsAndLimits": [
+              "Synthetic known-answer mechanism fixture; no market claim is made."
+            ],
+            "strategySpec": {
+              "specVersion": "1",
+              "universe": {
+                "index": "000300.SH"
+              },
+              "signal": {
+                "kind": "template",
+                "template": "momentum",
+                "params": {
+                  "window": 20
+                }
+              },
+              "selection": {
+                "topN": 50,
+                "weighting": "equal"
+              },
+              "rebalance": {
+                "frequency": "monthly",
+                "at": "close"
+              },
+              "window": {
+                "start": "20230101",
+                "end": "20251231"
+              },
+              "costs": {
+                "model": "standard"
+              }
+            },
+            "defaultsApplied": [],
+            "parsingAssumptions": [
+              "The fixture uses the frozen canonical strategy shape."
+            ]
+          }
+        ],
+        "comparison": null,
+        "claimComparison": null,
+        "riskDisclosure": [
+          "This is a technical robustness audit, not investment advice or a return promise."
+        ],
+        "provenance": {
+          "inputHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dataAsOf": "2026-07-24",
+          "dataSources": [],
+          "codeRevision": "moire-mechanism-fixture-v1"
+        }
+      }
+    }
+  ]
+}

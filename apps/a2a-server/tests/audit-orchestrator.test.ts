@@ -95,6 +95,31 @@ function buildArtifact(conclusions: Partial<Readonly<Record<AuditCheckId, CheckC
   });
 }
 
+function buildRefinedArtifact(
+  checkId: AuditCheckId,
+  conclusion: CheckConclusion,
+  refinedByMoire: string,
+) {
+  const result: ParallelAuditChecksResult = {
+    schemaVersion: AUDIT_CHECK_SCHEMA_VERSION,
+    auditId: identity.auditId,
+    subjectId: identity.subjectId,
+    traceId: identity.traceId,
+    checks: AUDIT_CHECK_IDS.map((id) => ({
+      ...checkResult(id, id === checkId ? conclusion : "pass"),
+      ...(id === checkId ? { refinedByMoire } : {}),
+    })),
+    startedAt: "2026-07-24T00:00:00.000Z",
+    completedAt: "2026-07-24T00:00:01.000Z",
+  };
+  return buildExecutedAuditArtifact({
+    frozen,
+    identity,
+    result,
+    generatedAt: "2026-07-24T00:00:02.000Z",
+  });
+}
+
 describe("buildExecutedAuditArtifact", () => {
   test("prioritizes a recoverable fail over insufficient evidence", () => {
     const artifact = buildArtifact({
@@ -153,6 +178,58 @@ describe("buildExecutedAuditArtifact", () => {
 
     expect(artifact.results[0]?.verdict).toBe("RETIRE");
     expect(artifact.results[0]?.recoveryConditions).toEqual([]);
+  });
+
+  test("uses the host-synthesized M2 corrected tier without mutating the agent conclusion", () => {
+    const artifact = buildRefinedArtifact(
+      "cost-stress",
+      "pass_with_reservations",
+      "[M2][resolved] PIT 修正后成本结论档位翻转，以修正版为准。 original=pass_with_reservations; corrected=fail; sourceRef=artifact:fixture/cost",
+    );
+    const result = artifact.results[0];
+    const cost = result?.checks.find((check) => check.id === "cost-stress");
+
+    expect(cost?.conclusion).toBe("pass_with_reservations");
+    expect(result?.verdict).toBe("QUARANTINE");
+    expect(result?.recoveryConditions).toEqual([
+      {
+        scope: "cost-stress",
+        condition: "降低调仓频率/换手后复审",
+      },
+    ]);
+    expect(result?.moire.resolved).toHaveLength(1);
+    expect(result?.moire.unresolved).toEqual([]);
+  });
+
+  test("uses a corrected passing M2 tier while preserving the original agent fail", () => {
+    const artifact = buildRefinedArtifact(
+      "cost-stress",
+      "fail",
+      "[M2][resolved] PIT 修正后成本结论档位翻转，以修正版为准。 original=fail; corrected=pass; sourceRef=artifact:fixture/cost",
+    );
+    const result = artifact.results[0];
+    const cost = result?.checks.find((check) => check.id === "cost-stress");
+
+    expect(cost?.conclusion).toBe("fail");
+    expect(result?.verdict).toBe("KEEP");
+    expect(result?.recoveryConditions).toEqual([]);
+  });
+
+  test("treats an unresolved verdict-changing Moiré dispute as insufficient evidence", () => {
+    const artifact = buildRefinedArtifact(
+      "param-robustness",
+      "fail",
+      "[M1][unresolved] 判别实验未完成，该矛盾仍可能改变最终判决。",
+    );
+    const result = artifact.results[0];
+    const parameter = result?.checks.find((check) => check.id === "param-robustness");
+
+    expect(parameter?.conclusion).toBe("fail");
+    expect(result?.verdict).toBe("UNVERIFIABLE");
+    expect(result?.confidence).toBe(0);
+    expect(result?.moire.resolved).toEqual([]);
+    expect(result?.moire.unresolved).toHaveLength(1);
+    expect(result?.recoveryConditions).toEqual([]);
   });
 
   test("keeps an evidence gap unverifiable when no check fails", () => {
