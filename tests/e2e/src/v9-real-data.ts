@@ -548,7 +548,7 @@ async function inspectPriceSources(
   );
 }
 
-async function inspectV9Cache(): Promise<V9CacheInspection> {
+export async function inspectV9Cache(): Promise<V9CacheInspection> {
   const bytes = await readFile(resolve(V9_MANIFEST_PATH));
   const manifest: unknown = JSON.parse(bytes.toString("utf8"));
   requireValue(isRecord(manifest), "v9 cache manifest must be an object");
