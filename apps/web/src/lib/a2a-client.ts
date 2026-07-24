@@ -203,7 +203,7 @@ export class AssayA2AClient {
 
   static async create(options: CreateAssayA2AClientOptions = {}): Promise<AssayA2AClient> {
     const baseUrl = normalizeBaseUrl(options.baseUrl ?? configuredA2AUrl() ?? DEFAULT_A2A_URL);
-    const fetchImpl = options.fetchImpl ?? fetch;
+    const fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
     const agentCard = await new DefaultAgentCardResolver({ fetchImpl }).resolve(
       new URL(baseUrl).origin,
     );
