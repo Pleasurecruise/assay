@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+from .artifacts import persist_grid_daily_returns
 from .constants import COST_LADDER, ENGINE_VERSION
 from .core import run_momentum_backtest
 
@@ -36,6 +38,7 @@ def run_grid(
     tradable: pd.DataFrame | None = None,
     baseline: Mapping[str, Any],
     variants: Sequence[Mapping[str, Any]],
+    artifact_root: Path | None = None,
 ) -> dict[str, Any]:
     if isinstance(variants, (str, bytes)) or not isinstance(variants, Sequence):
         raise ValueError("variants must be an explicit sequence")
@@ -47,6 +50,13 @@ def run_grid(
         adjusted_close,
         tradable=tradable,
         **baseline_parameters,
+    )
+    baseline_public_parameters = _public_parameters(baseline_parameters)
+    baseline_daily_returns_ref = persist_grid_daily_returns(
+        variant_id="baseline",
+        parameters=baseline_public_parameters,
+        daily_returns=baseline_result["dailyReturns"],
+        root=artifact_root,
     )
     seen_ids: set[str] = set()
     results: list[dict[str, Any]] = []
@@ -72,14 +82,28 @@ def run_grid(
                 "variantId": variant_id,
                 **public_parameters,
             }
+        artifact_variant_id = variant_id or (
+            f"w{parameters['window']}-n{parameters['top_n']}"
+        )
+        daily_returns_ref = persist_grid_daily_returns(
+            variant_id=artifact_variant_id,
+            parameters=public_parameters,
+            daily_returns=result["dailyReturns"],
+            root=artifact_root,
+        )
         results.append(
-            _result_summary(public_parameters, result)
+            _result_summary(
+                public_parameters,
+                result,
+                daily_returns_ref=daily_returns_ref,
+            )
         )
     return {
         "engineVersion": ENGINE_VERSION,
         "baseline": _result_summary(
-            _public_parameters(baseline_parameters),
+            baseline_public_parameters,
             baseline_result,
+            daily_returns_ref=baseline_daily_returns_ref,
         ),
         "variants": results,
     }
@@ -156,10 +180,18 @@ def _public_parameters(value: Mapping[str, Any]) -> dict[str, Any]:
 def _result_summary(
     parameters: Mapping[str, Any],
     result: Mapping[str, Any],
+    *,
+    daily_returns_ref: str | None = None,
 ) -> dict[str, Any]:
     metrics = result["metrics"]
+    public_parameters = dict(parameters)
+    if daily_returns_ref is not None:
+        # The sprint TS response parser deliberately leaves params open. Keeping
+        # this reference inside params adds the Moiré input without changing the
+        # frozen summary key set consumed by existing agents.
+        public_parameters["dailyReturnsRef"] = daily_returns_ref
     return {
-        "params": dict(parameters),
+        "params": public_parameters,
         "annualReturn": metrics["annualReturn"],
         "sharpe": metrics["sharpe"],
         "maxDrawdown": metrics["maxDrawdown"],

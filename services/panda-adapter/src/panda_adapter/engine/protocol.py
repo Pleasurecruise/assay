@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -10,9 +11,12 @@ import pandas as pd
 from ..market_panel import MarketPanel
 from .constants import COST_LADDER
 from .experiments import run_baseline, run_cost_ladder, run_grid
+from .strategy import parse_momentum_strategy
 
 PanelLoader = Callable[[Mapping[str, Any]], MarketPanel]
 AvailabilityRunner = Callable[[Mapping[str, Any]], dict[str, Any]]
+RegimeRunner = Callable[[Mapping[str, Any]], dict[str, Any]]
+HomogeneityRunner = Callable[[Mapping[str, Any]], dict[str, Any]]
 
 
 def run_request(
@@ -20,6 +24,9 @@ def run_request(
     *,
     panel_loader: PanelLoader | None = None,
     availability_runner: AvailabilityRunner | None = None,
+    regime_runner: RegimeRunner | None = None,
+    homogeneity_runner: HomogeneityRunner | None = None,
+    artifact_root: Path | None = None,
 ) -> dict[str, Any]:
     """Execute one ``kind/spec/grid?/budget`` JSON request.
 
@@ -47,6 +54,28 @@ def run_request(
 
             availability_runner = run_availability_audit
         return availability_runner(spec)
+    if kind == "regime_split":
+        _require_single_audit_request(
+            request,
+            max_variants=max_variants,
+            kind="regime_split",
+        )
+        if regime_runner is None:
+            from ..regime_audit import run_regime_split
+
+            regime_runner = run_regime_split
+        return regime_runner(spec)
+    if kind == "homogeneity":
+        _require_single_audit_request(
+            request,
+            max_variants=max_variants,
+            kind="homogeneity",
+        )
+        if homogeneity_runner is None:
+            from ..homogeneity_audit import run_homogeneity
+
+            homogeneity_runner = run_homogeneity
+        return homogeneity_runner(spec)
 
     panel = (
         panel_loader(spec)
@@ -76,6 +105,7 @@ def run_request(
             tradable=panel.tradable,
             baseline=baseline,
             variants=variants,
+            artifact_root=artifact_root,
         )
     if kind == "cost_ladder":
         if len(COST_LADDER) > max_variants:
@@ -86,7 +116,8 @@ def run_request(
             strategy=baseline,
         )
     raise ValueError(
-        "kind must be baseline, grid, cost_ladder, or availability_audit"
+        "kind must be baseline, grid, cost_ladder, availability_audit, "
+        "regime_split, or homogeneity"
     )
 
 
@@ -151,34 +182,26 @@ def _parse_panel(value: Any) -> MarketPanel:
 
 
 def _parse_strategy_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
-    signal = spec.get("signal")
-    selection = spec.get("selection")
-    rebalance = spec.get("rebalance")
-    costs = spec.get("costs", {})
-    if not isinstance(signal, Mapping):
-        raise ValueError("spec.signal must be an object")
-    if signal.get("kind") != "template" or signal.get("template") != "momentum":
-        raise ValueError("S1a supports only template momentum")
-    signal_parameters = signal.get("params")
-    if not isinstance(signal_parameters, Mapping):
-        raise ValueError("spec.signal.params must be an object")
-    if not isinstance(selection, Mapping):
-        raise ValueError("spec.selection must be an object")
-    if selection.get("weighting", "equal") != "equal":
-        raise ValueError("S1a supports only equal weighting")
-    if (
-        not isinstance(rebalance, Mapping)
-        or rebalance.get("frequency") != "monthly"
-        or rebalance.get("at", "close") != "close"
-    ):
-        raise ValueError("S1a supports only month-end close rebalancing")
-    if not isinstance(costs, Mapping):
-        raise ValueError("spec.costs must be an object")
+    parsed = parse_momentum_strategy(spec, require_index=False)
     return {
-        "window": signal_parameters.get("window"),
-        "topN": selection.get("topN"),
-        "costModel": costs.get("model", "standard"),
+        "window": parsed["window"],
+        "topN": parsed["top_n"],
+        "costModel": parsed["cost_model"],
     }
+
+
+def _require_single_audit_request(
+    request: Mapping[str, Any],
+    *,
+    max_variants: int,
+    kind: str,
+) -> None:
+    if max_variants != 1:
+        raise ValueError(f"{kind} budget.maxVariants must equal 1")
+    if request.get("grid") is not None:
+        raise ValueError(f"{kind} does not accept grid")
+    if request.get("universeMode") is not None:
+        raise ValueError(f"{kind} does not accept universeMode")
 
 
 def _expand_grid(value: Mapping[str, Any]) -> list[dict[str, Any]]:

@@ -10,6 +10,7 @@ import pandas as pd
 
 from panda_adapter.availability_audit import (
     AVAILABILITY_SOURCE_REF,
+    AvailabilityBudgetExceeded,
     PIT_SNAPSHOT_SCHEMA_VERSION,
     _count_untradable_targets,
     _snapshot_path,
@@ -17,8 +18,10 @@ from panda_adapter.availability_audit import (
     run_availability_audit,
 )
 from panda_adapter.data_transport import RetryPolicy
+from panda_adapter.engine.constants import AUDIT_TOOL_CONTRACT_VERSION
 from panda_adapter.engine.protocol import run_request
 from panda_adapter.market_panel import MarketPanel
+from panda_adapter.source_normalization import symbols_from_weights
 
 
 def _spec(dates: pd.DatetimeIndex) -> dict[str, object]:
@@ -252,6 +255,7 @@ class AvailabilityAuditTest(unittest.TestCase):
             self.assertEqual(
                 set(first),
                 {
+                    "contractVersion",
                     "engineVersion",
                     "mode",
                     "futureConstituentCount",
@@ -265,6 +269,10 @@ class AvailabilityAuditTest(unittest.TestCase):
                 },
             )
             self.assertEqual(first["mode"], "full_pit")
+            self.assertEqual(
+                first["contractVersion"],
+                AUDIT_TOOL_CONTRACT_VERSION,
+            )
             self.assertEqual(first["futureConstituentCount"], 1)
             self.assertEqual(first["sampleSymbols"], ["B"])
             self.assertEqual(
@@ -727,10 +735,116 @@ class AvailabilityAuditTest(unittest.TestCase):
             2,
         )
 
+    def test_membership_correction_matches_hand_calculated_returns(
+        self,
+    ) -> None:
+        dates = pd.DatetimeIndex(
+            [
+                "2026-01-28",
+                "2026-01-29",
+                "2026-01-30",
+                "2026-02-02",
+                "2026-02-03",
+            ]
+        )
+        prices = pd.DataFrame(
+            {
+                "A": [99.0, 100.0, 101.0, 100.0, 90.0],
+                "F": [99.0, 100.0, 102.0, 100.0, 110.0],
+            },
+            index=dates,
+        )
+        panel = MarketPanel(
+            adjusted_close=prices,
+            tradable=pd.DataFrame(True, index=dates, columns=prices.columns),
+        )
+        spec = _spec(dates)
+        spec["signal"]["params"]["window"] = 1  # type: ignore[index]
+        spec["costs"] = {"model": "none"}
+        signal_date = pd.Timestamp("2026-01-30")
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _write_json_atomic(
+                _snapshot_path(root, "000300.SH", signal_date),
+                {
+                    "schemaVersion": PIT_SNAPSHOT_SCHEMA_VERSION,
+                    "indexSymbol": "000300.SH",
+                    "requestedDate": "2026-01-30",
+                    "effectiveDate": "2026-01-30",
+                    "symbols": ["A"],
+                },
+            )
+            result = run_availability_audit(
+                spec,
+                panel_loader=lambda _: panel,
+                client_factory=lambda: self.fail("no live client is needed"),
+                cache_root=root,
+            )
+
+        corrected_annual_return = 0.9 ** 63 - 1.0
+        baseline_annual_return = 1.1 ** 63 - 1.0
+        self.assertEqual(result["futureConstituentCount"], 1)
+        self.assertEqual(result["affectedRebalances"], ["2026-01-30"])
+        self.assertEqual(result["sampleSymbols"], ["F"])
+        self.assertEqual(result["contaminatedSelectionRate"], 1.0)
+        self.assertAlmostEqual(
+            result["corrected"]["annualReturn"],
+            corrected_annual_return,
+        )
+        self.assertAlmostEqual(
+            result["corrected"]["sharpe"],
+            -(252 / 5) ** 0.5,
+        )
+        self.assertAlmostEqual(
+            result["corrected"]["delta"],
+            corrected_annual_return - baseline_annual_return,
+        )
+
+    def test_missing_pit_timeline_is_not_degraded_to_as_of(
+        self,
+    ) -> None:
+        panel = _base_panel()
+
+        class FailingWeightsClient:
+            @staticmethod
+            def get_index_weights(**_: object) -> object:
+                raise IncompleteRead(b"", 10)
+
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(
+                AvailabilityBudgetExceeded,
+                "timeline acquisition is incomplete",
+            ):
+                run_availability_audit(
+                    _spec(panel.adjusted_close.index),
+                    panel_loader=lambda _: panel,
+                    client=FailingWeightsClient(),
+                    cache_root=Path(directory),
+                    clock=SequenceClock([0.0, 91.0]),
+                    sleeper=lambda _: None,
+                    retry_policy=RetryPolicy(
+                        max_attempts=1,
+                        initial_delay_seconds=0,
+                        max_delay_seconds=0,
+                    ),
+                )
+
+    def test_undated_index_weights_cannot_be_relabeled_as_pit(self) -> None:
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "missing an effective snapshot date",
+        ):
+            symbols_from_weights(
+                [{"stock_symbol": "000001.SZ"}],
+                requested_date=pd.Timestamp("2026-01-30"),
+            )
+
     def test_protocol_dispatches_once_without_loading_a_panel(self) -> None:
         panel = _base_panel()
         calls: list[dict[str, object]] = []
         response = {
+            "contractVersion": AUDIT_TOOL_CONTRACT_VERSION,
             "engineVersion": "test",
             "mode": "full_pit",
             "futureConstituentCount": 0,

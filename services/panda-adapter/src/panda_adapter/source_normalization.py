@@ -107,7 +107,11 @@ def symbols_from_weights(
             frame = frame[dates == latest]
             snapshot_date = pd.Timestamp(latest).strftime("%Y-%m-%d")
     elif requested_date is not None:
-        snapshot_date = requested_date.strftime("%Y-%m-%d")
+        # A membership response without an effective date cannot prove PIT
+        # availability. Never relabel an undated current snapshot as historical.
+        raise RuntimeError(
+            "get_index_weights response is missing an effective snapshot date"
+        )
 
     symbol_column = find_column(
         frame,
