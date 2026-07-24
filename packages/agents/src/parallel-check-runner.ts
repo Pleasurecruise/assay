@@ -256,10 +256,7 @@ export class ParallelAuditCheckRunner {
             auditId: request.auditId,
             subjectId: request.subject.id,
             checkId,
-            ...(request.skill === "audit_strategy" &&
-            (checkId === "param-robustness" ||
-              checkId === "data-availability" ||
-              checkId === "cost-stress")
+            ...(request.skill === "audit_strategy"
               ? { frozenStrategySpec: request.subject.input }
               : {}),
           },

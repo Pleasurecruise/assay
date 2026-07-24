@@ -1,6 +1,10 @@
 import { canonicalizeStrategySpec, hashStrategySpec, type StrategySpec } from "@assay/contracts";
 
-export const TRUSTED_SPEC_TOOL_NAMES = ["run_experiment", "run_availability_audit"] as const;
+export const TRUSTED_SPEC_TOOL_NAMES = [
+  "run_experiment",
+  "run_availability_audit",
+  "run_homogeneity",
+] as const;
 
 function isTrustedSpecTool(toolName: string): boolean {
   return TRUSTED_SPEC_TOOL_NAMES.some((candidate) => candidate === toolName);

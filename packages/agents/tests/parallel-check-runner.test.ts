@@ -79,15 +79,7 @@ describe("ParallelAuditCheckRunner", () => {
     expect(result.checks.map((check) => check.id)).toEqual(AUDIT_CHECK_IDS);
     expect(result.checks.every((check) => check.conclusion === "pass")).toBe(true);
     for (const request of dispatched) {
-      if (
-        request.agentId === "param-robustness" ||
-        request.agentId === "data-availability" ||
-        request.agentId === "cost-stress"
-      ) {
-        expect(request.metadata?.frozenStrategySpec).toBe("沪深 300 月频动量策略");
-      } else {
-        expect(request.metadata).not.toHaveProperty("frozenStrategySpec");
-      }
+      expect(request.metadata?.frozenStrategySpec).toBe("沪深 300 月频动量策略");
     }
   });
 

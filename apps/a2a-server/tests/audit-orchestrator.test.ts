@@ -111,7 +111,7 @@ describe("buildExecutedAuditArtifact", () => {
     expect(result?.recoveryConditions).toEqual([
       {
         scope: "data-availability",
-        condition: "Use point-in-time index constituents and rerun the audit.",
+        condition: "改用 PIT 成分池重跑",
       },
     ]);
   });
@@ -128,20 +128,19 @@ describe("buildExecutedAuditArtifact", () => {
     expect(artifact.results[0]?.recoveryConditions).toEqual([
       {
         scope: "param-robustness",
-        condition:
-          "Narrow the parameter-sensitive region or add a market-regime filter, then rerun the audit.",
+        condition: "收窄参数敏感面或加环境过滤",
       },
       {
         scope: "data-availability",
-        condition: "Use point-in-time index constituents and rerun the audit.",
+        condition: "改用 PIT 成分池重跑",
       },
       {
         scope: "cost-stress",
-        condition: "Reduce rebalance frequency or turnover, then rerun the audit.",
+        condition: "降低调仓频率/换手后复审",
       },
       {
         scope: "regime-dependency",
-        condition: "Add an explicit market-regime filter and rerun the audit.",
+        condition: "增加环境过滤规则",
       },
     ]);
   });

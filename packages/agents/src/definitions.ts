@@ -3,6 +3,11 @@ import {
   AVAILABILITY_ANNUAL_RETURN_DELTA_FAIL_THRESHOLD,
   AVAILABILITY_CONTAMINATED_SELECTION_RATE_FAIL_THRESHOLD,
   CHECKS_WIRING_POLICY_VERSION,
+  HOMOGENEITY_CORRELATION_FAIL_THRESHOLD,
+  HOMOGENEITY_MINIMUM_DECAY_YEARS,
+  REGIME_MINIMUM_SLICE_DAYS,
+  REGIME_PNL_SHARE_FAIL_THRESHOLD,
+  REGIME_PNL_SHARE_RESERVATION_THRESHOLD,
   type AuditCheckId,
 } from "@assay/contracts";
 import {
@@ -14,6 +19,11 @@ import {
   defaultExperimentProcessConfig,
   type ExperimentProcessConfig,
 } from "./run-experiment-tool";
+import {
+  createRunHomogeneityTool,
+  HOMOGENEITY_AUDIT_SOURCE_REF,
+} from "./run-homogeneity-tool";
+import { createRunRegimeSplitTool, REGIME_SPLIT_SOURCE_REF } from "./run-regime-split-tool";
 
 const medium = "medium" as AgentDefinition["thinkingLevel"];
 const high = "high" as AgentDefinition["thinkingLevel"];
@@ -30,7 +40,8 @@ conclusion 只能是 pass、pass_with_reservations、fail、insufficient_evidenc
 confidence 必须是 0 到 1 的数字。evidence 项为
 {"metric","value","unit","sourceRefs"}；missingEvidence 项为
 {"requirement","reason","sourceRefs"}。有确定结论时 evidence 至少一项；证据不足时
-missingEvidence 至少一项。
+missingEvidence 至少一项。调用工具后必须继续完成最终 JSON；不得停在工具结果、空回复或
+仅有思考过程。
 `.trim();
 
 const checkPrompts: Readonly<Record<AuditCheckId, string>> = {
@@ -95,16 +106,43 @@ evidence.sourceRefs 必须包含固定 experiment summary 引用 artifact:backte
 你负责市场环境依赖分析。使用无前视的趋势、波动率和风格划分，对各环境分别统计表现并判断
 收益是否集中在少数环境。不要执行参数扰动、数据时点审查、成本压力或同质化分析。
 
-使用确定性回测、行情、历史指数成分和交易日历构造可复核的环境证据。若工具结果没有提供
-足够的环境划分或分段指标，必须返回 insufficient_evidence，不得从策略描述推测环境依赖。
+必须且只能调用一次 run_experiment，固定调用形状为
+{"kind":"regime_split","budget":{"maxVariants":1}}。canonical StrategySpec 由宿主注入；
+不得提交 spec、修改标签常量、追加第二次调用或临时探索其他环境定义。
+
+CHECKS_WIRING_POLICY_VERSION="${CHECKS_WIRING_POLICY_VERSION}"。工具按无前视规则固定标签：
+趋势使用指数 t-1 收盘与截至 t-1 的 200 日均线；波动使用截至 t-1 的 60 日已实现波动，
+历史滚动分位 top 1/3 为 high。严格按预声明准则独立判断：最大环境 pnlShare >=
+${REGIME_PNL_SHARE_RESERVATION_THRESHOLD} → 至少 pass_with_reservations；最大环境 pnlShare
+>= ${REGIME_PNL_SHARE_FAIL_THRESHOLD}，或在至少两个环境存在时除主导环境外全部
+annualReturn < 0 → fail。任一环境 days < ${REGIME_MINIMUM_SLICE_DAYS} 时，该切片不得支撑
+强结论，必须在 missingEvidence 说明；若剩余切片不足以完成判断则返回
+insufficient_evidence。
+
+确定性结论必须把每个环境的 days、annualReturn、sharpe（若非 null）、pnlShare 以及
+dominantEnvironment.pnlShare 写成数值 evidence，所有 sourceRefs 固定包含
+${REGIME_SPLIT_SOURCE_REF}。mode=constituent_proxy 时必须如实披露 assumptions。
 `.trim(),
   "homogeneity-decay": `
 你负责同质化与衰减分析。计算信号与平台因子库的相关性，并按年份测算 IC/RankIC 及其衰减，
 判断增量信息和拥挤失效迹象。不要评价参数、数据时点、交易成本或市场环境。
 
-使用平台因子、行情、历史指数成分、交易日历和确定性回测形成可复核证据。若工具结果没有
-足够的截面收益或年度 IC/RankIC，必须返回 insufficient_evidence，不得从策略名称推测
-同质化或衰减。
+必须且只能调用一次 run_homogeneity，固定调用形状为
+{"kind":"homogeneity","budget":{"maxVariants":1}}。canonical StrategySpec 由宿主注入；
+不得提交 spec、修改对照因子集合、追加第二次调用或临时构造其他因子。
+
+CHECKS_WIRING_POLICY_VERSION="${CHECKS_WIRING_POLICY_VERSION}"。严格按预声明准则独立判断：
+任一对照因子的 |meanSpearman| >= ${HOMOGENEITY_CORRELATION_FAIL_THRESHOLD} →
+同质化子项 fail，因此本检查 fail。若相关性未达 fail，但 summary.yearsCovered < ${HOMOGENEITY_MINIMUM_DECAY_YEARS}，
+衰减子项最高只能支持 pass_with_reservations；
+年度观察太少或 IC/RankIC 为 null 时返回 insufficient_evidence，不得把短窗口描述成
+已证明无衰减。
+
+确定性结论必须把每个对照因子的 meanSpearman（若非 null）与
+rebalanceObservations、每年的 observations/pearsonIc/rankIc（若非 null），以及
+summary.maxAbsMeanSpearman、yearsCovered、rankIcSlope（若非 null）写成数值 evidence，
+所有 sourceRefs 固定包含 ${HOMOGENEITY_AUDIT_SOURCE_REF}。mode=classic_only 时必须如实
+披露 assumptions，不得声称已核对 ratio_pe_ttm 或 market_cap。
 `.trim(),
 };
 
@@ -131,6 +169,7 @@ export interface AuditCheckAgentDefinitionOptions {
   readonly availableTools?: readonly AgentTool[];
   readonly experimentProcess?: ExperimentProcessConfig;
   readonly availabilityProcess?: ExperimentProcessConfig;
+  readonly homogeneityProcess?: ExperimentProcessConfig;
 }
 
 export function createAuditCheckAgentDefinitions(
@@ -138,15 +177,19 @@ export function createAuditCheckAgentDefinitions(
 ): readonly AgentDefinition[] {
   const experimentProcess = options.experimentProcess ?? defaultExperimentProcessConfig();
   const availabilityProcess = options.availabilityProcess ?? experimentProcess;
+  const homogeneityProcess = options.homogeneityProcess ?? experimentProcess;
   return (Object.keys(checkPrompts) as AuditCheckId[]).map((id) => {
-    // CHECKS_WIRING §2/§3 have not landed their dedicated deterministic
-    // capabilities. General finance tools stay implemented and advertised,
-    // but are not registered on either agent until those contracts exist.
+    // General finance tools stay implemented and advertised by the service,
+    // but each check sees only its approved coarse deterministic capability.
     const tools: AgentTool[] = [];
     const experimentKind =
       id === "param-robustness" || id === "cost-stress" ? experimentKindByCheck[id] : undefined;
     if (id === "data-availability") {
       tools.push(createRunAvailabilityAuditTool(availabilityProcess));
+    } else if (id === "regime-dependency") {
+      tools.push(createRunRegimeSplitTool(experimentProcess));
+    } else if (id === "homogeneity-decay") {
+      tools.push(createRunHomogeneityTool(homogeneityProcess));
     } else if (experimentKind !== undefined) {
       tools.push(createRunExperimentTool(experimentKind, experimentProcess));
     }

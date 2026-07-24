@@ -70,6 +70,36 @@ describe("guardRuntimeToolCall", () => {
     });
   });
 
+  test("applies the same one-call trusted-spec binding to the homogeneity audit", () => {
+    const args: Record<string, unknown> = {
+      kind: "homogeneity",
+      budget: { maxVariants: 1 },
+    };
+    expect(
+      guardRuntimeToolCall(
+        "run_homogeneity",
+        args,
+        specHash(strategySpec),
+        canonicalizeStrategySpec(strategySpec),
+        0,
+      ),
+    ).toEqual({ runExperimentCallCount: 1 });
+    expect(args.spec).toEqual(JSON.parse(canonicalizeStrategySpec(strategySpec)));
+
+    expect(
+      guardRuntimeToolCall(
+        "run_homogeneity",
+        {},
+        specHash(strategySpec),
+        canonicalizeStrategySpec(strategySpec),
+        1,
+      ),
+    ).toEqual({
+      runExperimentCallCount: 2,
+      blockReason: "run_homogeneity may be called at most once per task",
+    });
+  });
+
   test.each([
     ["missing hash", undefined],
     ["invalid hash", "not-a-sha256-digest"],

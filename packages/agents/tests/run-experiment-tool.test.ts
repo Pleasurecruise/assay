@@ -137,8 +137,8 @@ describe("run_experiment tool", () => {
       "param-robustness": ["run_experiment"],
       "data-availability": ["run_availability_audit"],
       "cost-stress": ["run_experiment"],
-      "regime-dependency": [],
-      "homogeneity-decay": [],
+      "regime-dependency": ["run_experiment"],
+      "homogeneity-decay": ["run_homogeneity"],
     });
   });
 
