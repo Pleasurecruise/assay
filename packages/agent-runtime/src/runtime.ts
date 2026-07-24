@@ -8,7 +8,11 @@ import { Agent, type AgentMessage, type AgentOptions } from "@oh-my-pi/pi-agent-
 import type { Model } from "@oh-my-pi/pi-ai";
 import { AgentRegistry } from "./registry";
 import { ToolPolicy } from "./policy";
-import { assertExactRunExperimentCompletion, guardRuntimeToolCall } from "./runtime-tool-guard";
+import {
+  assertExactRunExperimentCompletion,
+  guardRuntimeToolCall,
+  TRUSTED_SPEC_TOOL_NAMES,
+} from "./runtime-tool-guard";
 
 const DEFAULT_MAX_RUN_MS = 19 * 60 * 1_000;
 
@@ -108,6 +112,9 @@ export class AgentRuntime {
     };
 
     const tools = [...(definition.tools ?? [])];
+    const requiredTrustedSpecTool = tools.find((tool) =>
+      TRUSTED_SPEC_TOOL_NAMES.some((name) => name === tool.name),
+    )?.name;
     const agent = new Agent({
       initialState: {
         systemPrompt: [...definition.systemPrompt],
@@ -196,7 +203,10 @@ export class AgentRuntime {
           });
           break;
         case "tool_execution_end":
-          if (event.toolName === "run_experiment" && event.isError !== true) {
+          if (
+            TRUSTED_SPEC_TOOL_NAMES.some((name) => name === event.toolName) &&
+            event.isError !== true
+          ) {
             successfulRunExperimentCallCount += 1;
           }
           void emit({
@@ -217,21 +227,31 @@ export class AgentRuntime {
 
     const requestedTimeout = request.timeoutMs ?? this.#maxRunMs;
     const timeoutMs = Math.min(requestedTimeout, this.#maxRunMs);
-    const timeout = setTimeout(() => {
-      agent.abort(new Error(`Task exceeded ${timeoutMs}ms deadline`));
-    }, timeoutMs);
+    const timeoutError = new Error(`Task exceeded ${timeoutMs}ms deadline`);
+    timeoutError.name = "TimeoutError";
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_resolve, reject) => {
+      timeout = setTimeout(() => {
+        // Returning from the runtime deadline is independent of whether a
+        // specific tool has implemented subprocess cancellation. The latter
+        // remains a separate resource-cleanup responsibility.
+        agent.abort(timeoutError);
+        reject(timeoutError);
+      }, timeoutMs);
+    });
 
     try {
-      await agent.prompt(request.input);
+      await Promise.race([agent.prompt(request.input), deadline]);
       output ||= lastAssistantText(agent.state.messages);
 
       if (agent.state.error) {
         throw new Error(agent.state.error);
       }
       assertExactRunExperimentCompletion(
-        tools.some((tool) => tool.name === "run_experiment"),
+        requiredTrustedSpecTool !== undefined,
         runExperimentCallCount,
         successfulRunExperimentCallCount,
+        requiredTrustedSpecTool,
       );
 
       await emit({
@@ -257,7 +277,9 @@ export class AgentRuntime {
       });
       throw error;
     } finally {
-      clearTimeout(timeout);
+      if (timeout !== undefined) {
+        clearTimeout(timeout);
+      }
       options.signal?.removeEventListener("abort", externalAbort);
       unsubscribe();
       agent.abort();

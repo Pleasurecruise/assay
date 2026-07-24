@@ -3,15 +3,21 @@ import { AUDIT_REQUEST_SCHEMA_VERSION } from "@assay/contracts";
 
 export const A2A_SERVER_VERSION = "0.1.0";
 
-export function createAssayAgentCard(a2aUrl: string): AgentCard {
+export function createAssayAgentCard(restUrl: string, jsonRpcUrl: string): AgentCard {
   return {
     name: "Assay Strategy Audit",
     description:
       "Audits supported index-universe ranking strategies with five independent robustness checks. Outputs are technical audits, not investment advice.",
     supportedInterfaces: [
       {
-        url: a2aUrl,
+        url: restUrl,
         protocolBinding: "HTTP+JSON",
+        protocolVersion: "1.0",
+        tenant: "",
+      },
+      {
+        url: jsonRpcUrl,
+        protocolBinding: "JSONRPC",
         protocolVersion: "1.0",
         tenant: "",
       },

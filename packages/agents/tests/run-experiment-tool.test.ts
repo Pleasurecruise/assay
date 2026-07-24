@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import type { AgentTool } from "@assay/agent-runtime";
 import { describe, expect, test } from "vitest";
 import { createAuditCheckAgentDefinitions } from "../src/definitions";
 import {
@@ -24,6 +25,31 @@ function contentText(
 }
 
 describe("run_experiment tool", () => {
+  test("runs the host-only as-of, no-cost claim baseline without variants", async () => {
+    const result = await runExperimentSubprocess(mockProcess, {
+      kind: "baseline",
+      spec: {
+        specVersion: "1",
+        costs: { model: "none" },
+      },
+      universeMode: "asOf",
+      budget: { maxVariants: 1 },
+    });
+
+    expect(result.baseline.params.costModel).toBe("none");
+    expect(result.variants).toEqual([]);
+  });
+
+  test("requires the frozen host baseline convention", async () => {
+    await expect(
+      runExperimentSubprocess(mockProcess, {
+        kind: "baseline",
+        spec: { specVersion: "1", costs: { model: "none" } },
+        budget: { maxVariants: 1 },
+      }),
+    ).rejects.toThrow('universeMode must be "asOf"');
+  });
+
   test("bridges one grid request over subprocess stdio", async () => {
     const request: RunExperimentRequest = {
       kind: "grid",
@@ -88,8 +114,18 @@ describe("run_experiment tool", () => {
     ).rejects.toThrow(message);
   });
 
-  test("exposes the tool only to parameter and cost checks", () => {
-    const definitions = createAuditCheckAgentDefinitions({ experimentProcess: mockProcess });
+  test("exposes only the approved coarse tool to each wired check", () => {
+    const genericFinanceTools = [
+      "assay_strategy_backtest",
+      "panda_market_data",
+      "panda_factor",
+      "panda_index_weights",
+      "panda_trade_calendar",
+    ].map((name) => ({ name }) as AgentTool);
+    const definitions = createAuditCheckAgentDefinitions({
+      availableTools: genericFinanceTools,
+      experimentProcess: mockProcess,
+    });
     const toolsById = Object.fromEntries(
       definitions.map((definition) => [
         definition.id,
@@ -99,7 +135,7 @@ describe("run_experiment tool", () => {
 
     expect(toolsById).toEqual({
       "param-robustness": ["run_experiment"],
-      "data-availability": [],
+      "data-availability": ["run_availability_audit"],
       "cost-stress": ["run_experiment"],
       "regime-dependency": [],
       "homogeneity-decay": [],

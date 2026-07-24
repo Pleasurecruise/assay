@@ -1,4 +1,4 @@
-import { AgentRegistry, AgentRuntime } from "@assay/agent-runtime";
+import { AgentRegistry, AgentRuntime, createRuntimeTimelineLogger } from "@assay/agent-runtime";
 import { createAuditCheckAgentDefinitions, ParallelAuditCheckRunner } from "@assay/agents";
 import { createPandaDataTools, PandaDataProcessGateway } from "@assay/finance-tools";
 import { ArkResponsesStrategyParser, StrategyIntake } from "@assay/intake";
@@ -6,6 +6,7 @@ import { buildModel } from "@oh-my-pi/pi-catalog/build";
 import type { ProductionA2AConfig } from "./configuration";
 import { AssayAgentExecutor } from "./executor";
 import { InMemoryAuditArtifactStore } from "./artifact-store";
+import { SubprocessClaimReproducer } from "./claim-reproducer";
 import { createAssayA2AApp, type AssayA2AApp } from "./server";
 
 export { readProductionConfig, type ProductionA2AConfig } from "./configuration";
@@ -51,11 +52,13 @@ export function createProductionA2AApp(config: ProductionA2AConfig): AssayA2AApp
       createAuditCheckAgentDefinitions({ availableTools: pandaDataTools }),
     ),
     getApiKey: () => config.arkApiKey,
+    onEvent: createRuntimeTimelineLogger(),
   });
   const runner = new ParallelAuditCheckRunner(runtime);
   const executor = new AssayAgentExecutor({
     intake,
     runner,
+    claimReproducer: new SubprocessClaimReproducer(),
     artifactStore: new InMemoryAuditArtifactStore(),
     dataAsOf: config.dataAsOf,
     codeRevision: config.codeRevision,

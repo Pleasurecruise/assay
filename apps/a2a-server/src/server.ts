@@ -5,7 +5,12 @@ import {
   type AgentExecutor,
   type TaskStore,
 } from "@a2a-js/sdk/server";
-import { UserBuilder, agentCardHandler, restHandler } from "@a2a-js/sdk/server/express";
+import {
+  UserBuilder,
+  agentCardHandler,
+  jsonRpcHandler,
+  restHandler,
+} from "@a2a-js/sdk/server/express";
 import express, { type Express } from "express";
 import { createAssayAgentCard } from "./agent-card";
 import { DEFAULT_ASSAY_A2A_CORS_ORIGINS } from "./configuration";
@@ -34,6 +39,9 @@ export interface AssayA2AApp {
   taskStore: TaskStore;
 }
 
+export const ASSAY_A2A_REST_PATH = "/a2a";
+export const ASSAY_A2A_JSON_RPC_PATH = "/a2a/jsonrpc";
+
 function normalizePublicUrl(value: string): string {
   return value.replace(/\/+$/, "");
 }
@@ -41,7 +49,12 @@ function normalizePublicUrl(value: string): string {
 export function createAssayA2AApp(options: CreateAssayA2AAppOptions): AssayA2AApp {
   const publicUrl = normalizePublicUrl(options.publicUrl ?? "http://127.0.0.1:3001");
   const corsOrigins = new Set(options.corsOrigins ?? DEFAULT_ASSAY_A2A_CORS_ORIGINS);
-  const agentCard = options.agentCard ?? createAssayAgentCard(`${publicUrl}/a2a`);
+  const agentCard =
+    options.agentCard ??
+    createAssayAgentCard(
+      `${publicUrl}${ASSAY_A2A_REST_PATH}`,
+      `${publicUrl}${ASSAY_A2A_JSON_RPC_PATH}`,
+    );
   const taskStore = options.taskStore ?? new InMemoryTaskStore();
   const requestHandler = new DefaultRequestHandler(agentCard, taskStore, options.executor);
   const app = express();
@@ -70,7 +83,14 @@ export function createAssayA2AApp(options: CreateAssayA2AAppOptions): AssayA2AAp
   app.use(express.json({ limit: "1mb" }));
   app.use(`/${AGENT_CARD_PATH}`, agentCardHandler({ agentCardProvider: requestHandler }));
   app.use(
-    "/a2a",
+    ASSAY_A2A_JSON_RPC_PATH,
+    jsonRpcHandler({
+      requestHandler,
+      userBuilder: UserBuilder.noAuthentication,
+    }),
+  );
+  app.use(
+    ASSAY_A2A_REST_PATH,
     restHandler({
       requestHandler,
       userBuilder: UserBuilder.noAuthentication,

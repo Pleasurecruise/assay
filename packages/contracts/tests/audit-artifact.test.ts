@@ -36,7 +36,7 @@ const provenance = {
 
 function fullArtifact(): Record<string, unknown> {
   return {
-    schemaVersion: "1.0.0",
+    schemaVersion: "1.1.0",
     kind: "strategy_audit",
     auditId: "audit_01",
     generatedAt: "2026-07-23T12:00:00Z",
@@ -69,6 +69,7 @@ function fullArtifact(): Record<string, unknown> {
       },
     ],
     comparison: null,
+    claimComparison: null,
     riskDisclosure: [
       "This is a technical robustness audit, not investment advice or a return promise.",
     ],
@@ -108,6 +109,67 @@ describe("Audit Artifact contract", () => {
     expect(artifact.results[0]?.strategySpec).toEqual(canonicalStrategySpec);
     expect(artifact.provenance.inputHash).toBe(hashStrategySpec(canonicalBytes));
     expect(artifact.riskDisclosure.length).toBeGreaterThan(0);
+  });
+
+  test("accepts a deterministic claim reproduction and verifies its gaps", () => {
+    const artifact = fullArtifact();
+    const result = (artifact.results as Record<string, unknown>[])[0];
+    if (result === undefined) {
+      throw new Error("missing test result");
+    }
+    result.strategySpec = {
+      ...canonicalStrategySpec,
+      claims: { annualReturn: 0.18, sharpe: 1.9 },
+    };
+    artifact.claimComparison = {
+      claimed: { annualReturn: 0.18, sharpe: 1.9 },
+      reproduced: { annualReturn: 0.14, sharpe: 1.1, maxDrawdown: -0.2 },
+      gaps: { annualReturn: 0.03999999999999998, sharpe: 0.7999999999999998 },
+      knownConventionDiffs: [],
+    };
+
+    const parsed = parseAuditArtifact(artifact);
+
+    expect(parsed.claimComparison?.reproduced.sharpe).toBe(1.1);
+    expect(parsed.claimComparison?.gaps.annualReturn).toBeCloseTo(0.04);
+  });
+
+  test("rejects a claim gap that is not claimed minus reproduced", () => {
+    const artifact = fullArtifact();
+    const result = (artifact.results as Record<string, unknown>[])[0];
+    if (result === undefined) {
+      throw new Error("missing test result");
+    }
+    result.strategySpec = {
+      ...canonicalStrategySpec,
+      claims: { sharpe: 1.9 },
+    };
+    artifact.claimComparison = {
+      claimed: { sharpe: 1.9 },
+      reproduced: { annualReturn: 0.14, sharpe: 1.1, maxDrawdown: -0.2 },
+      gaps: { sharpe: -0.8 },
+      knownConventionDiffs: [],
+    };
+
+    expect(() => parseAuditArtifact(artifact)).toThrow(
+      "$.claimComparison.gaps.sharpe must equal claimed minus reproduced",
+    );
+  });
+
+  test("keeps pre-claim 1.0.0 Artifacts readable without fabricating a comparison", () => {
+    const artifact = fullArtifact();
+    artifact.schemaVersion = "1.0.0";
+    delete artifact.claimComparison;
+    const result = (artifact.results as Record<string, unknown>[])[0];
+    if (result === undefined) {
+      throw new Error("missing test result");
+    }
+    result.strategySpec = {
+      ...canonicalStrategySpec,
+      claims: { annualReturn: 0.18, sharpe: 1.9 },
+    };
+
+    expect(parseAuditArtifact(artifact).claimComparison).toBeNull();
   });
 
   test("accepts the §4.1 early-exit shape with all five not-applicable checks", () => {

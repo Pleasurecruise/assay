@@ -28,7 +28,7 @@ sprintTest(
   async () => {
     await expect(runSprintVertical()).resolves.toBe(realDataArtifactPath);
   },
-  300_000,
+  360_000,
 );
 
 test("keeps the official-cache Artifact pinned to the real-data golden", async () => {

@@ -16,6 +16,12 @@ TRADING_DAYS_PER_YEAR: Final = 252
 
 # All rates are decimal fractions of order notional.
 COST_MODELS: Final = {
+    "none": {
+        "commissionPerSide": 0.0,
+        "stampDutyOnSell": 0.0,
+        "impactPerSide": 0.0,
+        "totalMultiplier": 1.0,
+    },
     "standard": {
         "commissionPerSide": 0.00025,
         "stampDutyOnSell": 0.0005,

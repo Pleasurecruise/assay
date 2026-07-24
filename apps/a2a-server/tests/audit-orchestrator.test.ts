@@ -1,43 +1,182 @@
 import {
   AUDIT_CHECK_IDS,
   AUDIT_CHECK_SCHEMA_VERSION,
+  type AuditCheckId,
+  type AuditCheckResult,
+  type CheckConclusion,
   type ParallelAuditChecksResult,
 } from "@assay/contracts";
 import { freezeStrategySpec } from "@assay/intake";
 import { describe, expect, test } from "vitest";
 import { buildExecutedAuditArtifact } from "../src/audit-orchestrator";
 
+const identity = {
+  auditId: "audit_verdict_policy",
+  subjectId: "strategy_verdict_policy",
+  traceId: "trace_verdict_policy",
+};
+
+const frozen = freezeStrategySpec(
+  {
+    specVersion: "1",
+    universe: { index: "000300.SH" },
+    signal: {
+      kind: "template",
+      template: "momentum",
+      params: { window: 20 },
+    },
+    selection: { topN: 50 },
+    rebalance: { frequency: "monthly" },
+    window: { start: "20210101", end: "20251231" },
+  },
+  {
+    dataAsOf: "2026-07-24",
+    capabilitySnapshotId: "test:static",
+    codeRevision: "test-revision",
+  },
+);
+
+function checkResult(id: AuditCheckId, conclusion: CheckConclusion): AuditCheckResult {
+  if (conclusion === "not_applicable") {
+    return {
+      id,
+      conclusion,
+      confidence: null,
+      evidence: [],
+      missingEvidence: [],
+    };
+  }
+  if (conclusion === "insufficient_evidence") {
+    return {
+      id,
+      conclusion,
+      confidence: 0.2,
+      evidence: [],
+      missingEvidence: [
+        {
+          requirement: `verified evidence for ${id}`,
+          reason: "the required history is unavailable",
+          sourceRefs: [`test:${id}`],
+        },
+      ],
+    };
+  }
+  return {
+    id,
+    conclusion,
+    confidence: 0.8,
+    evidence: [
+      {
+        metric: "materialDefect",
+        value: conclusion === "fail",
+        unit: "boolean",
+        sourceRefs: [`test:${id}`],
+      },
+    ],
+    missingEvidence: [],
+  };
+}
+
+function buildArtifact(conclusions: Partial<Readonly<Record<AuditCheckId, CheckConclusion>>>) {
+  const result: ParallelAuditChecksResult = {
+    schemaVersion: AUDIT_CHECK_SCHEMA_VERSION,
+    auditId: identity.auditId,
+    subjectId: identity.subjectId,
+    traceId: identity.traceId,
+    checks: AUDIT_CHECK_IDS.map((id) => checkResult(id, conclusions[id] ?? "pass")),
+    startedAt: "2026-07-24T00:00:00.000Z",
+    completedAt: "2026-07-24T00:00:01.000Z",
+  };
+  return buildExecutedAuditArtifact({
+    frozen,
+    identity,
+    result,
+    generatedAt: "2026-07-24T00:00:02.000Z",
+  });
+}
+
 describe("buildExecutedAuditArtifact", () => {
-  test("prioritizes failures and summarizes provenance plus Moiré refinements", () => {
-    const identity = {
+  test("prioritizes a recoverable fail over insufficient evidence", () => {
+    const artifact = buildArtifact({
+      "param-robustness": "insufficient_evidence",
+      "data-availability": "fail",
+    });
+    const result = artifact.results[0];
+
+    expect(result?.verdict).toBe("QUARANTINE");
+    expect(result?.confidence).toBe(0.2);
+    expect(result?.checks.find((check) => check.id === "data-availability")?.conclusion).toBe(
+      "fail",
+    );
+    expect(result?.recoveryConditions).toEqual([
+      {
+        scope: "data-availability",
+        condition: "Use point-in-time index constituents and rerun the audit.",
+      },
+    ]);
+  });
+
+  test("quarantines when every failed check has a static recovery condition", () => {
+    const artifact = buildArtifact({
+      "param-robustness": "fail",
+      "data-availability": "fail",
+      "cost-stress": "fail",
+      "regime-dependency": "fail",
+    });
+
+    expect(artifact.results[0]?.verdict).toBe("QUARANTINE");
+    expect(artifact.results[0]?.recoveryConditions).toEqual([
+      {
+        scope: "param-robustness",
+        condition:
+          "Narrow the parameter-sensitive region or add a market-regime filter, then rerun the audit.",
+      },
+      {
+        scope: "data-availability",
+        condition: "Use point-in-time index constituents and rerun the audit.",
+      },
+      {
+        scope: "cost-stress",
+        condition: "Reduce rebalance frequency or turnover, then rerun the audit.",
+      },
+      {
+        scope: "regime-dependency",
+        condition: "Add an explicit market-regime filter and rerun the audit.",
+      },
+    ]);
+  });
+
+  test("retires when any failed check has no recovery condition", () => {
+    const artifact = buildArtifact({
+      "param-robustness": "fail",
+      "homogeneity-decay": "fail",
+    });
+
+    expect(artifact.results[0]?.verdict).toBe("RETIRE");
+    expect(artifact.results[0]?.recoveryConditions).toEqual([]);
+  });
+
+  test("keeps an evidence gap unverifiable when no check fails", () => {
+    const artifact = buildArtifact({
+      "data-availability": "insufficient_evidence",
+      "cost-stress": "pass_with_reservations",
+    });
+
+    expect(artifact.results[0]?.verdict).toBe("UNVERIFIABLE");
+    expect(artifact.results[0]?.recoveryConditions).toEqual([]);
+  });
+
+  test("summarizes provenance plus Moiré refinements independently of verdict policy", () => {
+    const provenanceIdentity = {
       auditId: "audit_verdict_limit",
       subjectId: "strategy_verdict_limit",
       traceId: "trace_verdict_limit",
     };
-    const frozen = freezeStrategySpec(
-      {
-        specVersion: "1",
-        universe: { index: "000300.SH" },
-        signal: {
-          kind: "template",
-          template: "momentum",
-          params: { window: 20 },
-        },
-        selection: { topN: 50 },
-        rebalance: { frequency: "monthly" },
-        window: { start: "20210101", end: "20251231" },
-      },
-      {
-        dataAsOf: "2026-07-24",
-        capabilitySnapshotId: "test:static",
-        codeRevision: "test-revision",
-      },
-    );
     const result: ParallelAuditChecksResult = {
       schemaVersion: AUDIT_CHECK_SCHEMA_VERSION,
-      auditId: identity.auditId,
-      subjectId: identity.subjectId,
-      traceId: identity.traceId,
+      auditId: provenanceIdentity.auditId,
+      subjectId: provenanceIdentity.subjectId,
+      traceId: provenanceIdentity.traceId,
       checks: AUDIT_CHECK_IDS.map((id) =>
         id === "data-availability"
           ? {
@@ -75,19 +214,15 @@ describe("buildExecutedAuditArtifact", () => {
       startedAt: "2026-07-24T00:00:00.000Z",
       completedAt: "2026-07-24T00:00:01.000Z",
     };
-
     const artifact = buildExecutedAuditArtifact({
       frozen,
-      identity,
+      identity: provenanceIdentity,
       result,
       generatedAt: "2026-07-24T00:00:02.000Z",
     });
 
     expect(artifact.results[0]?.verdict).toBe("RETIRE");
     expect(artifact.results[0]?.confidence).toBe(0.2);
-    expect(artifact.results[0]?.assumptionsAndLimits).toContain(
-      "Automatic recovery-condition reasoning is not implemented, so failures that VERDICT_SPEC §2 would grade QUARANTINE are graded RETIRE.",
-    );
     expect(artifact.results[0]?.moire).toEqual({
       disputesOpened: 1,
       resolved: ["moire-1-param-robustness"],

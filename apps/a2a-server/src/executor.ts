@@ -22,6 +22,7 @@ import {
   type ParallelAuditRunner,
 } from "./audit-orchestrator";
 import type { AuditArtifactStore } from "./artifact-store";
+import type { ClaimReproducer } from "./claim-reproducer";
 
 export interface StrategyIntakePort {
   intakeText(input: string, signal?: AbortSignal): Promise<StrategyIntakeResult>;
@@ -30,6 +31,7 @@ export interface StrategyIntakePort {
 export interface AssayAgentExecutorOptions {
   intake: StrategyIntakePort;
   runner: ParallelAuditRunner;
+  claimReproducer?: ClaimReproducer;
   artifactStore: AuditArtifactStore;
   dataAsOf: string;
   codeRevision: string;
@@ -189,6 +191,22 @@ function renderAuditArtifactMarkdown(auditArtifact: AuditArtifact): string {
   appendList(lines, "Defaults Applied", result.defaultsApplied);
   appendList(lines, "Parsing Assumptions", result.parsingAssumptions);
 
+  if (auditArtifact.claimComparison !== null) {
+    lines.push(
+      "",
+      "## Claim Comparison",
+      "",
+      `- Claimed: \`${JSON.stringify(auditArtifact.claimComparison.claimed)}\``,
+      `- Reproduced: \`${JSON.stringify(auditArtifact.claimComparison.reproduced)}\``,
+      `- Gaps (claimed - reproduced): \`${JSON.stringify(auditArtifact.claimComparison.gaps)}\``,
+    );
+    appendList(
+      lines,
+      "Known Convention Differences",
+      auditArtifact.claimComparison.knownConventionDiffs,
+    );
+  }
+
   lines.push("", "## Checks");
   for (const check of result.checks) {
     lines.push(
@@ -291,6 +309,7 @@ function initialTask(
 export class AssayAgentExecutor implements AgentExecutor {
   readonly #intake: StrategyIntakePort;
   readonly #runner: ParallelAuditRunner;
+  readonly #claimReproducer: ClaimReproducer | undefined;
   readonly #artifactStore: AuditArtifactStore;
   readonly #dataAsOf: string;
   readonly #codeRevision: string;
@@ -307,6 +326,7 @@ export class AssayAgentExecutor implements AgentExecutor {
   constructor(options: AssayAgentExecutorOptions) {
     this.#intake = options.intake;
     this.#runner = options.runner;
+    this.#claimReproducer = options.claimReproducer;
     this.#artifactStore = options.artifactStore;
     this.#dataAsOf = options.dataAsOf;
     this.#codeRevision = options.codeRevision;
@@ -395,6 +415,14 @@ export class AssayAgentExecutor implements AgentExecutor {
             },
           });
         } else {
+          const claimComparison =
+            this.#claimReproducer === undefined
+              ? null
+              : await this.#claimReproducer.reproduce(intakeResult.frozen.spec);
+          controller.signal.throwIfAborted();
+          if (intakeResult.frozen.spec.claims !== undefined && claimComparison === null) {
+            throw new Error("Claim reproduction is required when the StrategySpec has claims");
+          }
           eventBus.publish(
             AgentEvent.statusUpdate({
               taskId,
@@ -422,6 +450,7 @@ export class AssayAgentExecutor implements AgentExecutor {
             identity,
             result,
             generatedAt: this.#now().toISOString(),
+            claimComparison,
           });
         }
       }

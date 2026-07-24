@@ -1,5 +1,14 @@
 import type { AgentDefinition, AgentTool } from "@assay/agent-runtime";
-import type { AuditCheckId } from "@assay/contracts";
+import {
+  AVAILABILITY_ANNUAL_RETURN_DELTA_FAIL_THRESHOLD,
+  AVAILABILITY_CONTAMINATED_SELECTION_RATE_FAIL_THRESHOLD,
+  CHECKS_WIRING_POLICY_VERSION,
+  type AuditCheckId,
+} from "@assay/contracts";
+import {
+  AVAILABILITY_AUDIT_SOURCE_REF,
+  createRunAvailabilityAuditTool,
+} from "./run-availability-audit-tool";
 import {
   createRunExperimentTool,
   defaultExperimentProcessConfig,
@@ -46,9 +55,24 @@ evidence（样本量、置信区间、绝对收益差或缺失率）和该引用
 你负责数据可得性检查。逐历史时点核对股票池、可交易状态和财务信息可得时间，识别幸存者
 偏差、前视偏差和披露时点缺口。不要执行参数扰动、成本压力、市场环境或同质化分析。
 
-优先使用历史指数成分、可交易列表、状态变化、交易日历和带 info_date 的财务接口。季度财报
-接口没有已验证的公告时间，只能作为有限证据。若工具不可用或历史覆盖不足，必须返回
-insufficient_evidence 并逐项列出缺口，不得从策略描述推断偏差“存在”或“不存在”。
+必须且只能调用一次 run_availability_audit，固定调用形状为
+{"kind":"availability_audit","budget":{"maxVariants":1}}。canonical StrategySpec 由宿主
+注入；不得提交 spec，不得追加第二次调用。工具会一次性返回 PIT 成分差异、可交易性核对、
+PIT 修正重跑数值、运行模式与假设声明。
+
+CHECKS_WIRING_POLICY_VERSION="${CHECKS_WIRING_POLICY_VERSION}"。严格按预声明准则独立判断：
+futureConstituentCount=0 → pass；futureConstituentCount>0 且
+|corrected.delta| < ${AVAILABILITY_ANNUAL_RETURN_DELTA_FAIL_THRESHOLD} 且
+contaminatedSelectionRate < ${AVAILABILITY_CONTAMINATED_SELECTION_RATE_FAIL_THRESHOLD}
+→ pass_with_reservations；|corrected.delta| >=
+${AVAILABILITY_ANNUAL_RETURN_DELTA_FAIL_THRESHOLD} 或 contaminatedSelectionRate >=
+${AVAILABILITY_CONTAMINATED_SELECTION_RATE_FAIL_THRESHOLD} → fail。
+
+确定性结论必须把 futureConstituentCount、affectedRebalances 数量、untradableTargets、
+contaminatedSelectionRate、corrected.annualReturn、corrected.sharpe 和 corrected.delta
+写成数值 evidence，所有 sourceRefs 固定包含 ${AVAILABILITY_AUDIT_SOURCE_REF}。工具若为
+degraded_remove_only，必须在 evidence 或 missingEvidence 中如实披露其 assumptions；不得把部分修正
+描述成完整 PIT 修正。本期动量信号不含财务字段，不得声称已核对 fina_reports.date。
 `.trim(),
   "cost-stress": `
 你负责交易成本压力测试。使用回测工具按常规费率、冲击成本和悲观情形分档重跑，测算换手
@@ -106,50 +130,24 @@ const experimentKindByCheck = {
 export interface AuditCheckAgentDefinitionOptions {
   readonly availableTools?: readonly AgentTool[];
   readonly experimentProcess?: ExperimentProcessConfig;
+  readonly availabilityProcess?: ExperimentProcessConfig;
 }
-
-const toolsByCheck: Readonly<Record<AuditCheckId, readonly string[]>> = {
-  // These checks use the bounded run_experiment capability from PR #3. Do not
-  // expose the overlapping general backtest tool to the same agent.
-  "param-robustness": [],
-  "data-availability": [
-    "panda_index_weights",
-    "panda_trade_list",
-    "panda_stock_status_change",
-    "panda_trade_calendar",
-    "panda_financial_forecast",
-    "panda_financial_performance",
-    "panda_financial_reports",
-  ],
-  "cost-stress": [],
-  "regime-dependency": [
-    "assay_strategy_backtest",
-    "panda_market_data",
-    "panda_index_weights",
-    "panda_trade_calendar",
-  ],
-  "homogeneity-decay": [
-    "assay_strategy_backtest",
-    "panda_market_data",
-    "panda_factor",
-    "panda_index_weights",
-    "panda_trade_calendar",
-  ],
-};
 
 export function createAuditCheckAgentDefinitions(
   options: AuditCheckAgentDefinitionOptions = {},
 ): readonly AgentDefinition[] {
-  const availableTools = new Map((options.availableTools ?? []).map((tool) => [tool.name, tool]));
   const experimentProcess = options.experimentProcess ?? defaultExperimentProcessConfig();
+  const availabilityProcess = options.availabilityProcess ?? experimentProcess;
   return (Object.keys(checkPrompts) as AuditCheckId[]).map((id) => {
-    const tools: AgentTool[] = toolsByCheck[id].flatMap((name) => {
-      const tool = availableTools.get(name);
-      return tool ? [tool] : [];
-    });
+    // CHECKS_WIRING §2/§3 have not landed their dedicated deterministic
+    // capabilities. General finance tools stay implemented and advertised,
+    // but are not registered on either agent until those contracts exist.
+    const tools: AgentTool[] = [];
     const experimentKind =
       id === "param-robustness" || id === "cost-stress" ? experimentKindByCheck[id] : undefined;
-    if (experimentKind !== undefined) {
+    if (id === "data-availability") {
+      tools.push(createRunAvailabilityAuditTool(availabilityProcess));
+    } else if (experimentKind !== undefined) {
       tools.push(createRunExperimentTool(experimentKind, experimentProcess));
     }
     return {

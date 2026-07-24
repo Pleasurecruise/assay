@@ -55,6 +55,16 @@ interface WireSendMessageResponse {
   task?: WireTask;
 }
 
+interface WireJsonRpcResponse {
+  jsonrpc?: string;
+  id?: string | number | null;
+  result?: WireSendMessageResponse;
+  error?: {
+    code?: number;
+    message?: string;
+  };
+}
+
 type TestRunnerFactory = (requests: ParallelAuditChecksRequest[]) => ParallelAuditRunner;
 
 interface TestHarness {
@@ -196,6 +206,47 @@ async function sendStrategy(
   return body.task as WireTask;
 }
 
+async function sendStrategyJsonRpc(
+  baseUrl: string,
+  requestId: string,
+  messageId: string,
+  text: string,
+): Promise<WireTask> {
+  const response = await fetch(`${baseUrl}/a2a/jsonrpc`, {
+    method: "POST",
+    headers: {
+      "A2A-Version": "1.0",
+      Origin: CORS_ORIGIN,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: requestId,
+      method: "SendMessage",
+      params: {
+        message: {
+          messageId,
+          role: "ROLE_USER",
+          parts: [{ text, mediaType: "text/plain" }],
+        },
+        configuration: {
+          acceptedOutputModes: ["application/json", "text/markdown"],
+          historyLength: 10,
+          returnImmediately: false,
+        },
+      },
+    }),
+  });
+  expect(response.headers.get("access-control-allow-origin")).toBe(CORS_ORIGIN);
+  const body = (await response.json()) as WireJsonRpcResponse;
+  expect(response.status, JSON.stringify(body)).toBe(200);
+  expect(body.jsonrpc).toBe("2.0");
+  expect(body.id).toBe(requestId);
+  expect(body.error).toBeUndefined();
+  expect(body.result?.task).toBeDefined();
+  return body.result?.task as WireTask;
+}
+
 function artifactFrom(task: WireTask) {
   expect(task.status?.state).toBe("TASK_STATE_COMPLETED");
   expect(task.artifacts).toHaveLength(1);
@@ -206,7 +257,7 @@ function artifactFrom(task: WireTask) {
   return parseAuditArtifact(data);
 }
 
-describe("Assay A2A Skeleton over HTTP+JSON", () => {
+describe("Assay A2A Skeleton over shared HTTP transports", () => {
   test("drives the browser client from CORS preflight through a parsed Artifact", async () => {
     const input =
       "Audit a CSI 300 strategy from 20210101 through 20251231: rank by trailing " +
@@ -368,6 +419,44 @@ describe("Assay A2A Skeleton over HTTP+JSON", () => {
     );
   });
 
+  test("shares one task lifecycle across JSON-RPC send and REST read", async () => {
+    const input =
+      "Audit a CSI 300 strategy from 20210101 through 20251231: rank by trailing " +
+      "20-day momentum, hold the top 50 equal-weighted names, rebalance monthly " +
+      "at close, and use standard costs.";
+    const parserCalls: string[] = [];
+    const intake = new StrategyIntake({
+      parser: fakeParser(COMPLETE_SPEC, parserCalls),
+      dataAsOf: DATA_AS_OF,
+      capabilitySnapshotId: "e2e:static",
+      codeRevision: "e2e-fixture",
+    });
+
+    await withTestServer(intake, async ({ baseUrl, store, requests }) => {
+      const jsonRpcTask = await sendStrategyJsonRpc(
+        baseUrl,
+        "rpc_send_complete",
+        "msg_json_rpc_complete",
+        input,
+      );
+      const jsonRpcArtifact = artifactFrom(jsonRpcTask);
+
+      const restClient = await createAssayA2AClient({
+        baseUrl: `${baseUrl}/a2a`,
+      });
+      const restTask = await restClient.pollTask(jsonRpcTask.id, {
+        intervalMs: 5,
+        timeoutMs: 3_000,
+      });
+
+      expect(restTask.id).toBe(jsonRpcTask.id);
+      expect(extractAuditArtifact(restTask)).toEqual(jsonRpcArtifact);
+      expect(parserCalls).toEqual([input]);
+      expect(requests).toHaveLength(1);
+      expect(await store.load(jsonRpcTask.id)).toEqual(jsonRpcArtifact);
+    });
+  });
+
   test("completes a natural-language strategy with a full audit Artifact", async () => {
     const input =
       "Audit a CSI 300 strategy from 20210101 through 20251231: rank by trailing " +
@@ -390,10 +479,30 @@ describe("Assay A2A Skeleton over HTTP+JSON", () => {
       });
       const card = (await cardResponse.json()) as {
         skills?: Array<{ id?: string }>;
+        supportedInterfaces?: Array<{
+          url?: string;
+          protocolBinding?: string;
+          protocolVersion?: string;
+          tenant?: string;
+        }>;
       };
       expect(cardResponse.ok, JSON.stringify(card)).toBe(true);
       expect(cardResponse.headers.get("access-control-allow-origin")).toBe(CORS_ORIGIN);
       expect(card.skills?.map((skill) => skill.id)).toEqual(["audit_strategy"]);
+      expect(card.supportedInterfaces).toEqual([
+        {
+          url: "http://127.0.0.1/a2a",
+          protocolBinding: "HTTP+JSON",
+          protocolVersion: "1.0",
+          tenant: "",
+        },
+        {
+          url: "http://127.0.0.1/a2a/jsonrpc",
+          protocolBinding: "JSONRPC",
+          protocolVersion: "1.0",
+          tenant: "",
+        },
+      ]);
 
       const task = await sendStrategy(baseUrl, "msg_complete", input);
       const artifact = artifactFrom(task);

@@ -11,6 +11,25 @@ from .constants import COST_LADDER, ENGINE_VERSION
 from .core import run_momentum_backtest
 
 
+def run_baseline(
+    adjusted_close: pd.DataFrame,
+    *,
+    tradable: pd.DataFrame | None = None,
+    strategy: Mapping[str, Any],
+) -> dict[str, Any]:
+    parameters = _strategy_parameters(strategy)
+    result = run_momentum_backtest(
+        adjusted_close,
+        tradable=tradable,
+        **parameters,
+    )
+    return {
+        "engineVersion": ENGINE_VERSION,
+        "baseline": _result_summary(_public_parameters(parameters), result),
+        "variants": [],
+    }
+
+
 def run_grid(
     adjusted_close: pd.DataFrame,
     *,

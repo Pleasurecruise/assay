@@ -1,8 +1,10 @@
 import { canonicalizeStrategySpec, hashStrategySpec, type StrategySpec } from "@assay/contracts";
 
-const RUN_EXPERIMENT_AUTHORIZATION_ERROR = "run_experiment is not authorized for this task";
-const RUN_EXPERIMENT_CALL_LIMIT_ERROR = "run_experiment may be called at most once per task";
-const RUN_EXPERIMENT_COMPLETION_ERROR = "run_experiment must complete successfully exactly once";
+export const TRUSTED_SPEC_TOOL_NAMES = ["run_experiment", "run_availability_audit"] as const;
+
+function isTrustedSpecTool(toolName: string): boolean {
+  return TRUSTED_SPEC_TOOL_NAMES.some((candidate) => candidate === toolName);
+}
 
 export interface RuntimeToolCallGuardResult {
   readonly runExperimentCallCount: number;
@@ -22,7 +24,7 @@ export function guardRuntimeToolCall(
   trustedCanonicalSpec: string | undefined,
   runExperimentCallCount: number,
 ): RuntimeToolCallGuardResult {
-  if (toolName !== "run_experiment") {
+  if (!isTrustedSpecTool(toolName)) {
     return { runExperimentCallCount };
   }
 
@@ -30,7 +32,7 @@ export function guardRuntimeToolCall(
   if (runExperimentCallCount > 0) {
     return {
       runExperimentCallCount: nextCallCount,
-      blockReason: RUN_EXPERIMENT_CALL_LIMIT_ERROR,
+      blockReason: `${toolName} may be called at most once per task`,
     };
   }
   if (
@@ -40,7 +42,7 @@ export function guardRuntimeToolCall(
   ) {
     return {
       runExperimentCallCount: nextCallCount,
-      blockReason: RUN_EXPERIMENT_AUTHORIZATION_ERROR,
+      blockReason: `${toolName} is not authorized for this task`,
     };
   }
 
@@ -53,7 +55,7 @@ export function guardRuntimeToolCall(
     ) {
       return {
         runExperimentCallCount: nextCallCount,
-        blockReason: RUN_EXPERIMENT_AUTHORIZATION_ERROR,
+        blockReason: `${toolName} is not authorized for this task`,
       };
     }
     // Schema validation has already run. Bind the host-frozen object after
@@ -62,7 +64,7 @@ export function guardRuntimeToolCall(
   } catch {
     return {
       runExperimentCallCount: nextCallCount,
-      blockReason: RUN_EXPERIMENT_AUTHORIZATION_ERROR,
+      blockReason: `${toolName} is not authorized for this task`,
     };
   }
 
@@ -73,8 +75,9 @@ export function assertExactRunExperimentCompletion(
   required: boolean,
   attemptedCalls: number,
   successfulCalls: number,
+  toolName = "run_experiment",
 ): void {
   if (required && (attemptedCalls !== 1 || successfulCalls !== 1)) {
-    throw new Error(RUN_EXPERIMENT_COMPLETION_ERROR);
+    throw new Error(`${toolName} must complete successfully exactly once`);
   }
 }

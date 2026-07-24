@@ -27,7 +27,6 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from hashlib import sha256
 import json
-import math
 import os
 from pathlib import Path
 import sys
@@ -41,6 +40,10 @@ from panda_adapter.data_transport import (
     DataTransportError,
     RetryPolicy,
     retry_transport,
+)
+from panda_adapter.source_normalization import (
+    normalize_source_frame as normalize_canonical_source_frame,
+    symbols_from_weights as normalize_symbols_from_weights,
 )
 
 INDEX_SYMBOL = "000300.SH"
@@ -164,27 +167,7 @@ def _normalize_symbols(values: Iterable[Any], *, context: str) -> list[str]:
 
 
 def _symbols_from_weights(value: Any) -> tuple[list[str], str]:
-    frame = _as_frame(value, "get_index_weights")
-    date_column = _optional_column(frame, ("date", "trade_date", "datetime"))
-    snapshot_date = "unknown"
-    if date_column is not None:
-        dates = _normalized_dates(frame[date_column])
-        latest = dates.max()
-        if not pd.isna(latest):
-            frame = frame[dates == latest]
-            snapshot_date = latest.strftime("%Y-%m-%d")
-    symbol_column = _column(
-        frame,
-        ("stock_symbol", "symbol", "stock_code", "con_code", "code"),
-        "get_index_weights",
-    )
-    return (
-        _normalize_symbols(
-            frame[symbol_column].tolist(),
-            context="get_index_weights",
-        ),
-        snapshot_date,
-    )
+    return normalize_symbols_from_weights(value)
 
 
 def _symbols_from_cache(path: Path) -> tuple[list[str], str]:
@@ -327,71 +310,14 @@ def _normalize_source_frame(
     context: str,
 ) -> pd.DataFrame:
     """Convert one endpoint response into a strictly scoped source fragment."""
-
-    frame = _as_frame(value, context)
-    value_column = SOURCE_VALUE_COLUMNS[request.source]
-    if frame.empty and not len(frame.columns):
-        return _empty_source_frame(request.source)
-
-    date_column = _column(frame, ("date", "trade_date", "datetime"), context)
-    symbol_column = _column(
-        frame,
-        ("symbol", "stock_symbol", "stock_code", "code"),
-        context,
+    return normalize_canonical_source_frame(
+        value,
+        source=request.source,
+        start_date=request.start_date,
+        end_date=request.end_date,
+        symbols=request.symbols,
+        context=context,
     )
-    if request.source == "factor-close":
-        raw_value_column = _column(frame, ("adjClose", "close"), context)
-    else:
-        raw_value_column = _column(
-            frame,
-            ("tradeStatus", "trade_status"),
-            context,
-        )
-
-    selected = frame[[date_column, symbol_column, raw_value_column]].copy()
-    if selected.isna().any().any():
-        raise RuntimeError(f"{context} contains missing canonical values")
-    selected.columns = ["date", "symbol", value_column]
-    selected["date"] = _normalized_dates(selected["date"])
-    selected["symbol"] = (
-        selected["symbol"].astype(str).str.strip().str.upper()
-    )
-    selected[value_column] = pd.to_numeric(
-        selected[value_column],
-        errors="coerce",
-    )
-    if selected[["date", value_column]].isna().any().any():
-        raise RuntimeError(f"{context} contains invalid canonical values")
-
-    requested_symbols = set(request.symbols)
-    outside_symbols = set(selected["symbol"]) - requested_symbols
-    if outside_symbols:
-        raise RuntimeError(f"{context} returned rows outside requested symbols")
-    outside_window = ~selected["date"].between(
-        request.start_date,
-        request.end_date,
-    )
-    if outside_window.any():
-        raise RuntimeError(f"{context} returned rows outside requested window")
-    if selected.duplicated(["date", "symbol"]).any():
-        raise RuntimeError(f"{context} contains duplicate symbol/date keys")
-
-    finite = selected[value_column].map(math.isfinite)
-    if request.source == "factor-close":
-        if (~finite).any() or (selected[value_column] <= 0).any():
-            raise RuntimeError(
-                f"{context} contains nonpositive or nonfinite factor close"
-            )
-    else:
-        integral = selected[value_column].mod(1).eq(0)
-        if (~finite).any() or (~integral).any():
-            raise RuntimeError(
-                f"{context} contains nonintegral or nonfinite trade status"
-            )
-        selected[value_column] = selected[value_column].astype(int)
-
-    selected["date"] = selected["date"].dt.strftime("%Y-%m-%d")
-    return selected.sort_values(["date", "symbol"]).reset_index(drop=True)
 
 
 def _frame_records(frame: pd.DataFrame) -> list[dict[str, Any]]:

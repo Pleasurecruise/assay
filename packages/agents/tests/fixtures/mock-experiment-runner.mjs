@@ -7,7 +7,7 @@ for await (const chunk of process.stdin) {
 const request = JSON.parse(Buffer.concat(chunks).toString("utf8"));
 if (
   !request ||
-  !["grid", "cost_ladder"].includes(request.kind) ||
+  !["baseline", "grid", "cost_ladder"].includes(request.kind) ||
   typeof request.spec !== "object" ||
   typeof request.budget?.maxVariants !== "number"
 ) {
@@ -23,44 +23,46 @@ if (
     costModel: request.spec.costs?.model ?? "standard",
   };
   const variants =
-    request.kind === "grid"
-      ? (request.grid?.signalParams?.window ?? []).flatMap((window) =>
-          (request.grid?.topN ?? []).map((topN, index) => ({
-            params: {
-              variantId: `w${window}-n${topN}`,
-              window,
-              topN,
-              costModel: baselineParams.costModel,
+    request.kind === "baseline"
+      ? []
+      : request.kind === "grid"
+        ? (request.grid?.signalParams?.window ?? []).flatMap((window) =>
+            (request.grid?.topN ?? []).map((topN, index) => ({
+              params: {
+                variantId: `w${window}-n${topN}`,
+                window,
+                topN,
+                costModel: baselineParams.costModel,
+              },
+              annualReturn: 0.1 - index * 0.01,
+              sharpe: 1.2 - index * 0.1,
+              maxDrawdown: -0.1,
+              annualTurnover: 2,
+            })),
+          )
+        : [
+            {
+              params: { ...baselineParams, costModel: "standard" },
+              annualReturn: 0.08,
+              sharpe: 1.1,
+              maxDrawdown: -0.11,
+              annualTurnover: 2,
             },
-            annualReturn: 0.1 - index * 0.01,
-            sharpe: 1.2 - index * 0.1,
-            maxDrawdown: -0.1,
-            annualTurnover: 2,
-          })),
-        )
-      : [
-          {
-            params: { ...baselineParams, costModel: "standard" },
-            annualReturn: 0.08,
-            sharpe: 1.1,
-            maxDrawdown: -0.11,
-            annualTurnover: 2,
-          },
-          {
-            params: { ...baselineParams, costModel: "realistic" },
-            annualReturn: 0.05,
-            sharpe: 0.8,
-            maxDrawdown: -0.13,
-            annualTurnover: 2,
-          },
-          {
-            params: { ...baselineParams, costModel: "pessimistic" },
-            annualReturn: 0.02,
-            sharpe: 0.4,
-            maxDrawdown: -0.16,
-            annualTurnover: 2,
-          },
-        ];
+            {
+              params: { ...baselineParams, costModel: "realistic" },
+              annualReturn: 0.05,
+              sharpe: 0.8,
+              maxDrawdown: -0.13,
+              annualTurnover: 2,
+            },
+            {
+              params: { ...baselineParams, costModel: "pessimistic" },
+              annualReturn: 0.02,
+              sharpe: 0.4,
+              maxDrawdown: -0.16,
+              annualTurnover: 2,
+            },
+          ];
 
   const response = {
     engineVersion: "mock-v1",
