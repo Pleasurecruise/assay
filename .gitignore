@@ -4,6 +4,7 @@ node_modules/
 .bun/
 dist/
 coverage/
+*.tsbuildinfo
 .env
 !.env.example
 .venv/
