@@ -1,3 +1,9 @@
+import { TaskState, type Message, type Task } from "@a2a-js/sdk";
+import type {
+  AuditArtifact,
+  AuditArtifactResult,
+  AuditCheckResult,
+} from "@assay/contracts/audit-artifact";
 import {
   Archive,
   ArrowRight,
@@ -22,7 +28,7 @@ import {
   TrendingDown,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 
 import {
   Attachment,
@@ -33,6 +39,7 @@ import {
   type AttachmentData,
 } from "@/components/ai-elements/attachments";
 import { Button } from "@/components/ui/button";
+import { createAssayA2AClient, extractAuditArtifact, type AssayA2AClient } from "@/lib/a2a-client";
 import { cn } from "@/lib/utils";
 
 type AuditMode = "strategy" | "factor" | "compare";
@@ -106,6 +113,83 @@ const MODE_LABELS: Record<AuditMode, string> = {
   factor: "Factor",
   strategy: "Strategy",
 };
+
+const TASK_POLL_INTERVAL_MS = 2_000;
+const TASK_POLL_TIMEOUT_MS = 20 * 60 * 1_000;
+const TASK_STATUS_REQUEST_TIMEOUT_MS = 15_000;
+
+function isActiveTaskState(state: TaskState | undefined): boolean {
+  return state === TaskState.TASK_STATE_SUBMITTED || state === TaskState.TASK_STATE_WORKING;
+}
+
+function messageText(message: Message | undefined): string | undefined {
+  for (const part of message?.parts ?? []) {
+    if (part.content?.$case === "text") {
+      const text = part.content.value.trim();
+      if (text.length > 0) {
+        return text;
+      }
+    }
+  }
+  return undefined;
+}
+
+function taskStatusMessage(task: Task): string {
+  const explicit = messageText(task.status?.message);
+  if (explicit !== undefined) {
+    return explicit;
+  }
+  switch (task.status?.state) {
+    case TaskState.TASK_STATE_SUBMITTED:
+      return "Task accepted. Waiting for the audit to start.";
+    case TaskState.TASK_STATE_WORKING:
+      return "The five-check audit is running.";
+    case TaskState.TASK_STATE_COMPLETED:
+      return "The audit Artifact is ready.";
+    case TaskState.TASK_STATE_FAILED:
+      return "The audit could not be completed due to an internal error.";
+    default:
+      return "The audit task changed state.";
+  }
+}
+
+function markdownReportFromTask(task: Task): string {
+  for (const artifact of task.artifacts) {
+    for (const part of artifact.parts) {
+      if (part.mediaType === "text/markdown" && part.content?.$case === "text") {
+        return part.content.value;
+      }
+    }
+  }
+  return "";
+}
+
+function conclusionLabel(value: AuditCheckResult["conclusion"]): string {
+  return value.replaceAll("_", " ").toUpperCase();
+}
+
+function conclusionClass(value: AuditCheckResult["conclusion"]): string {
+  return `check-card--${value.replaceAll("_", "-")}`;
+}
+
+function confidenceLabel(value: number | null): string {
+  return value === null ? "Not available" : `${Math.round(value * 100)}%`;
+}
+
+function waitForNextPoll(signal: AbortSignal): Promise<void> {
+  signal.throwIfAborted();
+  return new Promise<void>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      signal.removeEventListener("abort", handleAbort);
+      resolve();
+    }, TASK_POLL_INTERVAL_MS);
+    const handleAbort = () => {
+      window.clearTimeout(timeout);
+      reject(signal.reason);
+    };
+    signal.addEventListener("abort", handleAbort, { once: true });
+  });
+}
 
 function AssayMark({ compact = false }: { compact?: boolean }) {
   return (
@@ -201,9 +285,13 @@ function MobileHeader() {
   );
 }
 
-function AuditProgress({ runStep }: { runStep: number | null }) {
-  const isComplete = runStep === AUDIT_CHECKS.length;
-
+function AuditProgress({
+  checks,
+  isActive,
+}: {
+  checks: readonly AuditCheckResult[] | undefined;
+  isActive: boolean;
+}) {
   return (
     <section className="protocol-section" id="protocol">
       <div className="section-heading">
@@ -220,30 +308,71 @@ function AuditProgress({ runStep }: { runStep: number | null }) {
       </div>
 
       <div className="checks-grid">
-        {AUDIT_CHECKS.map((check, index) => {
-          const isRunning = runStep === index;
-          const isDone = runStep !== null && runStep > index;
-          const status = isDone ? "COMPLETE" : isRunning ? "RUNNING" : "READY";
+        {AUDIT_CHECKS.map((check) => {
+          const result = checks?.find((candidate) => candidate.id === check.id);
+          const isRunning = isActive && result === undefined;
+          const status =
+            result === undefined
+              ? isRunning
+                ? "RUNNING"
+                : "READY"
+              : conclusionLabel(result.conclusion);
           const Icon = check.icon;
+          const ResultIcon =
+            result?.conclusion === "pass"
+              ? Check
+              : result?.conclusion === "pass_with_reservations"
+                ? ShieldCheck
+                : result?.conclusion === "fail"
+                  ? X
+                  : Icon;
 
           return (
             <article
               className={cn(
                 "check-card",
                 isRunning && "check-card--running",
-                isDone && "check-card--done",
+                result !== undefined && conclusionClass(result.conclusion),
               )}
               key={check.id}
             >
               <div className="check-card__index">{check.index}</div>
               <div className="check-card__icon">
-                {isDone ? <Check aria-hidden="true" /> : <Icon aria-hidden="true" />}
+                {result === undefined ? (
+                  <Icon aria-hidden="true" />
+                ) : (
+                  <ResultIcon aria-hidden="true" />
+                )}
               </div>
               <h3>{check.name}</h3>
               <p>{check.description}</p>
+              {result === undefined ? null : (
+                <div className="check-card__evidence">
+                  {result.evidence.map((evidence, index) => (
+                    <span key={`${evidence.metric}-${index}`}>
+                      <b>{evidence.metric}</b>
+                      {`: ${String(evidence.value)} ${evidence.unit}`}
+                      <small>{evidence.sourceRefs.join(" · ")}</small>
+                    </span>
+                  ))}
+                  {result.missingEvidence.map((missing, index) => (
+                    <span className="check-card__missing" key={`${missing.requirement}-${index}`}>
+                      <b>{missing.requirement}</b>
+                      {`: ${missing.reason}`}
+                      <small>{missing.sourceRefs.join(" · ")}</small>
+                    </span>
+                  ))}
+                  {result.evidence.length === 0 && result.missingEvidence.length === 0 ? (
+                    <span>
+                      No evidence was required for this <b>{conclusionLabel(result.conclusion)}</b>{" "}
+                      result.
+                    </span>
+                  ) : null}
+                </div>
+              )}
               <div className="check-card__status">
                 <span className={cn(isRunning && "status-pulse")} />
-                {isComplete ? "EVIDENCE READY" : status}
+                {status}
               </div>
             </article>
           );
@@ -253,55 +382,85 @@ function AuditProgress({ runStep }: { runStep: number | null }) {
   );
 }
 
-function EvidenceRail({ runStep }: { runStep: number | null }) {
-  const completedChecks = runStep === null ? 0 : Math.min(runStep, AUDIT_CHECKS.length);
-  const isRunning = runStep !== null && runStep < AUDIT_CHECKS.length;
-  const isComplete = runStep === AUDIT_CHECKS.length;
+function EvidenceRail({
+  failureMessage,
+  isActive,
+  result,
+  statusMessage,
+}: {
+  failureMessage: string;
+  isActive: boolean;
+  result: AuditArtifactResult | undefined;
+  statusMessage: string;
+}) {
+  const evaluatedChecks =
+    result?.checks.filter((check) => check.conclusion !== "not_applicable").length ?? 0;
+  const isComplete = result !== undefined;
+  const isEarlyExit = result?.reasonCode !== undefined;
+  const hasFailed = failureMessage.length > 0;
 
   return (
     <aside className="evidence-rail" id="evidence">
       <section className="run-panel">
         <div className="rail-label">
           <span>CURRENT RUN</span>
-          <span className={cn("run-state", isRunning && "run-state--active")}>
-            {isComplete ? "READY" : isRunning ? "LIVE" : "IDLE"}
+          <span className={cn("run-state", isActive && "run-state--active")}>
+            {hasFailed
+              ? "FAILED"
+              : isEarlyExit
+                ? "EARLY EXIT"
+                : isComplete
+                  ? "READY"
+                  : isActive
+                    ? "LIVE"
+                    : "IDLE"}
           </span>
         </div>
         <div className="run-orbit" aria-hidden="true">
-          <div className={cn("run-orbit__core", isRunning && "run-orbit__core--active")}>
-            {isComplete ? <Check /> : <FlaskConical />}
+          <div className={cn("run-orbit__core", isActive && "run-orbit__core--active")}>
+            {isComplete ? <ShieldCheck /> : hasFailed ? <X /> : <FlaskConical />}
           </div>
-          <span className={cn(isRunning && "orbiting-dot")} />
+          <span className={cn(isActive && "orbiting-dot")} />
         </div>
-        <div className="run-panel__copy">
+        <div aria-live="polite" className="run-panel__copy">
           <strong>
-            {isComplete
-              ? "Evidence pack ready"
-              : isRunning
-                ? AUDIT_CHECKS[runStep]?.shortName
-                : "No assay running"}
+            {isEarlyExit
+              ? "Honest early exit"
+              : isComplete
+                ? "Evidence pack ready"
+                : hasFailed
+                  ? "Audit interrupted"
+                  : isActive
+                    ? "Audit in progress"
+                    : "No assay running"}
           </strong>
           <span>
-            {isComplete
-              ? "Five independent checks completed."
-              : isRunning
-                ? `Check ${runStep + 1} of ${AUDIT_CHECKS.length} in progress`
-                : "Your next run will appear here."}
+            {isEarlyExit
+              ? `${result.verdict} · ${result.reasonCode}`
+              : isComplete
+                ? `${result.verdict} · ${confidenceLabel(result.confidence)} confidence`
+                : hasFailed
+                  ? failureMessage
+                  : isActive
+                    ? statusMessage
+                    : "Your next run will appear here."}
           </span>
         </div>
         <div
           className="run-progress"
           style={
             {
-              "--progress": `${(completedChecks / AUDIT_CHECKS.length) * 100}%`,
+              "--progress": `${(evaluatedChecks / AUDIT_CHECKS.length) * 100}%`,
             } as CSSProperties
           }
         >
           <i />
         </div>
         <div className="run-progress__labels">
-          <span>{completedChecks}/5 checks</span>
-          <span>{isRunning ? "≈ 14 min left" : isComplete ? "Complete" : "—"}</span>
+          <span>{evaluatedChecks}/5 checks evaluated</span>
+          <span>
+            {isActive ? "In progress" : isEarlyExit ? "Early exit" : isComplete ? "Complete" : "—"}
+          </span>
         </div>
       </section>
 
@@ -355,31 +514,222 @@ function EvidenceRail({ runStep }: { runStep: number | null }) {
   );
 }
 
+function AuditReport({
+  artifact,
+  markdown,
+}: {
+  artifact: AuditArtifact | undefined;
+  markdown: string;
+}) {
+  if (artifact === undefined) {
+    return null;
+  }
+  const result = artifact.results[0];
+  if (result === undefined) {
+    return null;
+  }
+
+  return (
+    <section aria-labelledby="audit-report-title" className="audit-report">
+      <div className="section-heading">
+        <div>
+          <span className="eyebrow">AUDIT ARTIFACT / {artifact.schemaVersion}</span>
+          <h2 id="audit-report-title">
+            Verdict: <em>{result.verdict}</em>
+          </h2>
+        </div>
+        <p>{result.summary}</p>
+      </div>
+
+      <div className="audit-report__metrics">
+        <span>
+          <small>CONFIDENCE</small>
+          <b>{confidenceLabel(result.confidence)}</b>
+        </span>
+        <span>
+          <small>AUDIT ID</small>
+          <b>{artifact.auditId}</b>
+        </span>
+        <span>
+          <small>DATA AS OF</small>
+          <b>{artifact.provenance.dataAsOf}</b>
+        </span>
+      </div>
+
+      {result.reasonCode === undefined ? null : (
+        <section className="audit-report__early-exit">
+          <span className="eyebrow">HONEST EARLY EXIT</span>
+          <h3>{result.reasonCode}</h3>
+          <p>
+            Assay completed the request without inventing unsupported inputs or missing evidence.
+          </p>
+
+          {result.missingInformation?.length ? (
+            <>
+              <h4>Missing information</h4>
+              <ul>
+                {result.missingInformation.map((missing, index) => (
+                  <li key={`${missing.requirement}-${index}`}>
+                    <b>{missing.requirement}</b>
+                    <span>{missing.reason}</span>
+                    <small>{missing.sourceRefs.join(" · ")}</small>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+
+          {result.recoveryConditions.length > 0 ? (
+            <>
+              <h4>Recovery conditions</h4>
+              <ul>
+                {result.recoveryConditions.map((condition, index) => (
+                  <li key={`${condition.scope}-${index}`}>
+                    <b>{condition.scope}</b>
+                    <span>{condition.condition}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+        </section>
+      )}
+
+      {markdown.length > 0 ? (
+        <details className="audit-report__full">
+          <summary>Full report</summary>
+          <pre>{markdown}</pre>
+        </details>
+      ) : null}
+    </section>
+  );
+}
+
 export function App() {
   const [mode, setMode] = useState<AuditMode>("strategy");
   const [prompt, setPrompt] = useState("");
   const [attachments, setAttachments] = useState<AttachmentData[]>([]);
-  const [runStep, setRunStep] = useState<number | null>(null);
   const [validationMessage, setValidationMessage] = useState("");
+  const [task, setTask] = useState<Task>();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("");
+  const [auditArtifact, setAuditArtifact] = useState<AuditArtifact>();
+  const [markdownReport, setMarkdownReport] = useState("");
+  const [failureMessage, setFailureMessage] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const attachmentsRef = useRef(attachments);
+  const clientPromiseRef = useRef<Promise<AssayA2AClient> | null>(null);
+  const pollStartedAtRef = useRef<number | null>(null);
+  const submitControllerRef = useRef<AbortController | null>(null);
 
   attachmentsRef.current = attachments;
 
+  const applyTask = useCallback((nextTask: Task) => {
+    setTask(nextTask);
+    setStatusMessage(taskStatusMessage(nextTask));
+
+    switch (nextTask.status?.state) {
+      case TaskState.TASK_STATE_COMPLETED:
+        pollStartedAtRef.current = null;
+        try {
+          const artifact = extractAuditArtifact(nextTask);
+          if (artifact?.results[0] === undefined) {
+            throw new Error("Completed Task did not contain an audit result");
+          }
+          setAuditArtifact(artifact);
+          setMarkdownReport(markdownReportFromTask(nextTask));
+          setFailureMessage("");
+        } catch {
+          setAuditArtifact(undefined);
+          setMarkdownReport("");
+          setFailureMessage(
+            "The audit completed but returned an invalid report. Please retry the request.",
+          );
+        }
+        return;
+      case TaskState.TASK_STATE_FAILED:
+        pollStartedAtRef.current = null;
+        setAuditArtifact(undefined);
+        setMarkdownReport("");
+        setFailureMessage(
+          "The audit could not be completed due to an internal error. Please retry the request.",
+        );
+        return;
+      case TaskState.TASK_STATE_CANCELED:
+      case TaskState.TASK_STATE_REJECTED:
+        pollStartedAtRef.current = null;
+        setAuditArtifact(undefined);
+        setMarkdownReport("");
+        setFailureMessage("The audit ended before a report was produced. Please retry.");
+        return;
+      case TaskState.TASK_STATE_INPUT_REQUIRED:
+      case TaskState.TASK_STATE_AUTH_REQUIRED:
+        pollStartedAtRef.current = null;
+        setAuditArtifact(undefined);
+        setMarkdownReport("");
+        setFailureMessage(
+          "This demo cannot continue an interrupted task yet. Retry with a complete strategy description.",
+        );
+        return;
+      default:
+        setFailureMessage("");
+    }
+  }, []);
+
+  const taskId = task?.id;
+  const taskState = task?.status?.state;
+
   useEffect(() => {
-    if (runStep === null || runStep >= AUDIT_CHECKS.length) {
+    const clientPromise = clientPromiseRef.current;
+    if (taskId === undefined || !isActiveTaskState(taskState) || clientPromise === null) {
       return;
     }
 
-    const timer = window.setTimeout(() => {
-      setRunStep((current) => (current === null ? null : current + 1));
-    }, 1150);
+    const controller = new AbortController();
+    const startedAt = pollStartedAtRef.current ?? Date.now();
+    pollStartedAtRef.current = startedAt;
+    void (async () => {
+      const client = await clientPromise;
+      while (!controller.signal.aborted) {
+        if (Date.now() - startedAt >= TASK_POLL_TIMEOUT_MS) {
+          pollStartedAtRef.current = null;
+          setTask(undefined);
+          setStatusMessage("");
+          setFailureMessage(
+            "The audit did not finish within the 20-minute demo window. Please retry the request.",
+          );
+          return;
+        }
+        try {
+          await waitForNextPoll(controller.signal);
+          const nextTask = await client.getTask(taskId, {
+            signal: AbortSignal.any([
+              controller.signal,
+              AbortSignal.timeout(TASK_STATUS_REQUEST_TIMEOUT_MS),
+            ]),
+          });
+          if (controller.signal.aborted) {
+            return;
+          }
+          applyTask(nextTask);
+          if (!isActiveTaskState(nextTask.status?.state)) {
+            return;
+          }
+        } catch {
+          if (controller.signal.aborted) {
+            return;
+          }
+          setStatusMessage("Connection interrupted. Retrying the task status shortly.");
+        }
+      }
+    })();
 
-    return () => window.clearTimeout(timer);
-  }, [runStep]);
+    return () => controller.abort();
+  }, [applyTask, taskId, taskState]);
 
   useEffect(
     () => () => {
+      submitControllerRef.current?.abort();
       for (const attachment of attachmentsRef.current) {
         if (attachment.type === "file" && attachment.url.startsWith("blob:")) {
           URL.revokeObjectURL(attachment.url);
@@ -412,17 +762,63 @@ export function App() {
     });
   };
 
-  const startAudit = () => {
-    if (!prompt.trim() && attachments.length === 0) {
-      setValidationMessage("Add a strategy description or attach source material first.");
+  const isActive = isSubmitting || isActiveTaskState(task?.status?.state);
+  const result = auditArtifact?.results[0];
+
+  const startAudit = async () => {
+    if (isActive) {
+      return;
+    }
+    if (mode !== "strategy") {
+      setValidationMessage("Factor and comparison audits are coming soon.");
+      return;
+    }
+    if (prompt.trim().length === 0) {
+      setValidationMessage(
+        "Add a strategy description first. Attachments are not sent in this demo.",
+      );
       return;
     }
 
+    submitControllerRef.current?.abort();
+    const controller = new AbortController();
+    submitControllerRef.current = controller;
     setValidationMessage("");
-    setRunStep(0);
-  };
+    setFailureMessage("");
+    setAuditArtifact(undefined);
+    setMarkdownReport("");
+    setTask(undefined);
+    setStatusMessage("Connecting to the Assay A2A server.");
+    pollStartedAtRef.current = Date.now();
+    setIsSubmitting(true);
 
-  const isRunning = runStep !== null && runStep < AUDIT_CHECKS.length;
+    try {
+      clientPromiseRef.current ??= createAssayA2AClient();
+      const client = await clientPromiseRef.current;
+      const submittedTask = await client.sendTextMessage(prompt, {
+        signal: controller.signal,
+      });
+      if (!controller.signal.aborted) {
+        applyTask(submittedTask);
+      }
+    } catch {
+      if (!controller.signal.aborted) {
+        clientPromiseRef.current = null;
+        pollStartedAtRef.current = null;
+        setStatusMessage("");
+        setFailureMessage(
+          "The audit service could not be reached. Check that both local services are running and try again.",
+        );
+      }
+    } finally {
+      if (submitControllerRef.current === controller) {
+        submitControllerRef.current = null;
+      }
+      if (!controller.signal.aborted) {
+        setIsSubmitting(false);
+      }
+    }
+  };
 
   return (
     <div className="app-shell">
@@ -489,7 +885,11 @@ export function App() {
               onDragOver={(event) => event.preventDefault()}
               onDrop={(event) => {
                 event.preventDefault();
-                addFiles(event.dataTransfer.files);
+                if (!isActive) {
+                  setValidationMessage(
+                    "Attachments are coming soon. This demo sends the strategy text only.",
+                  );
+                }
               }}
             >
               <div className="composer-header">
@@ -497,11 +897,14 @@ export function App() {
                   {(Object.keys(MODE_LABELS) as AuditMode[]).map((option) => (
                     <button
                       className={cn(mode === option && "mode-selector__button--active")}
+                      disabled={isActive || option !== "strategy"}
                       key={option}
-                      onClick={() => setMode(option)}
+                      onClick={() => setMode("strategy")}
+                      title={option === "strategy" ? "Strategy audit" : "Coming soon"}
                       type="button"
                     >
                       {MODE_LABELS[option]}
+                      {option === "strategy" ? null : <small>SOON</small>}
                     </button>
                   ))}
                 </div>
@@ -536,6 +939,7 @@ export function App() {
 
               <textarea
                 aria-label="Describe what to audit"
+                disabled={isActive}
                 onChange={(event) => {
                   setPrompt(event.target.value);
                   setValidationMessage("");
@@ -552,10 +956,28 @@ export function App() {
                 </div>
               ) : null}
 
+              {statusMessage.length > 0 && failureMessage.length === 0 ? (
+                <div aria-live="polite" className="task-status-line" role="status">
+                  <span className={cn(isActive && "status-pulse")} />
+                  {statusMessage}
+                </div>
+              ) : null}
+
+              {failureMessage.length > 0 ? (
+                <div className="task-failure-message" role="alert">
+                  <X aria-hidden="true" />
+                  <span>{failureMessage}</span>
+                  <Button onClick={() => void startAudit()} type="button" variant="outline">
+                    Retry
+                  </Button>
+                </div>
+              ) : null}
+
               <div className="composer-footer">
                 <div className="composer-tools">
                   <input
                     accept=".csv,.json,.pdf,.py,.ts,.tsx,.txt,image/*"
+                    disabled
                     hidden
                     multiple
                     onChange={(event) => {
@@ -569,6 +991,7 @@ export function App() {
                   />
                   <Button
                     className="attach-button"
+                    disabled
                     onClick={() => fileInputRef.current?.click()}
                     type="button"
                     variant="outline"
@@ -576,22 +999,22 @@ export function App() {
                     <Paperclip />
                     Attach evidence
                   </Button>
-                  <span>CSV, JSON, PDF, CODE</span>
+                  <span>TEXT ONLY · ATTACHMENTS SOON</span>
                 </div>
                 <Button
                   className="run-button"
-                  disabled={isRunning}
-                  onClick={startAudit}
+                  disabled={isActive || mode !== "strategy"}
+                  onClick={() => void startAudit()}
                   type="button"
                 >
-                  {isRunning ? (
+                  {isActive ? (
                     <>
                       <span className="button-spinner" />
                       Auditing
                     </>
-                  ) : runStep === AUDIT_CHECKS.length ? (
+                  ) : auditArtifact !== undefined ? (
                     <>
-                      Review evidence
+                      Run another audit
                       <ArrowRight />
                     </>
                   ) : (
@@ -606,15 +1029,22 @@ export function App() {
 
             <div className="prompt-suggestions" aria-label="Example prompts">
               <span>TRY AN EXAMPLE</span>
-              {PROMPT_EXAMPLES.map((example) => (
-                <button key={example} onClick={() => setPrompt(example)} type="button">
+              {PROMPT_EXAMPLES.map((example, index) => (
+                <button
+                  disabled={isActive || index > 0}
+                  key={example}
+                  onClick={() => setPrompt(example)}
+                  title={index === 0 ? "Use this strategy example" : "Coming soon"}
+                  type="button"
+                >
                   {example}
                   <ArrowRight aria-hidden="true" />
                 </button>
               ))}
             </div>
 
-            <AuditProgress runStep={runStep} />
+            <AuditProgress checks={result?.checks} isActive={isActive} />
+            <AuditReport artifact={auditArtifact} markdown={markdownReport} />
 
             <footer className="page-footer">
               <span>ASSAY / ADVENTUREX 2026</span>
@@ -623,7 +1053,12 @@ export function App() {
             </footer>
           </div>
 
-          <EvidenceRail runStep={runStep} />
+          <EvidenceRail
+            failureMessage={failureMessage}
+            isActive={isActive}
+            result={result}
+            statusMessage={statusMessage}
+          />
         </div>
       </main>
     </div>

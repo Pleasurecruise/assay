@@ -25,12 +25,12 @@ interface AuditCheckResult {
 }
 ```
 
-| Conclusion               | Meaning                                              |
-| ------------------------ | ---------------------------------------------------- |
-| `pass`                   | No material defect was found in this dimension       |
-| `pass_with_reservations` | Usable only with explicit conditions                 |
-| `fail`                   | A reproducible material defect was found             |
-| `insufficient_evidence`  | Required evidence is unavailable or unresolved       |
+| Conclusion               | Meaning                                                                                          |
+| ------------------------ | ------------------------------------------------------------------------------------------------ |
+| `pass`                   | No material defect was found in this dimension                                                   |
+| `pass_with_reservations` | Usable only with explicit conditions                                                             |
+| `fail`                   | A reproducible material defect was found                                                         |
+| `insufficient_evidence`  | Required evidence is unavailable or unresolved                                                   |
 | `not_applicable`         | The active skill profile does not require this check, or the audit ended before execution (§4.1) |
 
 Executed checks use confidence in `[0, 1]`. `not_applicable` uses null
@@ -260,10 +260,10 @@ Shape rules for an early-exit result:
 
 ```ts
 type EarlyExitReasonCode =
-  | "unsupported_input"        // outside the supported strategy family
+  | "unsupported_input" // outside the supported strategy family
   | "insufficient_information" // caller declined or gave unusable answers
-  | "clarification_expired"    // INPUT_REQUIRED wait exceeded policy
-  | "coverage_too_narrow";     // effective window below the §9.1 threshold
+  | "clarification_expired" // INPUT_REQUIRED wait exceeded policy
+  | "coverage_too_narrow"; // effective window below the §9.1 threshold
 ```
 
 - `missingInformation` (result-level, same `MissingEvidence` item shape)
@@ -293,11 +293,41 @@ example:
     }
   ],
   "checks": [
-    { "id": "param-robustness", "conclusion": "not_applicable", "confidence": null, "evidence": [], "missingEvidence": [] },
-    { "id": "data-availability", "conclusion": "not_applicable", "confidence": null, "evidence": [], "missingEvidence": [] },
-    { "id": "cost-stress", "conclusion": "not_applicable", "confidence": null, "evidence": [], "missingEvidence": [] },
-    { "id": "regime-dependency", "conclusion": "not_applicable", "confidence": null, "evidence": [], "missingEvidence": [] },
-    { "id": "homogeneity-decay", "conclusion": "not_applicable", "confidence": null, "evidence": [], "missingEvidence": [] }
+    {
+      "id": "param-robustness",
+      "conclusion": "not_applicable",
+      "confidence": null,
+      "evidence": [],
+      "missingEvidence": []
+    },
+    {
+      "id": "data-availability",
+      "conclusion": "not_applicable",
+      "confidence": null,
+      "evidence": [],
+      "missingEvidence": []
+    },
+    {
+      "id": "cost-stress",
+      "conclusion": "not_applicable",
+      "confidence": null,
+      "evidence": [],
+      "missingEvidence": []
+    },
+    {
+      "id": "regime-dependency",
+      "conclusion": "not_applicable",
+      "confidence": null,
+      "evidence": [],
+      "missingEvidence": []
+    },
+    {
+      "id": "homogeneity-decay",
+      "conclusion": "not_applicable",
+      "confidence": null,
+      "evidence": [],
+      "missingEvidence": []
+    }
   ],
   "moire": { "disputesOpened": 0, "resolved": [], "unresolved": [] },
   "recoveryConditions": [
