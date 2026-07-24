@@ -35,41 +35,31 @@
                 "metric": "neighborhoodSharpeRetention",
                 "value": 1.035,
                 "unit": "ratio (non-baseline median Sharpe / baseline Sharpe)",
-                "sourceRefs": [
-                  "artifact:backtest/param-grid"
-                ]
+                "sourceRefs": ["artifact:backtest/param-grid"]
               },
               {
                 "metric": "baselineSharpe",
                 "value": 1.0447,
                 "unit": "Sharpe ratio (window=20, topN=50)",
-                "sourceRefs": [
-                  "artifact:backtest/param-grid"
-                ]
+                "sourceRefs": ["artifact:backtest/param-grid"]
               },
               {
                 "metric": "nonBaselineMedianSharpe",
                 "value": 1.0813,
                 "unit": "Sharpe ratio, median of 14 non-baseline grid variants",
-                "sourceRefs": [
-                  "artifact:backtest/param-grid"
-                ]
+                "sourceRefs": ["artifact:backtest/param-grid"]
               },
               {
                 "metric": "nonBaselineSharpeRange",
                 "value": "[0.9995, 1.2617]",
                 "unit": "Sharpe ratio min–max across 14 non-baseline variants",
-                "sourceRefs": [
-                  "artifact:backtest/param-grid"
-                ]
+                "sourceRefs": ["artifact:backtest/param-grid"]
               },
               {
                 "metric": "variantCount",
                 "value": 14,
                 "unit": "non-baseline grid variants evaluated",
-                "sourceRefs": [
-                  "artifact:backtest/param-grid"
-                ]
+                "sourceRefs": ["artifact:backtest/param-grid"]
               }
             ],
             "missingEvidence": []
@@ -83,9 +73,7 @@
               {
                 "requirement": "data-availability check execution",
                 "reason": "Check exceeded its 120000ms deadline before producing a valid result.",
-                "sourceRefs": [
-                  "runtime-error:data-availability"
-                ]
+                "sourceRefs": ["runtime-error:data-availability"]
               }
             ]
           },
@@ -98,49 +86,37 @@
                 "metric": "baseline_annualReturn",
                 "value": 0.2818,
                 "unit": "absolute",
-                "sourceRefs": [
-                  "artifact:backtest/cost-ladder"
-                ]
+                "sourceRefs": ["artifact:backtest/cost-ladder"]
               },
               {
                 "metric": "realistic_annualReturn",
                 "value": 0.2594,
                 "unit": "absolute",
-                "sourceRefs": [
-                  "artifact:backtest/cost-ladder"
-                ]
+                "sourceRefs": ["artifact:backtest/cost-ladder"]
               },
               {
                 "metric": "pessimistic_annualReturn",
                 "value": 0.2429,
                 "unit": "absolute",
-                "sourceRefs": [
-                  "artifact:backtest/cost-ladder"
-                ]
+                "sourceRefs": ["artifact:backtest/cost-ladder"]
               },
               {
                 "metric": "return_erosion_baseline_to_pessimistic",
                 "value": 0.0389,
                 "unit": "absolute",
-                "sourceRefs": [
-                  "artifact:backtest/cost-ladder"
-                ]
+                "sourceRefs": ["artifact:backtest/cost-ladder"]
               },
               {
                 "metric": "baseline_annualTurnover",
                 "value": 11.37,
                 "unit": "times_per_year",
-                "sourceRefs": [
-                  "artifact:backtest/cost-ladder"
-                ]
+                "sourceRefs": ["artifact:backtest/cost-ladder"]
               },
               {
                 "metric": "pessimistic_annualTurnover",
                 "value": 10.82,
                 "unit": "times_per_year",
-                "sourceRefs": [
-                  "artifact:backtest/cost-ladder"
-                ]
+                "sourceRefs": ["artifact:backtest/cost-ladder"]
               }
             ],
             "missingEvidence": []
@@ -154,9 +130,7 @@
               {
                 "requirement": "regime-dependency check execution",
                 "reason": "Check execution failed before a valid result was produced.",
-                "sourceRefs": [
-                  "runtime-error:regime-dependency"
-                ]
+                "sourceRefs": ["runtime-error:regime-dependency"]
               }
             ]
           },
@@ -169,9 +143,7 @@
               {
                 "requirement": "homogeneity-decay check execution",
                 "reason": "Check execution failed before a valid result was produced.",
-                "sourceRefs": [
-                  "runtime-error:homogeneity-decay"
-                ]
+                "sourceRefs": ["runtime-error:homogeneity-decay"]
               }
             ]
           }
@@ -187,9 +159,7 @@
             "condition": "提交原回测口径（ClaimProfile）后复审"
           }
         ],
-        "reviewTriggers": [
-          "Required audit evidence or data capabilities become available."
-        ],
+        "reviewTriggers": ["Required audit evidence or data capabilities become available."],
         "assumptionsAndLimits": [
           "The Moiré follow-up pipeline is retained but disabled by default until the prerequisites in MOIRE_SPEC are implemented.",
           "PandaData financial report rows have no verified disclosure timestamp; forecast and performance bulletin info_date fields are preferred for point-in-time evidence.",

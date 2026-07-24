@@ -8,6 +8,7 @@ export interface RuntimeTimelineLoggerOptions {
 interface ToolStart {
   readonly agentKey: string;
   readonly startedAt: number;
+  readonly toolName: string;
 }
 
 function agentKey(event: RuntimeEvent): string {
@@ -56,6 +57,7 @@ export function createRuntimeTimelineLogger(
       toolStarts.set(toolKey(event), {
         agentKey: currentAgentKey,
         startedAt: observedAt,
+        toolName: event.toolName,
       });
       write(
         `[assay-runtime] ${JSON.stringify({
@@ -71,6 +73,10 @@ export function createRuntimeTimelineLogger(
     if (event.type === "tool.completed") {
       const currentToolKey = toolKey(event);
       const started = toolStarts.get(currentToolKey);
+      if (started === undefined && !agentStarts.has(currentAgentKey)) {
+        // Ignore a completion that arrives after the agent deadline record.
+        return;
+      }
       toolStarts.delete(currentToolKey);
       write(
         `[assay-runtime] ${JSON.stringify({
@@ -85,6 +91,21 @@ export function createRuntimeTimelineLogger(
     }
 
     if (event.type === "agent.completed" || event.type === "agent.failed") {
+      for (const [key, started] of toolStarts) {
+        if (started.agentKey === currentAgentKey) {
+          write(
+            `[assay-runtime] ${JSON.stringify({
+              ...base,
+              phase: "tool_finished",
+              toolName: started.toolName,
+              durationMs: durationMs(started.startedAt, observedAt),
+              isError: true,
+              outcome: "abandoned",
+            })}\n`,
+          );
+          toolStarts.delete(key);
+        }
+      }
       write(
         `[assay-runtime] ${JSON.stringify({
           ...base,
@@ -94,11 +115,6 @@ export function createRuntimeTimelineLogger(
         })}\n`,
       );
       agentStarts.delete(currentAgentKey);
-      for (const [key, started] of toolStarts) {
-        if (started.agentKey === currentAgentKey) {
-          toolStarts.delete(key);
-        }
-      }
     }
   };
 }

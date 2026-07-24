@@ -102,4 +102,55 @@ describe("createRuntimeTimelineLogger", () => {
     expect(lines[0]).toContain('"outcome":"failed"');
     expect(lines[0]).not.toContain("provider raw error");
   });
+
+  test("closes an unfinished tool with elapsed time before the agent failure", () => {
+    let clock = 10_000;
+    const lines: string[] = [];
+    const log = createRuntimeTimelineLogger({
+      now: () => clock,
+      write: (line) => lines.push(line),
+    });
+    log({ ...base, type: "agent.started", sequence: 1 });
+    clock = 10_250;
+    log({
+      ...base,
+      type: "tool.started",
+      sequence: 2,
+      toolCallId: "tool-stalled",
+      toolName: "run_availability_audit",
+    });
+    clock = 130_000;
+    log({
+      ...base,
+      type: "agent.failed",
+      sequence: 3,
+      error: "provider raw error",
+    });
+    clock = 130_100;
+    log({
+      ...base,
+      type: "tool.completed",
+      sequence: 4,
+      toolCallId: "tool-stalled",
+      toolName: "run_availability_audit",
+      isError: true,
+    });
+
+    const records = lines.map(
+      (line) => JSON.parse(line.replace(/^\[assay-runtime\] /, "")) as Record<string, unknown>,
+    );
+    expect(records.at(-2)).toMatchObject({
+      phase: "tool_finished",
+      toolName: "run_availability_audit",
+      durationMs: 119_750,
+      isError: true,
+      outcome: "abandoned",
+    });
+    expect(records.at(-1)).toMatchObject({
+      phase: "agent_finished",
+      outcome: "failed",
+      durationMs: 120_000,
+    });
+    expect(records).toHaveLength(4);
+  });
 });
