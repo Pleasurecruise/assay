@@ -12,9 +12,13 @@ returns a five-level verdict (`KEEP / WATCH / QUARANTINE / RETIRE /
 UNVERIFIABLE`) with reproducible numeric evidence and recovery conditions.
 
 The current implementation includes the runtime foundation, five isolated
-audit-agent definitions, their typed parallel fan-out boundary, and the
-PandaData-adapter foundation. Data and backtest tools, Intake, Moiré
-orchestration, reporting, and the A2A gateway remain roadmap items documented
+audit-agent definitions, their typed parallel fan-out boundary, the
+PandaData-adapter foundation, and the Skeleton A2A path for
+`audit_strategy`: natural-language Intake through a Volcano Ark Responses
+endpoint, deterministic `StrategySpec` validation/freezing, five-check fan-out,
+and publication of the versioned verdict Artifact. Data and backtest tools,
+multi-turn clarification, structured A2A input, durable task persistence,
+Moiré refinement, and the remaining public skills are later phases documented
 under `docs/product/`.
 
 While every other agent produces alpha, Assay verifies it. Auditing is a closed-loop complex task, naturally stateless per A2A call, and the track's compliance rules (no return claims, mandatory risk disclosure) describe our product rather than constrain it.
@@ -43,11 +47,13 @@ Product design docs: [PROPOSAL](docs/product/PROPOSAL.md) (why) · [CHECKS](docs
 
 ```text
 apps/
+  a2a-server/        Official A2A SDK server and Skeleton audit executor
   runtime-cli/       Local runtime smoke-test entry point
 packages/
   contracts/         Stable contracts shared by runtime, A2A, and tool layers
   agent-runtime/     oh-my-pi adapter, agent registry, audit events, and tool policy
   agents/            Five audit agents and the typed parallel Main-Agent boundary
+  intake/            Ark parser, deterministic validation, and StrategySpec freezer
 services/
   panda-adapter/     Guarded Python boundary for the PandaData SDK
 docs/
@@ -88,15 +94,61 @@ cp .env.example .env
 mise exec -- bun run runtime -- "Audit this momentum strategy: CSI300 universe, top-50 by 20-day return, monthly rebalance."
 ```
 
+## Run the demo locally
+
+Create a root `.env` from `.env.example`, then set the real Volcano Ark
+credentials and keep the browser origin explicit:
+
+```dotenv
+ARK_API_KEY=...
+ARK_MODEL_DEEPSEEK=...
+ASSAY_A2A_CORS_ORIGIN=http://localhost:5173
+```
+
+Create `apps/web/.env` from `apps/web/.env.example`:
+
+```dotenv
+VITE_A2A_URL=http://127.0.0.1:3001/a2a
+```
+
+Start the A2A server and web workbench in two terminals:
+
+```bash
+mise exec -- bun run a2a:server
+```
+
+```bash
+mise exec -- bun run --filter @assay/web dev
+```
+
+Open `http://localhost:5173`, keep **Strategy** selected, and submit:
+
+> Audit a CSI 300 strategy from 20210101 through 20251231: rank by trailing
+> 20-day momentum, hold the top 50 equal-weighted names, rebalance monthly at
+> close, and use standard costs.
+
+The workbench sends one text Part, displays Task status updates, and polls the
+A2A server until completion. It then renders the verdict, confidence, all five
+check cards, and the collapsible full report. Until market-data and backtest
+tools land, the honest expected result is `UNVERIFIABLE`, with each check
+reporting `insufficient_evidence`. If required strategy details are absent,
+the same result is presented as a prominent early exit with its missing
+information and recovery conditions, rather than as an application error.
+
+The server listens on port `3001`; discovery and health endpoints are
+`http://127.0.0.1:3001/.well-known/agent-card.json` and
+`http://127.0.0.1:3001/healthz`. The Agent Card currently advertises only
+`audit_strategy`; Factor and Compare are visible as coming-soon modes and
+cannot submit.
+
 ## Model Configuration
 
-The track mandates DeepSeek V4 Pro through Volcano Ark. The current CLI reads
-only `ASSAY_MODEL_PROVIDER`, `ASSAY_MODEL_ID`, and
-`ASSAY_MODEL_API_KEY`/`DEEPSEEK_API_KEY`; it does **not** yet read the `ARK_*`
-variables listed as reserved target configuration in `.env.example`. Wiring
-the Ark endpoint into the model adapter is therefore a blocking roadmap item,
-and the generic DeepSeek provider is development-only. Credentials must remain
-in environment variables; local competition token material lives in the
+The track mandates DeepSeek V4 Pro through Volcano Ark. The A2A server reads
+`ARK_API_KEY`, `ARK_BASE_URL`, and `ARK_MODEL_DEEPSEEK`; the endpoint ID is
+sent as the Responses API `model`. The standalone runtime CLI remains a
+development path and reads `ASSAY_MODEL_PROVIDER`, `ASSAY_MODEL_ID`, and
+`ASSAY_MODEL_API_KEY`/`DEEPSEEK_API_KEY`. Credentials must remain in
+environment variables; local competition token material lives in the
 git-ignored `reference/model-api-guide.md`.
 
 ## Current Security Boundary

@@ -1,15 +1,24 @@
 {
-  "name": "@assay/checks-e2e",
+  "name": "@assay/a2a-server",
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts"
+  },
   "dependencies": {
     "@a2a-js/sdk": "1.0.0",
-    "@assay/a2a-server": "workspace:*",
     "@assay/agent-runtime": "workspace:*",
     "@assay/agents": "workspace:*",
     "@assay/contracts": "workspace:*",
     "@assay/intake": "workspace:*",
-    "@oh-my-pi/pi-catalog": "17.0.8"
+    "@oh-my-pi/pi-catalog": "17.0.8",
+    "express": "5.2.1"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.6"
   }
 }

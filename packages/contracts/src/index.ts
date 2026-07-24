@@ -1,4 +1,8 @@
 export * from "./audit-checks";
+export * from "./audit-artifact";
+export * from "./audit-request";
+export * from "./strategy-spec";
+export * from "./strategy-spec-hash";
 
 export type AgentId = string;
 

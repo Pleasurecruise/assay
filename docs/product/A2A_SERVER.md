@@ -141,21 +141,21 @@ into check Agents.
 
 ## 5. Component Responsibilities
 
-| Component | Responsibility |
-| --- | --- |
-| `AgentCardProvider` | Publishes only capabilities proven compatible with the PandaAI evaluator |
-| `A2AProtocolAdapter` | Maps the selected A2A version and transport into version-neutral application commands and events |
-| `AssayAgentExecutor` | Owns Task execution, continuation, cancellation, and event publication |
-| `StrategyInputDecoder` | Reads natural-language, structured data, and JSON-text fallback Parts without applying business defaults |
-| `IntakeService` | Produces and revises a typed strategy draft |
-| `StrategySpecValidator` | Applies deterministic schema, range, cross-field, and product-scope validation |
-| `ClarificationPlanner` | Converts only user-resolvable blockers into stable clarification questions |
-| `CapabilityRegistry` | Records what the deployed Ark and PandaData integrations have actually verified |
-| `StrategySpecFreezer` | Expands declared defaults, canonicalizes the Spec, records provenance, and computes its hash |
-| `AuditOrchestrator` | Projects `FrozenAuditInput` into the implemented `ParallelAuditChecksRequest`, composes the existing `ParallelAuditCheckRunner` with Moiré and reporting; it does not know A2A (see §15.1) |
-| `TaskStore` | Persists externally visible A2A Task state |
-| `IntakeSessionStore` | Persists the authoritative draft, revisions, issues, and processed Messages |
-| `ArtifactStore` | Persists final output before Task completion is published |
+| Component               | Responsibility                                                                                                                                                                             |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `AgentCardProvider`     | Publishes only capabilities proven compatible with the PandaAI evaluator                                                                                                                   |
+| `A2AProtocolAdapter`    | Maps the selected A2A version and transport into version-neutral application commands and events                                                                                           |
+| `AssayAgentExecutor`    | Owns Task execution, continuation, cancellation, and event publication                                                                                                                     |
+| `StrategyInputDecoder`  | Reads natural-language, structured data, and JSON-text fallback Parts without applying business defaults                                                                                   |
+| `IntakeService`         | Produces and revises a typed strategy draft                                                                                                                                                |
+| `StrategySpecValidator` | Applies deterministic schema, range, cross-field, and product-scope validation                                                                                                             |
+| `ClarificationPlanner`  | Converts only user-resolvable blockers into stable clarification questions                                                                                                                 |
+| `CapabilityRegistry`    | Records what the deployed Ark and PandaData integrations have actually verified                                                                                                            |
+| `StrategySpecFreezer`   | Expands declared defaults, canonicalizes the Spec, records provenance, and computes its hash                                                                                               |
+| `AuditOrchestrator`     | Projects `FrozenAuditInput` into the implemented `ParallelAuditChecksRequest`, composes the existing `ParallelAuditCheckRunner` with Moiré and reporting; it does not know A2A (see §15.1) |
+| `TaskStore`             | Persists externally visible A2A Task state                                                                                                                                                 |
+| `IntakeSessionStore`    | Persists the authoritative draft, revisions, issues, and processed Messages                                                                                                                |
+| `ArtifactStore`         | Persists final output before Task completion is published                                                                                                                                  |
 
 ## 6. Public Input Forms
 
@@ -263,18 +263,18 @@ Spec and disclosed in the final Artifact.
 
 For the MVP, the intended policy is:
 
-| Field | Missing-field behavior |
-| --- | --- |
-| `universe.index` | Ask; there is no safe default universe |
-| `signal` | Ask; there is no safe default signal |
-| supported template parameters | Apply the template's declared defaults and disclose them |
-| `selection.topN` | Ask |
-| `selection.weighting` | Default to `equal`, the only MVP weighting mode, and disclose |
-| `rebalance.frequency` | Ask |
-| `rebalance.at` | Default to `close`, the only MVP execution point, and disclose |
-| `window.start` / `window.end` | Ask; never invent a historical window |
-| `costs.model` | Default to `standard` and disclose |
-| `claims` | Keep absent; never invent performance claims |
+| Field                         | Missing-field behavior                                         |
+| ----------------------------- | -------------------------------------------------------------- |
+| `universe.index`              | Ask; there is no safe default universe                         |
+| `signal`                      | Ask; there is no safe default signal                           |
+| supported template parameters | Apply the template's declared defaults and disclose them       |
+| `selection.topN`              | Ask                                                            |
+| `selection.weighting`         | Default to `equal`, the only MVP weighting mode, and disclose  |
+| `rebalance.frequency`         | Ask                                                            |
+| `rebalance.at`                | Default to `close`, the only MVP execution point, and disclose |
+| `window.start` / `window.end` | Ask; never invent a historical window                          |
+| `costs.model`                 | Default to `standard` and disclose                             |
+| `claims`                      | Keep absent; never invent performance claims                   |
 
 An explicit unsupported value is not replaced by a default. For example,
 `weighting: "cap"` does not silently become `"equal"`.
@@ -310,14 +310,14 @@ type IntakeOutcome =
 
 Every issue has an owner and a resolution route:
 
-| Cause | Owner | Behavior |
-| --- | --- | --- |
-| Required information is missing | caller | `INPUT_REQUIRED` |
-| Natural language has multiple plausible meanings | caller | `INPUT_REQUIRED` with explicit alternatives |
-| A value is malformed or locally out of range but correctable | caller | `INPUT_REQUIRED` with field path and constraint |
-| A requested feature is outside Assay's supported strategy family | Assay | Complete with an `UNVERIFIABLE` Artifact |
-| A Panda capability is absent or lacks historical coverage | provider | Auto-disposed by the deterministic coverage policy below; never a user question |
-| A transient dependency or gateway fails | system | bounded retry, then safe A2A failure when the whole Task cannot proceed |
+| Cause                                                            | Owner    | Behavior                                                                        |
+| ---------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------- |
+| Required information is missing                                  | caller   | `INPUT_REQUIRED`                                                                |
+| Natural language has multiple plausible meanings                 | caller   | `INPUT_REQUIRED` with explicit alternatives                                     |
+| A value is malformed or locally out of range but correctable     | caller   | `INPUT_REQUIRED` with field path and constraint                                 |
+| A requested feature is outside Assay's supported strategy family | Assay    | Complete with an `UNVERIFIABLE` Artifact                                        |
+| A Panda capability is absent or lacks historical coverage        | provider | Auto-disposed by the deterministic coverage policy below; never a user question |
+| A transient dependency or gateway fails                          | system   | bounded retry, then safe A2A failure when the whole Task cannot proceed         |
 
 Only caller-owned issues generate clarification questions — of any kind. The
 server must not ask a user to repair a Panda outage, supply data that the
@@ -473,20 +473,20 @@ may be omitted, truncated, or unavailable after reconnection.
 
 The internal phase is more precise than the public A2A state:
 
-| Internal phase | A2A state | Meaning |
-| --- | --- | --- |
-| `intake.received` | `SUBMITTED` | Task accepted |
-| `intake.decoding` | `WORKING` | Input form and request envelope are being decoded |
-| `intake.parsing` | `WORKING` | Natural language is being converted into a draft |
-| `intake.awaiting_input` | `INPUT_REQUIRED` | Caller-owned blockers remain |
-| `intake.preflight` | `WORKING` | Static and live capability checks are running |
-| `audit.queued` | `WORKING` | Canonical Spec and CheckPlan are frozen |
-| `audit.checking` | `WORKING` | Independent checks are running |
-| `audit.moire` | `WORKING` | Material disagreements are being investigated |
-| `audit.reporting` | `WORKING` | Verdict and final Artifact are being assembled |
-| `terminal.completed` | `COMPLETED` | Final Artifact has been persisted and published |
-| `terminal.canceled` | `CANCELED` | Actual execution has stopped |
-| `terminal.failed` | `FAILED` | A system failure prevented a valid business result |
+| Internal phase          | A2A state        | Meaning                                            |
+| ----------------------- | ---------------- | -------------------------------------------------- |
+| `intake.received`       | `SUBMITTED`      | Task accepted                                      |
+| `intake.decoding`       | `WORKING`        | Input form and request envelope are being decoded  |
+| `intake.parsing`        | `WORKING`        | Natural language is being converted into a draft   |
+| `intake.awaiting_input` | `INPUT_REQUIRED` | Caller-owned blockers remain                       |
+| `intake.preflight`      | `WORKING`        | Static and live capability checks are running      |
+| `audit.queued`          | `WORKING`        | Canonical Spec and CheckPlan are frozen            |
+| `audit.checking`        | `WORKING`        | Independent checks are running                     |
+| `audit.moire`           | `WORKING`        | Material disagreements are being investigated      |
+| `audit.reporting`       | `WORKING`        | Verdict and final Artifact are being assembled     |
+| `terminal.completed`    | `COMPLETED`      | Final Artifact has been persisted and published    |
+| `terminal.canceled`     | `CANCELED`       | Actual execution has stopped                       |
+| `terminal.failed`       | `FAILED`         | A system failure prevented a valid business result |
 
 The protocol adapter maps these version-neutral names to the concrete enum
 representation expected by the negotiated A2A version.
@@ -521,15 +521,15 @@ missing-field questions.
 The public `StrategySpec` remains vendor-neutral enough for callers to
 understand, while adapters own Panda-specific parameter names and quirks.
 
-| Strategy requirement | Panda capability used during preflight or execution |
-| --- | --- |
-| `universe.index` | `get_index_weights(index_symbol, start_date, end_date)` |
-| library signal | `get_factor(factors, start_date, end_date, symbol/index_component, type)` |
-| momentum, reversal, volatility templates | `get_market_data` plus `get_adj_factor` |
-| turnover template | market data fields that include verified turnover coverage |
-| weekly/monthly rebalance | `get_trade_cal` and related trade-date operations |
-| point-in-time tradability | `get_trade_list` and `get_stock_status_change` |
-| financial timing checks | `get_fina_forecast`, `get_fina_performance`, and guarded use of `get_fina_reports` |
+| Strategy requirement                     | Panda capability used during preflight or execution                                |
+| ---------------------------------------- | ---------------------------------------------------------------------------------- |
+| `universe.index`                         | `get_index_weights(index_symbol, start_date, end_date)`                            |
+| library signal                           | `get_factor(factors, start_date, end_date, symbol/index_component, type)`          |
+| momentum, reversal, volatility templates | `get_market_data` plus `get_adj_factor`                                            |
+| turnover template                        | market data fields that include verified turnover coverage                         |
+| weekly/monthly rebalance                 | `get_trade_cal` and related trade-date operations                                  |
+| point-in-time tradability                | `get_trade_list` and `get_stock_status_change`                                     |
+| financial timing checks                  | `get_fina_forecast`, `get_fina_performance`, and guarded use of `get_fina_reports` |
 
 The capability check must distinguish:
 
@@ -664,19 +664,19 @@ wins (`skill`, `subject.id`, `auditId`, `schemaVersion`).
 
 `AuditOrchestrator` performs a mechanical, loss-free projection:
 
-| `FrozenAuditInput` source | `ParallelAuditChecksRequest` field | Rule |
-| --- | --- | --- |
-| — | `schemaVersion` | Constant `AUDIT_CHECK_SCHEMA_VERSION` from contracts |
-| Task-scoped audit id | `auditId` | Generated once at Task creation; stable across process restarts and retries |
-| `skill` | `skill` | Verbatim. `compare_robustness` never reaches this contract (the implemented type already excludes it) |
-| Envelope `subject.id`, or generated | `subject.id` | Caller-supplied id when present, otherwise derived from `auditId` |
-| `skill` | `subject.kind` | `audit_strategy` → `"strategy"`, `audit_factor` → `"factor"` (enforced by the runner's validator) |
-| `spec` | `subject.input` | The canonical JSON serialization of `CanonicalStrategySpec` — see below |
-| Factor profile (factor audits only) | `subject.hasPortfolioConstruction` | Set by Intake; ignored for strategy audits |
-| `dataAsOf` | `dataAsOf` | Verbatim |
-| Task trace id | `traceId` | Verbatim |
-| `checkPlan` budgets | `budgets` | Per-check `timeoutMs` and `maxVariants` fixed during Intake |
-| Provenance fields | `metadata` | String-valued only: `specHash`, `capabilitySnapshotId`, `codeRevision`, `requestSchemaVersion` |
+| `FrozenAuditInput` source           | `ParallelAuditChecksRequest` field | Rule                                                                                                  |
+| ----------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| —                                   | `schemaVersion`                    | Constant `AUDIT_CHECK_SCHEMA_VERSION` from contracts                                                  |
+| Task-scoped audit id                | `auditId`                          | Generated once at Task creation; stable across process restarts and retries                           |
+| `skill`                             | `skill`                            | Verbatim. `compare_robustness` never reaches this contract (the implemented type already excludes it) |
+| Envelope `subject.id`, or generated | `subject.id`                       | Caller-supplied id when present, otherwise derived from `auditId`                                     |
+| `skill`                             | `subject.kind`                     | `audit_strategy` → `"strategy"`, `audit_factor` → `"factor"` (enforced by the runner's validator)     |
+| `spec`                              | `subject.input`                    | The canonical JSON serialization of `CanonicalStrategySpec` — see below                               |
+| Factor profile (factor audits only) | `subject.hasPortfolioConstruction` | Set by Intake; ignored for strategy audits                                                            |
+| `dataAsOf`                          | `dataAsOf`                         | Verbatim                                                                                              |
+| Task trace id                       | `traceId`                          | Verbatim                                                                                              |
+| `checkPlan` budgets                 | `budgets`                          | Per-check `timeoutMs` and `maxVariants` fixed during Intake                                           |
+| Provenance fields                   | `metadata`                         | String-valued only: `specHash`, `capabilitySnapshotId`, `codeRevision`, `requestSchemaVersion`        |
 
 Three decisions close the previously open seams:
 
@@ -962,18 +962,18 @@ organizer's illustrative Card.
 
 ## 23. Failure Semantics
 
-| Condition | Result |
-| --- | --- |
-| Natural language is incomplete but answerable | `INPUT_REQUIRED` |
-| Structured Spec is correctable | `INPUT_REQUIRED` with field-level issues |
-| Text conflicts with structured input | `INPUT_REQUIRED` with both values shown |
-| Arbitrary code or unsupported strategy family | `COMPLETED` with `UNVERIFIABLE` Artifact (§4.1 shape, `reasonCode: unsupported_input`) |
-| Caller will not provide required information | `COMPLETED` with `UNVERIFIABLE` Artifact (`reasonCode: insufficient_information` after the §10.4 round cap, or `clarification_expired` after the 10-minute reply timeout) |
-| One Panda capability is unavailable | affected check becomes `insufficient_evidence`; siblings continue |
-| Required historical coverage is narrower than requested | deterministic coverage policy (§9.1): proceed on the effective window with disclosed degradation, or complete `UNVERIFIABLE` (`reasonCode: coverage_too_narrow`) with a `retryWith` suggestion |
-| Model or data dependency transiently fails for the whole audit | bounded retry, then A2A `FAILED` with safe retry guidance |
-| Caller cancels | actual work stops, then `CANCELED` |
-| Report deadline is reached | preserve valid partial evidence and unresolved limitations; never fabricate completion |
+| Condition                                                      | Result                                                                                                                                                                                         |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Natural language is incomplete but answerable                  | `INPUT_REQUIRED`                                                                                                                                                                               |
+| Structured Spec is correctable                                 | `INPUT_REQUIRED` with field-level issues                                                                                                                                                       |
+| Text conflicts with structured input                           | `INPUT_REQUIRED` with both values shown                                                                                                                                                        |
+| Arbitrary code or unsupported strategy family                  | `COMPLETED` with `UNVERIFIABLE` Artifact (§4.1 shape, `reasonCode: unsupported_input`)                                                                                                         |
+| Caller will not provide required information                   | `COMPLETED` with `UNVERIFIABLE` Artifact (`reasonCode: insufficient_information` after the §10.4 round cap, or `clarification_expired` after the 10-minute reply timeout)                      |
+| One Panda capability is unavailable                            | affected check becomes `insufficient_evidence`; siblings continue                                                                                                                              |
+| Required historical coverage is narrower than requested        | deterministic coverage policy (§9.1): proceed on the effective window with disclosed degradation, or complete `UNVERIFIABLE` (`reasonCode: coverage_too_narrow`) with a `retryWith` suggestion |
+| Model or data dependency transiently fails for the whole audit | bounded retry, then A2A `FAILED` with safe retry guidance                                                                                                                                      |
+| Caller cancels                                                 | actual work stops, then `CANCELED`                                                                                                                                                             |
+| Report deadline is reached                                     | preserve valid partial evidence and unresolved limitations; never fabricate completion                                                                                                         |
 
 ## 24. Proposed Repository Placement
 
@@ -1031,12 +1031,12 @@ This document is the complete design; it is not the build order. Phases
 follow DEMO.md (walking skeleton → submission baseline → polish). Anything
 not listed for a phase is not built in that phase.
 
-| Phase | Scope |
-| --- | --- |
-| **Skeleton** | Agent Card (`audit_strategy` only) · text input → Intake parse → validate → freeze → runner → Artifact publication, end to end · incomplete or unsupported input exits early via the §4.1 Artifact (no clarification yet) |
+| Phase                     | Scope                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Skeleton**              | Agent Card (`audit_strategy` only) · text input → Intake parse → validate → freeze → runner → Artifact publication, end to end · incomplete or unsupported input exits early via the §4.1 Artifact (no clarification yet)                                                                                                                                                                                  |
 | **Baseline** (submission) | Multi-turn clarification (§10, §10.4) · structured input + JSON-text fallback (§6) · default policy (§8) · coverage disposition (§9.1) · SQLite persistence, `messageId` idempotency, serialized replies (§19) · restart recovery · cancellation (§20) · stage-level progress events (§17) · strict publication order (§18) · credential separation, input limits, no-exec policy (§21) · `specHash` (§15) |
-| **Polish** | SSE streaming (polling is the baseline path) · full per-field provenance (baseline tracks `defaultsApplied` only) · Panda adapter caching and worker recycling · retention/purge policy · `audit_factor` path |
-| **Out of scope** | Outbox/atomic event commit (single instance; state and Artifact are durable, a lost progress event is acceptable) · multi-instance leases and cross-instance cancellation · Arrow serialization (JSON suffices) · `compare_robustness` |
+| **Polish**                | SSE streaming (polling is the baseline path) · full per-field provenance (baseline tracks `defaultsApplied` only) · Panda adapter caching and worker recycling · retention/purge policy · `audit_factor` path                                                                                                                                                                                              |
+| **Out of scope**          | Outbox/atomic event commit (single instance; state and Artifact are durable, a lost progress event is acceptable) · multi-instance leases and cross-instance cancellation · Arrow serialization (JSON suffices) · `compare_robustness`                                                                                                                                                                     |
 
 Two simplifications apply to §5 at baseline: `A2AProtocolAdapter` is a thin
 wrapper over the official SDK's types for the one deployed protocol version —

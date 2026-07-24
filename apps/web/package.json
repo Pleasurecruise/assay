@@ -9,6 +9,8 @@
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
+    "@a2a-js/sdk": "1.0.0",
+    "@assay/contracts": "workspace:*",
     "ai": "7.0.37",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",

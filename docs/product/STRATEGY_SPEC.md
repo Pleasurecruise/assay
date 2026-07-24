@@ -9,14 +9,13 @@
 ```jsonc
 {
   "specVersion": "1",
-  "universe":  { "index": "000300.SH" },
-  "signal":    { "kind": "template", "template": "momentum",
-                 "params": { "window": 20 } },
+  "universe": { "index": "000300.SH" },
+  "signal": { "kind": "template", "template": "momentum", "params": { "window": 20 } },
   "selection": { "topN": 50, "weighting": "equal" },
   "rebalance": { "frequency": "monthly", "at": "close" },
-  "window":    { "start": "20210101", "end": "20251231" },
-  "costs":     { "model": "standard" },
-  "claims":    { "annualReturn": 0.18, "sharpe": 1.9 }   // 可选
+  "window": { "start": "20210101", "end": "20251231" },
+  "costs": { "model": "standard" },
+  "claims": { "annualReturn": 0.18, "sharpe": 1.9 }, // 可选
 }
 ```
 
@@ -26,8 +25,8 @@
 
 ### universe（股票池）
 
-| 字段 | 类型 | 约束 | PandaAI 锚点 |
-| --- | --- | --- | --- |
+| 字段    | 类型   | 约束                     | PandaAI 锚点                                                                                                                                                                           |
+| ------- | ------ | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `index` | string | 指数代码，如 `000300.SH` | `get_index_weights(index_symbol)` / `get_factor(index_component)`；历史时点成分由 `get_index_weights` 起止日期查询取得——**回测各调仓日必须用当日真实成分**（数据可得性检查的核对基准） |
 
 MVP 只支持指数股票池。自定义股票清单（列举代码）作为低成本扩展可后补；"全市场"暂不支持（数据量与限流风险）。
@@ -36,58 +35,58 @@ MVP 只支持指数股票池。自定义股票清单（列举代码）作为低�
 
 **第一层（MVP，必须实现）：**
 
-| kind | 结构 | 求值方式 | PandaAI 锚点 |
-| --- | --- | --- | --- |
-| `library` | `{ "kind": "library", "name": "<因子名>" }` | 调平台因子库取现成因子值 | `get_factor(factors, start_date, end_date, index_component, type)` |
-| `template` | `{ "kind": "template", "template": "<模板名>", "params": {...} }` | 本地用日线行情计算 | `get_market_data` + `get_adj_factor` |
+| kind       | 结构                                                              | 求值方式                 | PandaAI 锚点                                                       |
+| ---------- | ----------------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------ |
+| `library`  | `{ "kind": "library", "name": "<因子名>" }`                       | 调平台因子库取现成因子值 | `get_factor(factors, start_date, end_date, index_component, type)` |
+| `template` | `{ "kind": "template", "template": "<模板名>", "params": {...} }` | 本地用日线行情计算       | `get_market_data` + `get_adj_factor`                               |
 
 内置模板（首批）：
 
-| template | params（默认值） | 定义 |
-| --- | --- | --- |
-| `momentum` | `window` (20) | 过去 window 个交易日收益率，降序 |
-| `reversal` | `window` (5) | 过去 window 个交易日收益率，升序 |
-| `volatility` | `window` (20), `direction` ("low") | 过去 window 日收益标准差，low=升序 |
-| `turnover_rate` | `window` (20), `direction` ("low") | 过去 window 日换手均值 |
+| template        | params（默认值）                   | 定义                               |
+| --------------- | ---------------------------------- | ---------------------------------- |
+| `momentum`      | `window` (20)                      | 过去 window 个交易日收益率，降序   |
+| `reversal`      | `window` (5)                       | 过去 window 个交易日收益率，升序   |
+| `volatility`    | `window` (20), `direction` ("low") | 过去 window 日收益标准差，low=升序 |
+| `turnover_rate` | `window` (20), `direction` ("low") | 过去 window 日换手均值             |
 
 > 模板的 `params` 就是参数稳健性检查的扰动面：检查器对每个数值型 param 做邻域扰动，无需模板作者额外声明。新增模板必须写明：参数、默认值、方向、所需字段。
 
 **第二层（冲刺目标，非 MVP 承诺）：**
 
-| kind | 结构 | 说明 |
-| --- | --- | --- |
+| kind      | 结构                                                           | 说明                                                                                                                                                             |
+| --------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `formula` | `{ "kind": "formula", "expr": "RANK(CLOSE/DELAY(CLOSE,20))" }` | panda_factor 公式语法（RANK/DELAY/STDDEV/CORRELATION 等算子），与平台生态同语言。需从 panda_factor 源码集成算子库（不在 PyPI）。未实现前收到此类输入按范围外处理 |
 
 **明确排除：** 用户自带 Python/任意代码的因子。理由：等于执行陌生代码，违反 runtime 的 exec 默认拒绝策略与赛道合规要求。此类输入返回 `UNVERIFIABLE`，说明支持的表达方式。
 
 ### selection（选取规则）
 
-| 字段 | 类型 | 约束 |
-| --- | --- | --- |
-| `topN` | int | 1–200；参数稳健性检查的扰动维度之一 |
+| 字段        | 类型 | 约束                                  |
+| ----------- | ---- | ------------------------------------- |
+| `topN`      | int  | 1–200；参数稳健性检查的扰动维度之一   |
 | `weighting` | enum | MVP 仅 `equal`；`cap`（市值加权）后补 |
 
 ### rebalance（调仓）
 
-| 字段 | 类型 | 约束 | PandaAI 锚点 |
-| --- | --- | --- | --- |
-| `frequency` | enum | `monthly` / `weekly`（MVP 两档） | 调仓日按 `get_trade_cal` 取真实交易日（月末/周末的最后交易日） |
-| `at` | enum | MVP 仅 `close`（收盘调仓，次日生效价按收盘估） | 避免日内数据依赖 |
+| 字段        | 类型 | 约束                                           | PandaAI 锚点                                                   |
+| ----------- | ---- | ---------------------------------------------- | -------------------------------------------------------------- |
+| `frequency` | enum | `monthly` / `weekly`（MVP 两档）               | 调仓日按 `get_trade_cal` 取真实交易日（月末/周末的最后交易日） |
+| `at`        | enum | MVP 仅 `close`（收盘调仓，次日生效价按收盘估） | 避免日内数据依赖                                               |
 
 ### window（回测区间）
 
-| 字段 | 约束 | 锚点 |
-| --- | --- | --- |
+| 字段            | 约束                                                                                                                | 锚点                                                     |
+| --------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | `start` / `end` | `YYYYMMDD`，与 PandaAI 各接口一致；跨度 ≤ 5 年（`get_market_data` 硬上限）；不足 2 年时报告须标注"样本过短"保留意见 | 时间平移变体同样受 5 年上限约束，Intake 分配预算时须校验 |
 
 ### costs（成本假设）
 
-| model | 含义 |
-| --- | --- |
-| `none` | 不计成本（用于复现宣称业绩） |
-| `standard` | 双边佣金 + 印花税（默认参数集中定义于 contracts） |
-| `realistic` | standard + 冲击成本（按成交量占比估） |
-| `pessimistic` | realistic × 1.5 |
+| model         | 含义                                              |
+| ------------- | ------------------------------------------------- |
+| `none`        | 不计成本（用于复现宣称业绩）                      |
+| `standard`    | 双边佣金 + 印花税（默认参数集中定义于 contracts） |
+| `realistic`   | standard + 冲击成本（按成交量占比估）             |
+| `pessimistic` | realistic × 1.5                                   |
 
 被审策略给定一个基准 model；交易成本压力测试会在四档上全部重跑，此字段只决定"判决页"对照的基线。
 
@@ -97,7 +96,7 @@ MVP 只支持指数股票池。自定义股票清单（列举代码）作为低�
 
 ## 3. 校验规则（Intake 出口检查）
 
-1. 必填：`universe` / `signal` / `selection` / `rebalance` / `window`；缺任一 → `UNVERIFIABLE` + 缺失清单；
+1. 必填：`universe` / `signal` / `selection` / `rebalance` / `window`；缺任一 → 先走 A2A `INPUT_REQUIRED` 多轮澄清补齐（轮次上限与超时见 A2A_SERVER.md §10.4）；澄清额度用尽或超时仍缺 → `UNVERIFIABLE` + 缺失清单（早退 Artifact 形状见 VERDICT_SPEC §4.1）；
 2. `window` 跨度 ≤5 年、`end` 不晚于数据截止日；
 3. `signal.kind` ∈ 已实现集合；`library` 因子名需在因子库存在（Intake 阶段调 `get_factor` 试探一次）；
 4. 数值范围越界（如 `topN` > 200）→ 拒绝并说明，不静默截断；
@@ -110,26 +109,30 @@ MVP 只支持指数股票池。自定义股票清单（列举代码）作为低�
 > "在沪深 300 里每月底买过去 20 天涨幅最大的 50 只，等权持有一个月"
 
 ```json
-{ "specVersion": "1",
+{
+  "specVersion": "1",
   "universe": { "index": "000300.SH" },
   "signal": { "kind": "template", "template": "momentum", "params": { "window": 20 } },
   "selection": { "topN": 50, "weighting": "equal" },
   "rebalance": { "frequency": "monthly", "at": "close" },
   "window": { "start": "20210101", "end": "20251231" },
   "costs": { "model": "none" },
-  "claims": { "annualReturn": 0.18, "sharpe": 1.9 } }
+  "claims": { "annualReturn": 0.18, "sharpe": 1.9 }
+}
 ```
 
 **演示例二（靶子因子，库因子引用）：**
 
 ```json
-{ "specVersion": "1",
+{
+  "specVersion": "1",
   "universe": { "index": "000905.SH" },
   "signal": { "kind": "library", "name": "<赛前构造并入库的过拟合因子>" },
   "selection": { "topN": 30, "weighting": "equal" },
   "rebalance": { "frequency": "weekly", "at": "close" },
   "window": { "start": "20220101", "end": "20251231" },
-  "costs": { "model": "standard" } }
+  "costs": { "model": "standard" }
+}
 ```
 
 ## 5. 版本与演进

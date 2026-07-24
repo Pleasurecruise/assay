@@ -8,6 +8,7 @@
   ],
   "type": "module",
   "scripts": {
+    "a2a:server": "bun run apps/a2a-server/src/index.ts",
     "check": "vp check && vp test && bun run sdk:test",
     "e2e:checks": "bun run tests/e2e/src/index.ts",
     "fmt": "vp fmt . --write",

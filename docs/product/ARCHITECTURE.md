@@ -47,26 +47,32 @@ oh-my-pi agents and are not separately discoverable A2A services.
 
 ### A2A Server
 
-- Publishes an Agent Card and the three public skills `audit_strategy`,
-  `audit_factor`, and `compare_robustness`.
-- Accepts natural-language messages and maps one audit to one A2A Task.
+- Publishes an Agent Card whose baseline lists only `audit_strategy`;
+  `audit_factor` and `compare_robustness` join the Card by configuration once
+  their full paths pass tests (A2A_SERVER.md §22).
+- The implemented Skeleton accepts natural-language text and maps one audit to
+  one A2A Task. Structured `StrategySpec` input and multi-turn
+  `INPUT_REQUIRED` clarification before the spec freezes are Baseline work
+  (A2A_SERVER.md §10.4 and §24.1).
 - Publishes progress as task status updates and returns final output as
   Artifacts with structured data Parts. Messages are not used as the reliable
   result channel.
-- Treats A2A task persistence as a gateway concern. An audit run itself is
-  self-contained and never depends on previous A2A task history.
-- Propagates A2A cancellation into the runtime `AbortSignal`.
+- Treats A2A task persistence as a gateway concern. The Skeleton uses
+  in-memory Artifact storage; durable Task and clarification state arrive in
+  Baseline. An audit run never depends on other Tasks' history, and execution
+  receives only the frozen spec.
+- Cancellation propagation into the runtime `AbortSignal` is Baseline work.
 
-The gateway is not implemented yet. It should use the official A2A JavaScript
-SDK `AgentExecutor` and execution event bus rather than introducing a custom
-task protocol.
+The Skeleton gateway is implemented with the official A2A JavaScript SDK
+`AgentExecutor` and execution event bus rather than a custom task protocol.
 
 ### Intake
 
-- Parses a strategy, factor expression, or code input.
-- Identifies subject kind, parameters, and data dependencies.
-- Produces a fixed check plan and assigns variant and time budgets before
-  execution starts.
+- The implemented Skeleton parses natural-language strategy input, validates a
+  typed `StrategySpec`, applies declared defaults, and freezes canonical bytes
+  plus provenance before execution.
+- Factor expressions, structured input, clarification, capability probes, and
+  the fixed budget-plan builder remain later-phase work.
 
 ### Five Checks
 

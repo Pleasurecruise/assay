@@ -13,9 +13,11 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "paths": {
+      "@assay/a2a-server": ["./apps/a2a-server/src/index.ts"],
       "@assay/contracts": ["./packages/contracts/src/index.ts"],
       "@assay/agent-runtime": ["./packages/agent-runtime/src/index.ts"],
-      "@assay/agents": ["./packages/agents/src/index.ts"]
+      "@assay/agents": ["./packages/agents/src/index.ts"],
+      "@assay/intake": ["./packages/intake/src/index.ts"]
     }
   },
   "include": ["apps/**/*.ts", "packages/**/*.ts", "tests/**/*.ts"]

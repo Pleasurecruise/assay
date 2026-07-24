@@ -130,24 +130,32 @@ The runner accepts a per-check `timeoutMs`, which is still capped by
 
 ## 9. A2A Boundary
 
-The external server should use the official A2A JavaScript SDK:
+The Skeleton server uses the official A2A JavaScript SDK to:
 
 - implement one `AgentExecutor` for the complete Assay audit;
-- map one inbound audit to one A2A Task;
+- map one inbound natural-language audit to one A2A Task;
 - publish working status while internal stages run;
-- propagate cancellation to the batch `AbortSignal`;
 - publish structured and text output as Artifact Parts;
-- mark the task completed only after Artifact publication.
+- persist the Artifact before marking the Task completed.
+
+Baseline extends this boundary with structured input, multi-turn
+`INPUT_REQUIRED` clarification on the same Task, durable Task state, restart
+recovery, and cancellation propagation to the batch `AbortSignal`. A frozen
+Task never re-enters `INPUT_REQUIRED`.
 
 Internal checks are not separate A2A agents. This keeps protocol lifecycle out
 of numerical check logic and avoids five independently persisted remote tasks
 for one audit.
 
+The authoritative gateway design, including input forms, clarification,
+early-exit Artifacts, and implementation phasing, is
+`docs/product/A2A_SERVER.md`.
+
 ## 10. Open Work
 
-- Ark endpoint routing for the required DeepSeek V4 Pro model.
 - PandaData and Backtester tool registration per check.
-- Intake and fixed budget-plan contracts.
+- Capability probes and the fixed budget-plan builder.
 - Moiré follow-up dispatch.
-- Full audit Artifact validator and deterministic verdict aggregator.
-- Official A2A JavaScript SDK gateway, Agent Card, streaming, and cancellation.
+- Deterministic verdict aggregation over real numerical evidence.
+- Structured A2A input, multi-turn clarification, durable Task persistence,
+  restart recovery, streaming, and cancellation.
