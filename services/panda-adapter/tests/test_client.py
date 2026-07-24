@@ -13,6 +13,7 @@ from panda_adapter.settings import PandaDataSettings
 class FakePandaDataSdk:
     def __init__(self) -> None:
         self.initialization_count = 0
+        self.market_data_call_count = 0
         self.last_market_data_parameters: dict[str, object] | None = None
         self.last_factor_parameters: dict[str, object] | None = None
         self.last_adj_factor_parameters: dict[str, object] | None = None
@@ -24,6 +25,7 @@ class FakePandaDataSdk:
         self.initialization_count += 1
 
     def get_market_data(self, **parameters: object) -> dict[str, object]:
+        self.market_data_call_count += 1
         self.last_market_data_parameters = parameters
         return {"rows": []}
 
@@ -147,6 +149,15 @@ class PandaDataClientTest(unittest.TestCase):
                 "end_date": "20260131",
             },
         )
+
+    def test_caches_identical_immutable_queries(self) -> None:
+        self.client.initialize(self.settings)
+
+        first = self.client.get_market_data(symbol="000001.SZ")
+        second = self.client.get_market_data(symbol="000001.SZ")
+
+        self.assertIs(first, second)
+        self.assertEqual(self.sdk.market_data_call_count, 1)
 
 
 if __name__ == "__main__":

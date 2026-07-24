@@ -17,6 +17,7 @@
       "@assay/contracts": ["./packages/contracts/src/index.ts"],
       "@assay/agent-runtime": ["./packages/agent-runtime/src/index.ts"],
       "@assay/agents": ["./packages/agents/src/index.ts"],
+      "@assay/finance-tools": ["./packages/finance-tools/src/index.ts"],
       "@assay/intake": ["./packages/intake/src/index.ts"]
     }
   },

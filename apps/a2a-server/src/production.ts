@@ -1,5 +1,6 @@
 import { AgentRegistry, AgentRuntime } from "@assay/agent-runtime";
-import { agentDefinitions, ParallelAuditCheckRunner } from "@assay/agents";
+import { createAuditCheckAgentDefinitions, ParallelAuditCheckRunner } from "@assay/agents";
+import { createPandaDataTools, PandaDataProcessGateway } from "@assay/finance-tools";
 import { ArkResponsesStrategyParser, StrategyIntake } from "@assay/intake";
 import { buildModel } from "@oh-my-pi/pi-catalog/build";
 import type { ProductionA2AConfig } from "./configuration";
@@ -43,9 +44,13 @@ export function createProductionA2AApp(config: ProductionA2AConfig): AssayA2AApp
     contextWindow: 64_000,
     maxTokens: 8_192,
   });
+  const pandaDataGateway = new PandaDataProcessGateway();
+  const pandaDataTools = createPandaDataTools(pandaDataGateway);
   const runtime = new AgentRuntime({
     model,
-    registry: new AgentRegistry(agentDefinitions),
+    registry: new AgentRegistry(
+      createAuditCheckAgentDefinitions({ availableTools: pandaDataTools }),
+    ),
     getApiKey: () => config.arkApiKey,
   });
   const runner = new ParallelAuditCheckRunner(runtime);
@@ -60,6 +65,13 @@ export function createProductionA2AApp(config: ProductionA2AConfig): AssayA2AApp
   return createAssayA2AApp({
     executor,
     publicUrl: config.publicUrl,
-    corsOrigin: config.corsOrigin,
+    corsOrigins: config.corsOrigins,
+    capabilities: {
+      skill: "audit_strategy",
+      dataProvider: "PandaData",
+      dataTools: pandaDataTools.map((tool) => tool.name),
+      backtester: "assay-backtester@1",
+      dataCredentialsConfigured: config.pandaDataConfigured,
+    },
   });
 }

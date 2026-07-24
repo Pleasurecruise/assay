@@ -19,6 +19,7 @@
         "@assay/agent-runtime": "workspace:*",
         "@assay/agents": "workspace:*",
         "@assay/contracts": "workspace:*",
+        "@assay/finance-tools": "workspace:*",
         "@assay/intake": "workspace:*",
         "@oh-my-pi/pi-catalog": "17.0.8",
         "express": "5.2.1",
@@ -82,6 +83,14 @@
       "name": "@assay/contracts",
       "version": "0.0.0",
     },
+    "packages/finance-tools": {
+      "name": "@assay/finance-tools",
+      "version": "0.0.0",
+      "dependencies": {
+        "@assay/agent-runtime": "workspace:*",
+        "zod": "4.4.3",
+      },
+    },
     "packages/intake": {
       "name": "@assay/intake",
       "version": "0.0.0",
@@ -125,6 +134,8 @@
     "@assay/checks-e2e": ["@assay/checks-e2e@workspace:tests/e2e"],
 
     "@assay/contracts": ["@assay/contracts@workspace:packages/contracts"],
+
+    "@assay/finance-tools": ["@assay/finance-tools@workspace:packages/finance-tools"],
 
     "@assay/intake": ["@assay/intake@workspace:packages/intake"],
 

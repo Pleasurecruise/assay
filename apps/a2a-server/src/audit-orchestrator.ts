@@ -122,6 +122,25 @@ function deriveRecoveryConditions(
   ];
 }
 
+function collectDataSources(
+  checks: readonly AuditCheckResult[],
+): readonly { id: string; version: string }[] {
+  const sourceRefs = new Set(
+    checks.flatMap((check) =>
+      check.evidence.flatMap((evidence) =>
+        evidence.sourceRefs.filter(
+          (sourceRef) =>
+            sourceRef.startsWith("pandadata:") || sourceRef.startsWith("assay:backtest:"),
+        ),
+      ),
+    ),
+  );
+  return [...sourceRefs].sort().map((id) => ({
+    id,
+    version: id.startsWith("pandadata:") ? "panda_data@0.0.12" : "assay-backtester@1",
+  }));
+}
+
 function deriveConfidence(checks: readonly AuditCheckResult[]): number {
   const applicable = checks.filter((check) => check.conclusion !== "not_applicable");
   if (applicable.length === 0) {
@@ -150,6 +169,13 @@ export function buildExecutedAuditArtifact(options: BuildExecutedArtifactOptions
   const checks = validateRunnerResult(options.result, options.identity);
   const claimComparison = options.claimComparison ?? null;
   const verdict = deriveVerdict(checks, claimComparison);
+  const refinedChecks = checks.filter((check) => check.refinedByMoire !== undefined);
+  const resolvedDisputes = refinedChecks
+    .filter((check) => check.conclusion !== "insufficient_evidence")
+    .flatMap((check) => (check.refinedByMoire ? [check.refinedByMoire] : []));
+  const unresolvedDisputes = refinedChecks
+    .filter((check) => check.conclusion === "insufficient_evidence")
+    .flatMap((check) => (check.refinedByMoire ? [check.refinedByMoire] : []));
   const artifact = {
     schemaVersion: AUDIT_ARTIFACT_SCHEMA_VERSION,
     kind: "strategy_audit",
@@ -163,9 +189,9 @@ export function buildExecutedAuditArtifact(options: BuildExecutedArtifactOptions
         summary: VERDICT_SUMMARIES[verdict],
         checks,
         moire: {
-          disputesOpened: 0,
-          resolved: [],
-          unresolved: [],
+          disputesOpened: refinedChecks.length,
+          resolved: resolvedDisputes,
+          unresolved: unresolvedDisputes,
         },
         recoveryConditions: deriveRecoveryConditions(checks, verdict, claimComparison),
         reviewTriggers:
@@ -173,7 +199,8 @@ export function buildExecutedAuditArtifact(options: BuildExecutedArtifactOptions
             ? ["Required audit evidence or data capabilities become available."]
             : [],
         assumptionsAndLimits: [
-          "The Skeleton phase does not run Moiré refinement or live coverage probes.",
+          "The Moiré follow-up pipeline is retained but disabled by default until the prerequisites in MOIRE_SPEC are implemented.",
+          "PandaData financial report rows have no verified disclosure timestamp; forecast and performance bulletin info_date fields are preferred for point-in-time evidence.",
           "The sprint backtester uses one fixed CSI 300 constituent snapshot, so survivorship bias is not controlled.",
           "Suspensions, delistings, and missing prices are forward-filled without target replacement in the sprint engine.",
         ],
@@ -190,7 +217,7 @@ export function buildExecutedAuditArtifact(options: BuildExecutedArtifactOptions
     provenance: {
       inputHash: options.frozen.specHash,
       dataAsOf: options.frozen.dataAsOf,
-      dataSources: [],
+      dataSources: collectDataSources(checks),
       codeRevision: options.frozen.codeRevision,
     },
   } satisfies AuditArtifact;

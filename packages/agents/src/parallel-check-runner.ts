@@ -12,6 +12,7 @@ import {
   AUDIT_CHECK_SCHEMA_VERSION,
   parseAuditCheckResult,
 } from "@assay/contracts";
+import { planMoireExperiments, type MoireExperiment } from "./moire";
 
 const DEFAULT_CHECK_TIMEOUT_MS = 10 * 60 * 1_000;
 const CHECK_EXECUTION_FAILURE_REASON = "Check execution failed before a valid result was produced.";
@@ -22,6 +23,11 @@ export interface AuditCheckTaskRunner {
 
 export interface ParallelCheckRunOptions {
   signal?: AbortSignal;
+}
+
+export interface ParallelAuditCheckRunnerOptions {
+  defaultTimeoutMs?: number;
+  enableMoire?: boolean;
 }
 
 function parseAgentJson(output: string): unknown {
@@ -103,12 +109,29 @@ function insufficientEvidence(checkId: AuditCheckId): AuditCheckResult {
   };
 }
 
-function buildAgentInput(request: AuditCheckAgentRequest): string {
-  return [
+function buildAgentInput(
+  request: AuditCheckAgentRequest,
+  followUp?: {
+    experiment: MoireExperiment;
+    originalResult: AuditCheckResult;
+  },
+): string {
+  const lines = [
     "执行下面 JSON 中分配的单项审计。只使用你自己的工具和该请求内容；",
     "不得引用或推测其他检查结果。严格按 system prompt 的 JSON 契约输出。",
     JSON.stringify(request),
-  ].join("\n");
+  ];
+  if (followUp) {
+    lines.push(
+      "这是 Moiré 判别性跟进。你只能复核自己的原始结果，不会看到其他检查证据。",
+      JSON.stringify({
+        experimentId: followUp.experiment.id,
+        instruction: followUp.experiment.instruction,
+        originalResult: followUp.originalResult,
+      }),
+    );
+  }
+  return lines.join("\n");
 }
 
 /**
@@ -121,13 +144,20 @@ function buildAgentInput(request: AuditCheckAgentRequest): string {
 export class ParallelAuditCheckRunner {
   readonly #taskRunner: AuditCheckTaskRunner;
   readonly #defaultTimeoutMs: number;
+  readonly #enableMoire: boolean;
 
-  constructor(taskRunner: AuditCheckTaskRunner, defaultTimeoutMs = DEFAULT_CHECK_TIMEOUT_MS) {
-    if (defaultTimeoutMs <= 0) {
+  constructor(
+    taskRunner: AuditCheckTaskRunner,
+    options: number | ParallelAuditCheckRunnerOptions = {},
+  ) {
+    const normalizedOptions = typeof options === "number" ? { defaultTimeoutMs: options } : options;
+    const defaultTimeoutMs = normalizedOptions.defaultTimeoutMs ?? DEFAULT_CHECK_TIMEOUT_MS;
+    if (!Number.isFinite(defaultTimeoutMs) || defaultTimeoutMs <= 0) {
       throw new Error("defaultTimeoutMs must be greater than zero");
     }
     this.#taskRunner = taskRunner;
     this.#defaultTimeoutMs = defaultTimeoutMs;
+    this.#enableMoire = normalizedOptions.enableMoire === true;
   }
 
   async run(
@@ -141,7 +171,7 @@ export class ParallelAuditCheckRunner {
 
     const startedAt = new Date().toISOString();
     const traceId = request.traceId ?? crypto.randomUUID();
-    const checks = await Promise.all(
+    const independentChecks = await Promise.all(
       AUDIT_CHECK_IDS.map((checkId) => {
         if (!isApplicable(request, checkId)) {
           return Promise.resolve(notApplicable(checkId));
@@ -149,6 +179,25 @@ export class ParallelAuditCheckRunner {
         return this.#runOne(request, checkId, traceId, options.signal);
       }),
     );
+    const experiments = this.#enableMoire ? planMoireExperiments(independentChecks) : [];
+    const refinements = await Promise.all(
+      experiments.map(async (experiment) => {
+        const originalResult = independentChecks.find((check) => check.id === experiment.checkId);
+        if (!originalResult) {
+          throw new Error(`Moiré selected unknown check "${experiment.checkId}"`);
+        }
+        const result = await this.#runOne(request, experiment.checkId, traceId, options.signal, {
+          experiment,
+          originalResult,
+        });
+        return {
+          ...result,
+          refinedByMoire: experiment.id,
+        };
+      }),
+    );
+    const refinementsById = new Map(refinements.map((check) => [check.id, check]));
+    const checks = independentChecks.map((check) => refinementsById.get(check.id) ?? check);
 
     return {
       schemaVersion: AUDIT_CHECK_SCHEMA_VERSION,
@@ -166,6 +215,10 @@ export class ParallelAuditCheckRunner {
     checkId: AuditCheckId,
     traceId: string,
     signal?: AbortSignal,
+    followUp?: {
+      experiment: MoireExperiment;
+      originalResult: AuditCheckResult;
+    },
   ): Promise<AuditCheckResult> {
     const budget = request.budgets?.[checkId];
     const agentRequest: AuditCheckAgentRequest = {
@@ -184,7 +237,7 @@ export class ParallelAuditCheckRunner {
           id: `${request.auditId}:${checkId}`,
           traceId,
           agentId: checkId,
-          input: buildAgentInput(agentRequest),
+          input: buildAgentInput(agentRequest, followUp),
           timeoutMs: budget?.timeoutMs ?? this.#defaultTimeoutMs,
           metadata: {
             ...request.metadata,

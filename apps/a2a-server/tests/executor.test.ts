@@ -119,10 +119,13 @@ function expectSafeFailedTerminalState(
     (event): event is Extract<AgentExecutionEvent, { kind: "statusUpdate" }> =>
       event.kind === "statusUpdate",
   );
-  expect(statusEvents.map((event) => event.data.status?.state)).toEqual([
-    TaskState.TASK_STATE_WORKING,
-    TaskState.TASK_STATE_FAILED,
-  ]);
+  expect(statusEvents[0]?.data.status?.state).toBe(TaskState.TASK_STATE_WORKING);
+  expect(statusEvents.at(-1)?.data.status?.state).toBe(TaskState.TASK_STATE_FAILED);
+  expect(
+    statusEvents
+      .slice(0, -1)
+      .every((event) => event.data.status?.state === TaskState.TASK_STATE_WORKING),
+  ).toBe(true);
   expect(events.some((event) => event.kind === "artifactUpdate")).toBe(false);
 
   const failedEvent = statusEvents.at(-1);
@@ -236,6 +239,58 @@ describe("AssayAgentExecutor", () => {
       scope: "evidence",
       condition: "提交原回测口径（ClaimProfile）后复审",
     });
+  });
+
+  test("aborts the running checks and publishes CANCELED without a FAILED race", async () => {
+    const events: AgentExecutionEvent[] = [];
+    const order: string[] = [];
+    let runnerStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      runnerStarted = resolve;
+    });
+    let runnerSignal: AbortSignal | undefined;
+    const intake = new StrategyIntake({
+      parser: { parse: async () => completeCandidate },
+      dataAsOf: "2026-07-23",
+      capabilitySnapshotId: "skeleton:test",
+      codeRevision: "test-revision",
+    });
+    const executor = new AssayAgentExecutor({
+      intake,
+      artifactStore: new InMemoryAuditArtifactStore(),
+      dataAsOf: "2026-07-23",
+      codeRevision: "test-revision",
+      runner: {
+        run: (_request, options) => {
+          runnerSignal = options?.signal;
+          runnerStarted?.();
+          return new Promise((_resolve, reject) => {
+            options?.signal?.addEventListener("abort", () => reject(options.signal?.reason), {
+              once: true,
+            });
+          });
+        },
+      },
+    });
+    const eventBus = recordingEventBus(events, order);
+    const execution = executor.execute(
+      requestContext(userMessage("Audit the complete strategy")),
+      eventBus,
+    );
+
+    await started;
+    await executor.cancelTask("task_test", eventBus);
+    await execution;
+
+    expect(runnerSignal?.aborted).toBe(true);
+    const states = events.flatMap((event) =>
+      event.kind === "statusUpdate" && event.data.status?.state !== undefined
+        ? [event.data.status.state]
+        : [],
+    );
+    expect(states.at(-1)).toBe(TaskState.TASK_STATE_CANCELED);
+    expect(states).not.toContain(TaskState.TASK_STATE_FAILED);
+    expect(events.some((event) => event.kind === "artifactUpdate")).toBe(false);
   });
 
   test("projects the exact canonical bytes and persists the Artifact before COMPLETED", async () => {

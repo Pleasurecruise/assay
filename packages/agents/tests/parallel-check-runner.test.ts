@@ -152,6 +152,98 @@ describe("ParallelAuditCheckRunner", () => {
     expect(result.checks.every((check) => check.conclusion === "pass")).toBe(true);
   });
 
+  test("keeps Moiré follow-ups disabled by default", async () => {
+    const costInputs: string[] = [];
+    const taskRunner: AuditCheckTaskRunner = {
+      async run(request) {
+        if (request.agentId === "cost-stress") {
+          costInputs.push(request.input);
+          const result: AuditCheckResult = {
+            id: "cost-stress",
+            conclusion: "fail",
+            confidence: 0.8,
+            evidence: [
+              {
+                metric: "breakEvenCost",
+                value: 18,
+                unit: "bps",
+                sourceRefs: ["backtest:test/cost"],
+              },
+            ],
+            missingEvidence: [],
+          };
+          return runtimeResult(request, JSON.stringify(result));
+        }
+        return runtimeResult(request, JSON.stringify(checkResult(request.agentId as AuditCheckId)));
+      },
+    };
+
+    const result = await new ParallelAuditCheckRunner(taskRunner).run(strategyRequest());
+    const cost = result.checks.find((check) => check.id === "cost-stress");
+
+    expect(costInputs).toHaveLength(1);
+    expect(costInputs[0]).not.toContain("Moiré 判别性跟进");
+    expect(cost?.conclusion).toBe("fail");
+    expect(cost?.refinedByMoire).toBeUndefined();
+  });
+
+  test("runs a bounded Moiré follow-up without exposing sibling results", async () => {
+    const costInputs: string[] = [];
+    const taskRunner: AuditCheckTaskRunner = {
+      async run(request) {
+        if (request.agentId !== "cost-stress") {
+          return runtimeResult(
+            request,
+            JSON.stringify(checkResult(request.agentId as AuditCheckId)),
+          );
+        }
+        costInputs.push(request.input);
+        const followUp = request.input.includes("Moiré 判别性跟进");
+        const result: AuditCheckResult = {
+          id: "cost-stress",
+          conclusion: followUp ? "pass_with_reservations" : "fail",
+          confidence: 0.8,
+          evidence: [
+            {
+              metric: "breakEvenCost",
+              value: 18,
+              unit: "bps",
+              sourceRefs: ["backtest:test/cost"],
+            },
+          ],
+          missingEvidence: [],
+        };
+        return runtimeResult(request, JSON.stringify(result));
+      },
+    };
+
+    const result = await new ParallelAuditCheckRunner(taskRunner, {
+      enableMoire: true,
+    }).run(strategyRequest());
+    const refined = result.checks.find((check) => check.id === "cost-stress");
+
+    expect(costInputs).toHaveLength(2);
+    expect(costInputs[1]).toContain('"experimentId":"moire-1-cost-stress"');
+    expect(costInputs[1]).not.toContain("completedVariants");
+    expect(refined?.conclusion).toBe("pass_with_reservations");
+    expect(refined?.refinedByMoire).toBe("moire-1-cost-stress");
+  });
+
+  test("retains the numeric timeout constructor form", async () => {
+    const dispatched: RuntimeTaskRequest[] = [];
+    const taskRunner: AuditCheckTaskRunner = {
+      async run(request) {
+        dispatched.push(request);
+        return runtimeResult(request, JSON.stringify(checkResult(request.agentId as AuditCheckId)));
+      },
+    };
+
+    await new ParallelAuditCheckRunner(taskRunner, 12_345).run(strategyRequest());
+
+    expect(dispatched).toHaveLength(AUDIT_CHECK_IDS.length);
+    expect(dispatched.every((request) => request.timeoutMs === 12_345)).toBe(true);
+  });
+
   test("rejects cross-agent result impersonation without failing siblings", async () => {
     const taskRunner: AuditCheckTaskRunner = {
       async run(request) {

@@ -1,4 +1,4 @@
-import type { AgentDefinition } from "@assay/agent-runtime";
+import type { AgentDefinition, AgentTool } from "@assay/agent-runtime";
 import {
   AVAILABILITY_ANNUAL_RETURN_DELTA_FAIL_THRESHOLD,
   AVAILABILITY_CONTAMINATED_SELECTION_RATE_FAIL_THRESHOLD,
@@ -95,18 +95,16 @@ evidence.sourceRefs 必须包含固定 experiment summary 引用 artifact:backte
 你负责市场环境依赖分析。使用无前视的趋势、波动率和风格划分，对各环境分别统计表现并判断
 收益是否集中在少数环境。不要执行参数扰动、数据时点审查、成本压力或同质化分析。
 
-当前冲刺未向你提供环境划分、分段收益或相应计算工具。不得从策略描述推测环境依赖性。必须
-诚实返回 insufficient_evidence，evidence=[]，并用非空 missingEvidence 说明缺少环境划分
-与分段指标；missingEvidence.sourceRefs 固定使用 ["input:strategy-description"]。
+使用确定性回测、行情、历史指数成分和交易日历构造可复核的环境证据。若工具结果没有提供
+足够的环境划分或分段指标，必须返回 insufficient_evidence，不得从策略描述推测环境依赖。
 `.trim(),
   "homogeneity-decay": `
 你负责同质化与衰减分析。计算信号与平台因子库的相关性，并按年份测算 IC/RankIC 及其衰减，
 判断增量信息和拥挤失效迹象。不要评价参数、数据时点、交易成本或市场环境。
 
-当前冲刺未向你提供平台因子库、截面收益、年度 IC/RankIC 或相应计算工具。不得从策略名称
-推测同质化或衰减。必须诚实返回 insufficient_evidence，evidence=[]，并用非空
-missingEvidence 说明缺少这些数据；missingEvidence.sourceRefs 固定使用
-["input:strategy-description"]。
+使用平台因子、行情、历史指数成分、交易日历和确定性回测形成可复核证据。若工具结果没有
+足够的截面收益或年度 IC/RankIC，必须返回 insufficient_evidence，不得从策略名称推测
+同质化或衰减。
 `.trim(),
 };
 
@@ -130,29 +128,58 @@ const experimentKindByCheck = {
 } as const;
 
 export interface AuditCheckAgentDefinitionOptions {
+  readonly availableTools?: readonly AgentTool[];
   readonly experimentProcess?: ExperimentProcessConfig;
   readonly availabilityProcess?: ExperimentProcessConfig;
 }
 
+const toolsByCheck: Readonly<Record<AuditCheckId, readonly string[]>> = {
+  // The three wired checks each have one bounded, authoritative capability.
+  // General PandaData tools remain available only to the checks that have not
+  // yet received a dedicated deterministic runner.
+  "param-robustness": [],
+  "data-availability": [],
+  "cost-stress": [],
+  "regime-dependency": [
+    "assay_strategy_backtest",
+    "panda_market_data",
+    "panda_index_weights",
+    "panda_trade_calendar",
+  ],
+  "homogeneity-decay": [
+    "assay_strategy_backtest",
+    "panda_market_data",
+    "panda_factor",
+    "panda_index_weights",
+    "panda_trade_calendar",
+  ],
+};
+
 export function createAuditCheckAgentDefinitions(
   options: AuditCheckAgentDefinitionOptions = {},
 ): readonly AgentDefinition[] {
+  const availableTools = new Map((options.availableTools ?? []).map((tool) => [tool.name, tool]));
   const experimentProcess = options.experimentProcess ?? defaultExperimentProcessConfig();
   const availabilityProcess = options.availabilityProcess ?? experimentProcess;
   return (Object.keys(checkPrompts) as AuditCheckId[]).map((id) => {
+    const tools: AgentTool[] = toolsByCheck[id].flatMap((name) => {
+      const tool = availableTools.get(name);
+      return tool ? [tool] : [];
+    });
     const experimentKind =
       id === "param-robustness" || id === "cost-stress" ? experimentKindByCheck[id] : undefined;
+    if (id === "data-availability") {
+      tools.push(createRunAvailabilityAuditTool(availabilityProcess));
+    } else if (experimentKind !== undefined) {
+      tools.push(createRunExperimentTool(experimentKind, experimentProcess));
+    }
     return {
       id,
       name: checkNames[id],
       description: checkPrompts[id],
       thinkingLevel: highThinkingChecks.has(id) ? high : medium,
       systemPrompt: [sharedGuardrails, checkPrompts[id]],
-      ...(id === "data-availability"
-        ? { tools: [createRunAvailabilityAuditTool(availabilityProcess)] }
-        : experimentKind === undefined
-          ? {}
-          : { tools: [createRunExperimentTool(experimentKind, experimentProcess)] }),
+      tools,
     };
   });
 }

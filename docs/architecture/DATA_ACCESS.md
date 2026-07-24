@@ -91,9 +91,17 @@ to a versioned JSON or Arrow contract before crossing the process boundary.
 
 ## Current Scope
 
-This phase installs the SDK and implements its guarded initialization lifecycle.
-It does not yet start a network listener. The transport and TypeScript
-`packages/finance-tools` client are the next data-access milestone.
+The adapter exposes a private JSON-lines worker consumed by
+`packages/finance-tools`. It initializes the SDK once, serializes provider
+DataFrames into capped JSON records, maps camelCase tool arguments to
+snake_case SDK parameters, caches identical immutable reads, retries bounded
+rate-limit/timeout failures, and returns structured redacted errors. It does
+not open a network port or accept credentials through requests.
+
+The same worker hosts the deterministic strategy backtester. It uses
+`close/pre_close` total-return proxies, point-in-time index weights, close-time
+signals, explicit turnover costs, and bounded parameter/cost grids. Every
+result carries immutable source references and stated assumptions.
 
 ## Tool Roadmap (product-driven)
 

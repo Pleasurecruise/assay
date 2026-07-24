@@ -11,15 +11,14 @@ resolves contradictions through discriminating follow-up experiments, then
 returns a five-level verdict (`KEEP / WATCH / QUARANTINE / RETIRE /
 UNVERIFIABLE`) with reproducible numeric evidence and recovery conditions.
 
-The current implementation includes the runtime foundation, five isolated
-audit-agent definitions, their typed parallel fan-out boundary, the
-PandaData-adapter foundation, and the Skeleton A2A path for
-`audit_strategy`: natural-language Intake through a Volcano Ark Responses
-endpoint, deterministic `StrategySpec` validation/freezing, five-check fan-out,
-and publication of the versioned verdict Artifact. Data and backtest tools,
-multi-turn clarification, structured A2A input, durable task persistence,
-Moiré refinement, and the remaining public skills are later phases documented
-under `docs/product/`.
+The current implementation includes the black-and-white web workbench, the A2A
+`audit_strategy` path, natural-language Intake through Volcano Ark,
+deterministic `StrategySpec` validation/freezing, five isolated checks,
+bounded Moiré follow-ups, task cancellation, a guarded PandaData JSON-lines
+adapter, ten read-tier data tools, an Assay-owned structured backtester, and
+versioned JSON/Markdown Artifacts with reproducible source references.
+Multi-turn clarification, durable task persistence, and the post-baseline
+factor/comparison skills remain documented later phases.
 
 While every other agent produces alpha, Assay verifies it. Auditing is a closed-loop complex task, naturally stateless per A2A call, and the track's compliance rules (no return claims, mandatory risk disclosure) describe our product rather than constrain it.
 
@@ -47,10 +46,12 @@ Product design docs: [PROPOSAL](docs/product/PROPOSAL.md) (why) · [CHECKS](docs
 
 ```text
 apps/
-  a2a-server/        Official A2A SDK server and Skeleton audit executor
+  a2a-server/        Official A2A SDK server and audit executor
+  web/               React audit workbench
   runtime-cli/       Local runtime smoke-test entry point
 packages/
   contracts/         Stable contracts shared by runtime, A2A, and tool layers
+  finance-tools/     Typed PandaData and deterministic backtest Agent tools
   agent-runtime/     oh-my-pi adapter, agent registry, audit events, and tool policy
   agents/            Five audit agents and the typed parallel Main-Agent boundary
   intake/            Ark parser, deterministic validation, and StrategySpec freezer
@@ -97,18 +98,22 @@ mise exec -- bun run runtime -- "Audit this momentum strategy: CSI300 universe, 
 ## Run the demo locally
 
 Create a root `.env` from `.env.example`, then set the real Volcano Ark
-credentials and keep the browser origin explicit:
+and PandaData credentials, and keep the browser origin explicit:
 
 ```dotenv
 ARK_API_KEY=...
 ARK_MODEL_DEEPSEEK=...
-ASSAY_A2A_CORS_ORIGIN=http://localhost:5173
+PANDA_DATA_USERNAME=86+你的官网注册手机号
+PANDA_DATA_PASSWORD=你的官网密码
+ASSAY_A2A_CORS_ORIGIN=http://localhost:5173,http://127.0.0.1:5173
 ```
 
-Create `apps/web/.env` from `apps/web/.env.example`:
+The web client defaults to the same-origin development proxy, so an
+`apps/web/.env` file is not required for `http://localhost:5173`. To make the
+choice explicit, copy `apps/web/.env.example` and keep:
 
 ```dotenv
-VITE_A2A_URL=http://127.0.0.1:3001/a2a
+VITE_A2A_URL=same-origin
 ```
 
 Start the A2A server and web workbench in two terminals:
@@ -123,17 +128,24 @@ mise exec -- bun run --filter @assay/web dev
 
 Open `http://localhost:5173`, keep **Strategy** selected, and submit:
 
+The development server also listens on LAN and Tailscale interfaces. By
+default (or with `VITE_A2A_URL=same-origin`), browser requests stay on the Vite origin and its
+development proxy forwards Agent Card, A2A, capability, and health requests
+to the server on `127.0.0.1:3001`. Direct browser clients may instead use
+`VITE_A2A_URL=auto`; add every such workbench origin, including its scheme and
+port, to the comma-separated `ASSAY_A2A_CORS_ORIGIN` allowlist.
+
 > Audit a CSI 300 strategy from 20210101 through 20251231: rank by trailing
 > 20-day momentum, hold the top 50 equal-weighted names, rebalance monthly at
 > close, and use standard costs.
 
-The workbench sends one text Part, displays Task status updates, and polls the
-A2A server until completion. It then renders the verdict, confidence, all five
-check cards, and the collapsible full report. Until market-data and backtest
-tools land, the honest expected result is `UNVERIFIABLE`, with each check
-reporting `insufficient_evidence`. If required strategy details are absent,
-the same result is presented as a prominent early exit with its missing
-information and recovery conditions, rather than as an application error.
+The workbench sends one text Part, displays Task status updates, supports
+protocol-level cancellation, and polls the A2A server until completion. It
+then renders the verdict, confidence, all five check cards, and the
+collapsible full report. Missing or rejected PandaData credentials degrade
+affected checks to `insufficient_evidence`; they never produce invented
+numbers. If required strategy details are absent, the result is presented as
+a prominent early exit with its missing information and recovery conditions.
 
 The server listens on port `3001`; discovery and health endpoints are
 `http://127.0.0.1:3001/.well-known/agent-card.json` and

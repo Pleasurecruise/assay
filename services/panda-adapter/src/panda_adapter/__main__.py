@@ -2,9 +2,27 @@ from __future__ import annotations
 
 import argparse
 from importlib import import_module
+import json
+import sys
 
-from .client import PandaDataInitializationError, create_initialized_client
+from .client import (
+    PandaDataClient,
+    PandaDataInitializationError,
+    create_initialized_client,
+)
+from .protocol import error_response, execute_request
 from .settings import PandaDataConfigurationError
+
+
+def _handle_request(client: PandaDataClient, raw: str) -> dict[str, object]:
+    request_id = "unknown"
+    try:
+        request = json.loads(raw)
+        if isinstance(request, dict) and isinstance(request.get("id"), str):
+            request_id = request["id"]
+        return execute_request(client, request)
+    except Exception as error:
+        return error_response(request_id, error)
 
 
 def main() -> int:
@@ -13,7 +31,7 @@ def main() -> int:
     )
     parser.add_argument(
         "command",
-        choices=("doctor", "initialize"),
+        choices=("doctor", "initialize", "query", "serve"),
         help="Check installation or perform a real credential initialization.",
     )
     args = parser.parse_args()
@@ -37,6 +55,22 @@ def main() -> int:
 
     if not client.is_initialized:
         parser.error("PandaData SDK initialization did not complete")
+
+    if args.command == "query":
+        response = _handle_request(client, sys.stdin.read())
+        print(json.dumps(response, ensure_ascii=False, separators=(",", ":")))
+        return 0
+
+    if args.command == "serve":
+        for line in sys.stdin:
+            if not line.strip():
+                continue
+            response = _handle_request(client, line)
+            print(
+                json.dumps(response, ensure_ascii=False, separators=(",", ":")),
+                flush=True,
+            )
+        return 0
 
     print("PandaData SDK initialization completed.")
     return 0

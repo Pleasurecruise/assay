@@ -147,7 +147,14 @@ async function withTestServer(
   const { app } = createAssayA2AApp({
     executor,
     publicUrl: "http://127.0.0.1",
-    corsOrigin: CORS_ORIGIN,
+    corsOrigins: [CORS_ORIGIN],
+    capabilities: {
+      skill: "audit_strategy",
+      dataProvider: "PandaData",
+      dataTools: ["panda_market_data", "assay_strategy_backtest"],
+      backtester: "assay-backtester@1",
+      dataCredentialsConfigured: true,
+    },
   });
   const server = app.listen(0, "127.0.0.1");
   try {
@@ -265,12 +272,35 @@ describe("Assay A2A Skeleton over shared HTTP transports", () => {
     });
 
     await withTestServer(intake, async ({ baseUrl, requests, store }) => {
+      const capabilitiesResponse = await fetch(`${baseUrl}/capabilities`, {
+        headers: { Origin: CORS_ORIGIN },
+      });
+      expect(capabilitiesResponse.ok).toBe(true);
+      expect(await capabilitiesResponse.json()).toEqual({
+        skill: "audit_strategy",
+        dataProvider: "PandaData",
+        dataTools: ["panda_market_data", "assay_strategy_backtest"],
+        backtester: "assay-backtester@1",
+        dataCredentialsConfigured: true,
+      });
+      const readinessResponse = await fetch(`${baseUrl}/readyz`);
+      expect(readinessResponse.status).toBe(200);
+      expect(await readinessResponse.json()).toEqual({
+        status: "ready",
+        checks: {
+          a2a: true,
+          model: true,
+          pandaDataCredentials: true,
+        },
+      });
+
       const response = await fetch(`${baseUrl}/a2a/message:send`, {
         method: "OPTIONS",
         headers: {
           Origin: CORS_ORIGIN,
           "Access-Control-Request-Method": "POST",
-          "Access-Control-Request-Headers": "content-type,a2a-version",
+          "Access-Control-Request-Headers": "content-type,a2a-version,a2a-extensions",
+          "Access-Control-Request-Private-Network": "true",
         },
       });
 
@@ -284,7 +314,8 @@ describe("Assay A2A Skeleton over shared HTTP transports", () => {
       ]);
       expect(
         response.headers.get("access-control-allow-headers")?.toLowerCase().split(/,\s*/),
-      ).toEqual(["content-type", "a2a-version"]);
+      ).toEqual(["content-type", "a2a-version", "a2a-extensions"]);
+      expect(response.headers.get("access-control-allow-private-network")).toBe("true");
       expect(await response.text()).toBe("");
       expect(parserCalls).toHaveLength(0);
       expect(requests).toHaveLength(0);

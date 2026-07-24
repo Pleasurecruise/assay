@@ -13,14 +13,23 @@ import {
 } from "@a2a-js/sdk/server/express";
 import express, { type Express } from "express";
 import { createAssayAgentCard } from "./agent-card";
-import { DEFAULT_ASSAY_A2A_CORS_ORIGIN } from "./configuration";
+import { DEFAULT_ASSAY_A2A_CORS_ORIGINS } from "./configuration";
 
 export interface CreateAssayA2AAppOptions {
   executor: AgentExecutor;
   publicUrl?: string;
-  corsOrigin?: string;
+  corsOrigins?: readonly string[];
   agentCard?: AgentCard;
   taskStore?: TaskStore;
+  capabilities?: AssayServiceCapabilities;
+}
+
+export interface AssayServiceCapabilities {
+  skill: "audit_strategy";
+  dataProvider: "PandaData";
+  dataTools: readonly string[];
+  backtester: "assay-backtester@1";
+  dataCredentialsConfigured: boolean;
 }
 
 export interface AssayA2AApp {
@@ -39,7 +48,7 @@ function normalizePublicUrl(value: string): string {
 
 export function createAssayA2AApp(options: CreateAssayA2AAppOptions): AssayA2AApp {
   const publicUrl = normalizePublicUrl(options.publicUrl ?? "http://127.0.0.1:3001");
-  const corsOrigin = options.corsOrigin ?? DEFAULT_ASSAY_A2A_CORS_ORIGIN;
+  const corsOrigins = new Set(options.corsOrigins ?? DEFAULT_ASSAY_A2A_CORS_ORIGINS);
   const agentCard =
     options.agentCard ??
     createAssayAgentCard(
@@ -52,10 +61,18 @@ export function createAssayA2AApp(options: CreateAssayA2AAppOptions): AssayA2AAp
   app.disable("x-powered-by");
   app.use((request, response, next) => {
     response.vary("Origin");
-    if (request.get("Origin") === corsOrigin) {
-      response.setHeader("Access-Control-Allow-Origin", corsOrigin);
+    response.vary("Access-Control-Request-Private-Network");
+    const requestOrigin = request.get("Origin");
+    if (requestOrigin !== undefined && corsOrigins.has(requestOrigin)) {
+      response.setHeader("Access-Control-Allow-Origin", requestOrigin);
       response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-      response.setHeader("Access-Control-Allow-Headers", "Content-Type, A2A-Version");
+      response.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type, A2A-Version, A2A-Extensions",
+      );
+      if (request.get("Access-Control-Request-Private-Network") === "true") {
+        response.setHeader("Access-Control-Allow-Private-Network", "true");
+      }
     }
     if (request.method === "OPTIONS") {
       response.status(204).end();
@@ -81,6 +98,28 @@ export function createAssayA2AApp(options: CreateAssayA2AAppOptions): AssayA2AAp
   );
   app.get("/healthz", (_request, response) => {
     response.json({ status: "ok" });
+  });
+  app.get("/capabilities", (_request, response) => {
+    response.json(
+      options.capabilities ?? {
+        skill: "audit_strategy",
+        dataProvider: "PandaData",
+        dataTools: [],
+        backtester: "assay-backtester@1",
+        dataCredentialsConfigured: false,
+      },
+    );
+  });
+  app.get("/readyz", (_request, response) => {
+    const dataCredentialsConfigured = options.capabilities?.dataCredentialsConfigured ?? false;
+    response.status(dataCredentialsConfigured ? 200 : 503).json({
+      status: dataCredentialsConfigured ? "ready" : "not_ready",
+      checks: {
+        a2a: true,
+        model: true,
+        pandaDataCredentials: dataCredentialsConfigured,
+      },
+    });
   });
 
   return {
