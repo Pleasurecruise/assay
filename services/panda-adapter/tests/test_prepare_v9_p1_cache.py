@@ -173,7 +173,7 @@ class FakeP1Client:
             {
                 "date": requested.strftime("%Y%m%d"),
                 "stock_symbol": members,
-                "weight": 1.0,
+                "weight": 1.0 / len(members),
             }
         )
 
@@ -306,6 +306,50 @@ class PrepareV9P1CacheTest(unittest.TestCase):
             )[0].kind,
             "completed_month_end",
         )
+
+    def test_preserves_bounded_positive_weight_transition_membership(
+        self,
+    ) -> None:
+        symbols = _symbols(311)
+        frame = pd.DataFrame(
+            {
+                "date": "20250930",
+                "stock_symbol": symbols,
+                "weight": 1.0 / len(symbols),
+            }
+        )
+
+        members, effective, raw_rows, filtered, weight_sum = (
+            p1._normalize_index_weights(
+                frame,
+                pd.Timestamp("2025-09-30"),
+            )
+        )
+
+        self.assertEqual(members, tuple(symbols))
+        self.assertEqual(effective, "2025-09-30")
+        self.assertEqual(raw_rows, 311)
+        self.assertTrue(filtered)
+        self.assertAlmostEqual(weight_sum, 1.0)
+
+    def test_rejects_incomplete_positive_weight_membership(self) -> None:
+        symbols = _symbols(300)
+        frame = pd.DataFrame(
+            {
+                "date": "20250930",
+                "stock_symbol": symbols,
+                "weight": 0.001,
+            }
+        )
+
+        with self.assertRaisesRegex(
+            p1.CacheQualityError,
+            "implausible weight sum",
+        ):
+            p1._normalize_index_weights(
+                frame,
+                pd.Timestamp("2025-09-30"),
+            )
 
     def test_repairs_only_the_incomplete_189_of_300_factor_window(self) -> None:
         symbols = _symbols()

@@ -78,6 +78,10 @@ FALLBACK_PRICE_SOURCE_MODE: Final = "factor-close-with-validated-official-post-f
 FALLBACK_SCALE_REL_TOLERANCE: Final = 1e-10
 FALLBACK_SCALE_ABS_TOLERANCE: Final = 1e-8
 EXPECTED_PIT_POINTS: Final = 37
+MIN_PIT_MEMBER_COUNT: Final = 250
+MAX_PIT_MEMBER_COUNT: Final = 350
+MIN_PIT_WEIGHT_SUM: Final = 0.95
+MAX_PIT_WEIGHT_SUM: Final = 1.05
 EXPECTED_INDEX_LOOKBACK_DAYS: Final = 200
 DEFAULT_STAGE_SECONDS: Final = 20 * 60
 MIN_STAGE_RETRY_DELAY_SECONDS: Final = 0.1
@@ -1924,6 +1928,7 @@ def _read_pit_snapshot(path: Path, point: PITPoint) -> tuple[str, ...]:
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise CacheQualityError("cannot read a PIT snapshot") from error
     symbols = payload.get("symbols") if isinstance(payload, Mapping) else None
+    quality = payload.get("quality") if isinstance(payload, Mapping) else None
     effective = pd.to_datetime(
         payload.get("effectiveDate") if isinstance(payload, Mapping) else None,
         errors="coerce",
@@ -1933,9 +1938,19 @@ def _read_pit_snapshot(path: Path, point: PITPoint) -> tuple[str, ...]:
         or payload.get("schemaVersion") != PIT_SNAPSHOT_SCHEMA_VERSION
         or payload.get("indexSymbol") != INDEX_SYMBOL
         or payload.get("requestedDate") != point.date.strftime("%Y-%m-%d")
+        or payload.get("observationKind") != point.kind
         or not isinstance(symbols, list)
         or symbols != sorted(set(symbols))
         or any(not isinstance(symbol, str) or not symbol for symbol in symbols)
+        or not MIN_PIT_MEMBER_COUNT <= len(symbols) <= MAX_PIT_MEMBER_COUNT
+        or not isinstance(quality, Mapping)
+        or quality.get("rawRows") != len(symbols)
+        or quality.get("memberCount") != len(symbols)
+        or quality.get("positiveWeightFilterApplied") is not True
+        or not isinstance(quality.get("weightSum"), (int, float))
+        or isinstance(quality.get("weightSum"), bool)
+        or not math.isfinite(float(quality["weightSum"]))
+        or not MIN_PIT_WEIGHT_SUM <= float(quality["weightSum"]) <= MAX_PIT_WEIGHT_SUM
         or pd.isna(effective)
         or pd.Timestamp(effective) > point.date
     ):
@@ -1946,7 +1961,7 @@ def _read_pit_snapshot(path: Path, point: PITPoint) -> tuple[str, ...]:
 def _normalize_index_weights(
     value: Any,
     requested_date: pd.Timestamp,
-) -> tuple[tuple[str, ...], str, int, bool]:
+) -> tuple[tuple[str, ...], str, int, bool, float]:
     frame = as_frame(value, "get_index_weights")
     if frame.empty:
         raise CacheQualityError("get_index_weights returned no rows")
@@ -1975,24 +1990,33 @@ def _normalize_index_weights(
         frame,
         ("weight", "i_weight", "index_weight"),
     )
-    weight_filter_applied = False
-    if weight_column is not None:
-        weights = pd.to_numeric(frame[weight_column], errors="coerce")
-        if weights.isna().any() or (~weights.map(math.isfinite)).any():
-            raise CacheQualityError("index weights contain an invalid weight")
-        frame = frame.loc[weights > 0].copy()
-        weight_filter_applied = True
+    if weight_column is None:
+        raise CacheQualityError("index weights omit the active weight field")
+    weights = pd.to_numeric(frame[weight_column], errors="coerce")
+    if weights.isna().any() or (~weights.map(math.isfinite)).any():
+        raise CacheQualityError("index weights contain an invalid weight")
+    positive = weights > 0
+    frame = frame.loc[positive].copy()
+    weights = weights.loc[positive]
     raw_rows = len(frame)
     symbols = _canonical_symbols(frame[symbol_column])
-    if len(symbols) != 300:
+    if raw_rows != len(symbols):
+        raise CacheQualityError("positive-weight PIT membership has duplicate symbols")
+    if not MIN_PIT_MEMBER_COUNT <= len(symbols) <= MAX_PIT_MEMBER_COUNT:
         raise CacheQualityError(
-            "positive-weight PIT membership must contain exactly 300 symbols"
+            "positive-weight PIT membership is outside the bounded count range"
+        )
+    weight_sum = float(weights.sum())
+    if not MIN_PIT_WEIGHT_SUM <= weight_sum <= MAX_PIT_WEIGHT_SUM:
+        raise CacheQualityError(
+            "positive-weight PIT membership has an implausible weight sum"
         )
     return (
         symbols,
         effective_date.strftime("%Y-%m-%d"),
         raw_rows,
-        weight_filter_applied,
+        True,
+        weight_sum,
     )
 
 
@@ -2011,7 +2035,7 @@ def _fetch_pit_snapshot(
             end_date=point.date.strftime("%Y%m%d"),
         ),
     )
-    symbols, effective, raw_rows, filtered = _normalize_index_weights(
+    symbols, effective, raw_rows, filtered, weight_sum = _normalize_index_weights(
         value,
         point.date,
     )
@@ -2026,6 +2050,7 @@ def _fetch_pit_snapshot(
             "rawRows": raw_rows,
             "memberCount": len(symbols),
             "positiveWeightFilterApplied": filtered,
+            "weightSum": weight_sum,
         },
     }
     return symbols, payload
@@ -2050,12 +2075,13 @@ def _prepare_pit_timeline(
         path = _pit_snapshot_path(config.cache_root, point)
         symbols: tuple[str, ...] | None = None
         if path.is_file():
-            cached = _read_pit_snapshot(path, point)
-            if len(cached) == 300:
+            try:
+                cached = _read_pit_snapshot(path, point)
+            except CacheQualityError:
+                refreshed += 1
+            else:
                 symbols = cached
                 reused += 1
-            else:
-                refreshed += 1
         if symbols is None:
             symbols, payload = _fetch_pit_snapshot(
                 client=client,
@@ -2089,6 +2115,9 @@ def _prepare_pit_timeline(
         for point in points
         if point.kind == "terminal_as_of"
     ]
+    member_counts = {
+        point.date.strftime("%Y-%m-%d"): len(timeline[point.date]) for point in points
+    }
     return timeline, {
         "status": "ready",
         "path": (
@@ -2105,7 +2134,12 @@ def _prepare_pit_timeline(
         "refreshed": refreshed,
         "quality": {
             "pointCount": len(points),
-            "memberCountPerPoint": 300,
+            "nominalMemberCount": 300,
+            "memberCountRange": {
+                "min": min(member_counts.values()),
+                "max": max(member_counts.values()),
+            },
+            "memberCounts": member_counts,
             "terminalAsOfIsNotMonthEnd": bool(terminal),
             "primaryKeysValid": True,
         },
