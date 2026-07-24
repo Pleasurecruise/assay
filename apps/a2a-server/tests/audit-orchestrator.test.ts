@@ -8,7 +8,7 @@ import { describe, expect, test } from "vitest";
 import { buildExecutedAuditArtifact } from "../src/audit-orchestrator";
 
 describe("buildExecutedAuditArtifact", () => {
-  test("discloses that Skeleton failures cannot be graded QUARANTINE", () => {
+  test("prioritizes fail over insufficient evidence and grades it RETIRE", () => {
     const identity = {
       auditId: "audit_verdict_limit",
       subjectId: "strategy_verdict_limit",
@@ -38,20 +38,36 @@ describe("buildExecutedAuditArtifact", () => {
       auditId: identity.auditId,
       subjectId: identity.subjectId,
       traceId: identity.traceId,
-      checks: AUDIT_CHECK_IDS.map((id) => ({
-        id,
-        conclusion: "fail",
-        confidence: 0.8,
-        evidence: [
-          {
-            metric: "materialDefect",
-            value: true,
-            unit: "boolean",
-            sourceRefs: [`test:${id}`],
-          },
-        ],
-        missingEvidence: [],
-      })),
+      checks: AUDIT_CHECK_IDS.map((id) =>
+        id === "data-availability"
+          ? {
+              id,
+              conclusion: "insufficient_evidence",
+              confidence: 0.2,
+              evidence: [],
+              missingEvidence: [
+                {
+                  requirement: "point-in-time index constituents",
+                  reason: "the required history is unavailable",
+                  sourceRefs: ["test:data-availability"],
+                },
+              ],
+            }
+          : {
+              id,
+              conclusion: "fail",
+              confidence: 0.8,
+              evidence: [
+                {
+                  metric: "materialDefect",
+                  value: true,
+                  unit: "boolean",
+                  sourceRefs: [`test:${id}`],
+                },
+              ],
+              missingEvidence: [],
+            },
+      ),
       startedAt: "2026-07-24T00:00:00.000Z",
       completedAt: "2026-07-24T00:00:01.000Z",
     };
@@ -64,6 +80,7 @@ describe("buildExecutedAuditArtifact", () => {
     });
 
     expect(artifact.results[0]?.verdict).toBe("RETIRE");
+    expect(artifact.results[0]?.confidence).toBe(0.2);
     expect(artifact.results[0]?.assumptionsAndLimits).toContain(
       "Recovery-condition reasoning is not implemented in the Skeleton phase, so failures that VERDICT_SPEC §2 would grade QUARANTINE are graded RETIRE.",
     );

@@ -44,12 +44,18 @@ const DEFAULT_CHECK_BUDGET: Readonly<CheckBudget> = Object.freeze({
 });
 
 export const SKELETON_CHECK_PLAN: CheckPlan = Object.freeze({
-  budgets: Object.freeze(
-    Object.fromEntries(AUDIT_CHECK_IDS.map((checkId) => [checkId, DEFAULT_CHECK_BUDGET])) as Record<
-      AuditCheckId,
-      CheckBudget
-    >,
-  ),
+  budgets: Object.freeze({
+    ...Object.fromEntries(AUDIT_CHECK_IDS.map((checkId) => [checkId, DEFAULT_CHECK_BUDGET])),
+    // Sprint S1b only: these values mirror the deterministic stdio experiments.
+    "param-robustness": Object.freeze({
+      timeoutMs: 120_000,
+      maxVariants: 15,
+    }),
+    "cost-stress": Object.freeze({
+      timeoutMs: 120_000,
+      maxVariants: 3,
+    }),
+  }) as Readonly<Record<AuditCheckId, CheckBudget>>,
 });
 
 function deepFreeze<T>(value: T): T {

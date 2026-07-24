@@ -46,11 +46,79 @@ describe("StrategyIntake", () => {
     expect(JSON.parse(result.frozen.canonicalJson)).toEqual(result.frozen.spec);
   });
 
+  test("uses the sprint trailing-three-year rung when the input omits a window", async () => {
+    const { window: _window, ...withoutWindow } = completeCandidate;
+    const intake = createIntake({
+      parse: async () => withoutWindow,
+    });
+
+    const result = await intake.intakeText("strategy without an explicit period");
+
+    expect(result.kind).toBe("ready");
+    if (result.kind !== "ready") {
+      throw new Error("Expected ready intake result");
+    }
+    expect(result.frozen.spec.window).toEqual({
+      start: "20230723",
+      end: "20260723",
+    });
+    expect(result.frozen.defaultsApplied).toContain(
+      "window=20230723..20260723 (sprint trailing-3y default)",
+    );
+  });
+
+  test("normalizes the two known sprint parser quirks without changing the contract", async () => {
+    const intake = createIntake({
+      parse: async () => ({
+        ...completeCandidate,
+        universe: { index: "000300" },
+        signal: {
+          kind: "template",
+          template: "momentum",
+          params: { window: 20, direction: "high" },
+        },
+      }),
+    });
+
+    const result = await intake.intakeText("沪深 300 动量");
+
+    expect(result.kind).toBe("ready");
+    if (result.kind !== "ready") {
+      throw new Error("Expected ready intake result");
+    }
+    expect(result.frozen.spec.universe.index).toBe("000300.SH");
+    expect(result.frozen.spec.signal).toEqual({
+      kind: "template",
+      template: "momentum",
+      params: { window: 20 },
+    });
+  });
+
+  test("normalizes an explicit annual-return percentage to a decimal ratio", async () => {
+    const intake = createIntake({
+      parse: async () => ({
+        ...completeCandidate,
+      }),
+    });
+
+    const result = await intake.intakeText(
+      "沪深 300 每月底买过去 20 天涨幅最大的 50 只，等权持有，宣称年化 18% 夏普 1.9",
+    );
+
+    expect(result.kind).toBe("ready");
+    if (result.kind !== "ready") {
+      throw new Error("Expected ready intake result");
+    }
+    expect(result.frozen.spec.claims?.annualReturn).toBe(0.18);
+    expect(result.frozen.spec.claims?.sharpe).toBe(1.9);
+  });
+
   test("returns every missing field as an insufficient-information early exit", async () => {
     const intake = createIntake({
       parse: async () => ({
         specVersion: "1",
         universe: { index: "000300.SH" },
+        window: {},
       }),
     });
 

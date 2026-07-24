@@ -26,7 +26,10 @@ export function createProductionA2AApp(config: ProductionA2AConfig): AssayA2AApp
     requestModelId: config.arkModel,
     name: "Ark DeepSeek",
     api: "openai-responses",
-    provider: "openai",
+    // Ark speaks the Responses wire protocol, but it is not the first-party
+    // OpenAI provider. Keeping a distinct provider id prevents pi-ai from
+    // sending OpenAI-only fields such as stream_options.
+    provider: "volcengine-ark",
     baseUrl: config.arkBaseUrl,
     reasoning: true,
     input: ["text"],

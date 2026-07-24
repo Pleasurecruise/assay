@@ -69,6 +69,12 @@ item.
 
 Deterministic rules:
 
+> **Sprint v2 local override:** for an executed audit, an evidenced `fail` is
+> evaluated before `insufficient_evidence`. Because recovery-condition mapping
+> is deferred in this vertical slice, that fail maps to `RETIRE`. Early exits
+> remain `UNVERIFIABLE`. The full rule order below remains the post-sprint
+> target and will be reconciled when D8 is implemented.
+
 1. An unparseable input or any required `insufficient_evidence` result yields
    `UNVERIFIABLE`.
 2. An unresolved Moiré dispute that could change the verdict first converts

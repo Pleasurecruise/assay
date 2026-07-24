@@ -1,0 +1,231 @@
+{
+  "schemaVersion": "sprint-acceptance-bundle-v1",
+  "artifactRole": "real-data-acceptance",
+  "generatedAt": "2026-07-24T11:38:46.272Z",
+  "input": "沪深 300 每月底买过去 20 天涨幅最大的 50 只，等权持有，宣称年化 18% 夏普 1.9",
+  "dataMode": "pandadata-factor-close-trade-status-v3-cache",
+  "cacheSnapshot": {
+    "datasetVersion": "factor-close-trade-status-v3",
+    "sha256": "22c549566998d98e2f0ee05dce7137a6d0a020c28e855edbea841d944fc2c72d",
+    "universeHash": "4239252582fb99af",
+    "rows": 216577,
+    "symbols": 300,
+    "tradingDates": 727,
+    "start": "2023-07-24",
+    "end": "2026-07-23"
+  },
+  "artifact": {
+    "schemaVersion": "1.0.0",
+    "kind": "strategy_audit",
+    "auditId": "audit_45c064e9-4435-4a42-b745-49f773bd28b3",
+    "generatedAt": "2026-07-24T11:38:46.255Z",
+    "results": [
+      {
+        "subjectId": "strategy_45c064e9-4435-4a42-b745-49f773bd28b3",
+        "verdict": "UNVERIFIABLE",
+        "confidence": 0,
+        "summary": "The checks ran, but required evidence was insufficient for a strong conclusion.",
+        "checks": [
+          {
+            "id": "param-robustness",
+            "conclusion": "pass",
+            "confidence": 0.92,
+            "evidence": [
+              {
+                "metric": "neighborhoodSharpeRetention",
+                "value": 1.035,
+                "unit": "ratio (non-baseline median Sharpe / baseline Sharpe)",
+                "sourceRefs": ["artifact:backtest/param-grid"]
+              },
+              {
+                "metric": "baselineSharpe",
+                "value": 1.045,
+                "unit": "Sharpe ratio",
+                "sourceRefs": ["artifact:backtest/param-grid"]
+              },
+              {
+                "metric": "nonBaselineMedianSharpe",
+                "value": 1.081,
+                "unit": "Sharpe ratio",
+                "sourceRefs": ["artifact:backtest/param-grid"]
+              },
+              {
+                "metric": "variantCount",
+                "value": 14,
+                "unit": "non-baseline grid variants",
+                "sourceRefs": ["artifact:backtest/param-grid"]
+              },
+              {
+                "metric": "minNonBaselineSharpe",
+                "value": 0.9995,
+                "unit": "Sharpe ratio (w20-n70)",
+                "sourceRefs": ["artifact:backtest/param-grid"]
+              }
+            ],
+            "missingEvidence": []
+          },
+          {
+            "id": "data-availability",
+            "conclusion": "insufficient_evidence",
+            "confidence": 0.95,
+            "evidence": [],
+            "missingEvidence": [
+              {
+                "requirement": "逐日沪深300指数成分股列表及纳入、剔除日期",
+                "reason": "需核对历史各时点的实际成分股，识别因退市、指数调整等导致的幸存者偏差。当前无此数据。",
+                "sourceRefs": ["input:strategy-description"]
+              },
+              {
+                "requirement": "逐日个股停牌、复牌及退市记录",
+                "reason": "需判断月度再平衡日各候选股票是否可交易，避免纳入不可交易股票导致的偏差。当前无此数据。",
+                "sourceRefs": ["input:strategy-description"]
+              },
+              {
+                "requirement": "完整历史日频行情数据（含复权因子、停牌标记及时间戳）",
+                "reason": "需验证20日动量信号在每个再平衡日仅使用已发生价格，排除前视偏差，并正确处理停牌窗口。当前无此数据。",
+                "sourceRefs": ["input:strategy-description"]
+              }
+            ]
+          },
+          {
+            "id": "cost-stress",
+            "conclusion": "pass_with_reservations",
+            "confidence": 0.85,
+            "evidence": [
+              {
+                "metric": "baseline_annualReturn",
+                "value": 0.2818,
+                "unit": "ratio",
+                "sourceRefs": ["artifact:backtest/cost-ladder"]
+              },
+              {
+                "metric": "realistic_annualReturn",
+                "value": 0.2594,
+                "unit": "ratio",
+                "sourceRefs": ["artifact:backtest/cost-ladder"]
+              },
+              {
+                "metric": "pessimistic_annualReturn",
+                "value": 0.2429,
+                "unit": "ratio",
+                "sourceRefs": ["artifact:backtest/cost-ladder"]
+              },
+              {
+                "metric": "realistic_return_erosion",
+                "value": 0.0224,
+                "unit": "ratio",
+                "sourceRefs": ["artifact:backtest/cost-ladder"]
+              },
+              {
+                "metric": "pessimistic_return_erosion",
+                "value": 0.0389,
+                "unit": "ratio",
+                "sourceRefs": ["artifact:backtest/cost-ladder"]
+              },
+              {
+                "metric": "annualTurnover",
+                "value": 11.3694,
+                "unit": "ratio",
+                "sourceRefs": ["artifact:backtest/cost-ladder"]
+              }
+            ],
+            "missingEvidence": []
+          },
+          {
+            "id": "regime-dependency",
+            "conclusion": "insufficient_evidence",
+            "confidence": 0,
+            "evidence": [],
+            "missingEvidence": [
+              {
+                "requirement": "市场环境划分（如牛市/熊市、高/低波动率、风格因子暴露）以及各环境下的分段收益、胜率、最大回撤等统计指标",
+                "reason": "当前冲刺未提供任何环境划分规则、分段收益数据或计算工具，无法评估策略收益是否集中在少数市场环境，也无法判断环境依赖性",
+                "sourceRefs": ["input:strategy-description"]
+              }
+            ]
+          },
+          {
+            "id": "homogeneity-decay",
+            "conclusion": "insufficient_evidence",
+            "confidence": 1,
+            "evidence": [],
+            "missingEvidence": [
+              {
+                "requirement": "平台因子库（包含历史因子值），用于计算策略信号与已有因子的相关性以评估同质化",
+                "reason": "无法计算信号与因子库的相关性，无法判断策略增量信息",
+                "sourceRefs": ["input:strategy-description"]
+              },
+              {
+                "requirement": "截面收益数据及年度IC/RankIC计算工具，用于测算IC值及其年度衰减",
+                "reason": "缺少收益序列和工具，无法计算信息系数并检测衰减趋势，无法评估拥挤失效迹象",
+                "sourceRefs": ["input:strategy-description"]
+              }
+            ]
+          }
+        ],
+        "moire": {
+          "disputesOpened": 0,
+          "resolved": [],
+          "unresolved": []
+        },
+        "recoveryConditions": [],
+        "reviewTriggers": ["Required audit evidence or data capabilities become available."],
+        "assumptionsAndLimits": [
+          "The Skeleton phase does not run Moiré refinement or live coverage probes.",
+          "Recovery-condition reasoning is not implemented in the Skeleton phase, so failures that VERDICT_SPEC §2 would grade QUARANTINE are graded RETIRE.",
+          "The sprint backtester uses one fixed CSI 300 constituent snapshot, so survivorship bias is not controlled.",
+          "Suspensions, delistings, and missing prices are forward-filled without target replacement in the sprint engine."
+        ],
+        "strategySpec": {
+          "specVersion": "1",
+          "universe": {
+            "index": "000300.SH"
+          },
+          "signal": {
+            "kind": "template",
+            "template": "momentum",
+            "params": {
+              "window": 20
+            }
+          },
+          "selection": {
+            "topN": 50,
+            "weighting": "equal"
+          },
+          "rebalance": {
+            "frequency": "monthly",
+            "at": "close"
+          },
+          "window": {
+            "start": "20230723",
+            "end": "20260723"
+          },
+          "costs": {
+            "model": "standard"
+          },
+          "claims": {
+            "annualReturn": 0.18,
+            "sharpe": 1.9
+          }
+        },
+        "defaultsApplied": [
+          "costs.model=standard",
+          "window=20230723..20260723 (sprint trailing-3y default)"
+        ],
+        "parsingAssumptions": [
+          "Natural-language input was parsed by the configured Ark Responses model."
+        ]
+      }
+    ],
+    "comparison": null,
+    "riskDisclosure": [
+      "This is a technical robustness audit, not investment advice or a return promise."
+    ],
+    "provenance": {
+      "inputHash": "sha256:a76adf550c3f94aa8892726f0ffa5de597725fe40406d0b409e2c351c8d063f6",
+      "dataAsOf": "2026-07-23",
+      "dataSources": [],
+      "codeRevision": "sprint-vertical"
+    }
+  }
+}

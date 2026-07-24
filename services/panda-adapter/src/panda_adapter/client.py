@@ -50,6 +50,30 @@ class PandaDataClient:
 
         return self._load_sdk().get_market_data(**parameters)
 
+    def get_factor(self, **parameters: Any) -> Any:
+        if not self._is_initialized:
+            raise PandaDataNotInitializedError(
+                "PandaData must be initialized before requesting factor data"
+            )
+
+        return self._load_sdk().get_factor(**parameters)
+
+    def get_adj_factor(self, **parameters: Any) -> Any:
+        if not self._is_initialized:
+            raise PandaDataNotInitializedError(
+                "PandaData must be initialized before requesting adjustment factors"
+            )
+
+        return self._load_sdk().get_adj_factor(**parameters)
+
+    def get_index_weights(self, **parameters: Any) -> Any:
+        if not self._is_initialized:
+            raise PandaDataNotInitializedError(
+                "PandaData must be initialized before requesting index weights"
+            )
+
+        return self._load_sdk().get_index_weights(**parameters)
+
     def _load_sdk(self) -> ModuleType | Any:
         if self._sdk_module is None:
             self._sdk_module = import_module("panda_data")

@@ -70,12 +70,12 @@ function validateRunnerResult(
   return AUDIT_CHECK_IDS.map((id, index) => parseAuditCheckResult(result.checks[index], id));
 }
 
-function deriveVerdict(checks: readonly AuditCheckResult[]): AuditVerdict {
-  if (checks.some((check) => check.conclusion === "insufficient_evidence")) {
-    return "UNVERIFIABLE";
-  }
+export function deriveVerdict(checks: readonly AuditCheckResult[]): AuditVerdict {
   if (checks.some((check) => check.conclusion === "fail")) {
     return "RETIRE";
+  }
+  if (checks.some((check) => check.conclusion === "insufficient_evidence")) {
+    return "UNVERIFIABLE";
   }
   if (checks.some((check) => check.conclusion === "pass_with_reservations")) {
     return "WATCH";
@@ -137,6 +137,8 @@ export function buildExecutedAuditArtifact(options: BuildExecutedArtifactOptions
         assumptionsAndLimits: [
           "The Skeleton phase does not run Moiré refinement or live coverage probes.",
           "Recovery-condition reasoning is not implemented in the Skeleton phase, so failures that VERDICT_SPEC §2 would grade QUARANTINE are graded RETIRE.",
+          "The sprint backtester uses one fixed CSI 300 constituent snapshot, so survivorship bias is not controlled.",
+          "Suspensions, delistings, and missing prices are forward-filled without target replacement in the sprint engine.",
         ],
         strategySpec: options.frozen.spec,
         defaultsApplied: options.frozen.defaultsApplied,

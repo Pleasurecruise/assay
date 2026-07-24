@@ -14,6 +14,9 @@ class FakePandaDataSdk:
     def __init__(self) -> None:
         self.initialization_count = 0
         self.last_market_data_parameters: dict[str, object] | None = None
+        self.last_factor_parameters: dict[str, object] | None = None
+        self.last_adj_factor_parameters: dict[str, object] | None = None
+        self.last_index_weights_parameters: dict[str, object] | None = None
 
     def init_token(self, *, username: str, password: str) -> None:
         if not username or not password:
@@ -22,6 +25,18 @@ class FakePandaDataSdk:
 
     def get_market_data(self, **parameters: object) -> dict[str, object]:
         self.last_market_data_parameters = parameters
+        return {"rows": []}
+
+    def get_factor(self, **parameters: object) -> dict[str, object]:
+        self.last_factor_parameters = parameters
+        return {"rows": []}
+
+    def get_adj_factor(self, **parameters: object) -> dict[str, object]:
+        self.last_adj_factor_parameters = parameters
+        return {"rows": []}
+
+    def get_index_weights(self, **parameters: object) -> dict[str, object]:
+        self.last_index_weights_parameters = parameters
         return {"rows": []}
 
 
@@ -77,6 +92,59 @@ class PandaDataClientTest(unittest.TestCase):
                 "symbol": "000001.SZ",
                 "start_date": "2026-01-01",
                 "end_date": "2026-01-31",
+            },
+        )
+
+        self.assertEqual(
+            self.client.get_factor(
+                symbol=["000001.SZ"],
+                start_date="20260101",
+                end_date="20260131",
+                factors=["close"],
+            ),
+            {"rows": []},
+        )
+        self.assertEqual(
+            self.sdk.last_factor_parameters,
+            {
+                "symbol": ["000001.SZ"],
+                "start_date": "20260101",
+                "end_date": "20260131",
+                "factors": ["close"],
+            },
+        )
+
+        self.assertEqual(
+            self.client.get_adj_factor(
+                symbol="000001.SZ",
+                start_date="20260101",
+                end_date="20260131",
+            ),
+            {"rows": []},
+        )
+        self.assertEqual(
+            self.sdk.last_adj_factor_parameters,
+            {
+                "symbol": "000001.SZ",
+                "start_date": "20260101",
+                "end_date": "20260131",
+            },
+        )
+
+        self.assertEqual(
+            self.client.get_index_weights(
+                index_symbol="000300.SH",
+                start_date="20260131",
+                end_date="20260131",
+            ),
+            {"rows": []},
+        )
+        self.assertEqual(
+            self.sdk.last_index_weights_parameters,
+            {
+                "index_symbol": "000300.SH",
+                "start_date": "20260131",
+                "end_date": "20260131",
             },
         )
 

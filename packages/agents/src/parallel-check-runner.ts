@@ -14,6 +14,7 @@ import {
 } from "@assay/contracts";
 
 const DEFAULT_CHECK_TIMEOUT_MS = 10 * 60 * 1_000;
+const CHECK_EXECUTION_FAILURE_REASON = "Check execution failed before a valid result was produced.";
 
 export interface AuditCheckTaskRunner {
   run(request: RuntimeTaskRequest, options?: { signal?: AbortSignal }): Promise<RuntimeTaskResult>;
@@ -23,8 +24,26 @@ export interface ParallelCheckRunOptions {
   signal?: AbortSignal;
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function parseAgentJson(output: string): unknown {
+  const unfenced = output
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
+  const candidates = [unfenced];
+  const objectStart = unfenced.indexOf("{");
+  const objectEnd = unfenced.lastIndexOf("}");
+  if (objectStart >= 0 && objectEnd > objectStart) {
+    candidates.push(unfenced.slice(objectStart, objectEnd + 1));
+  }
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate) as unknown;
+    } catch {
+      // Keep the result contract strict; only strip common presentation wrappers.
+    }
+  }
+  throw new Error("Check agent returned invalid JSON");
 }
 
 function validateRequest(request: ParallelAuditChecksRequest): void {
@@ -68,7 +87,7 @@ function notApplicable(checkId: AuditCheckId): AuditCheckResult {
   };
 }
 
-function insufficientEvidence(checkId: AuditCheckId, reason: string): AuditCheckResult {
+function insufficientEvidence(checkId: AuditCheckId): AuditCheckResult {
   return {
     id: checkId,
     conclusion: "insufficient_evidence",
@@ -77,7 +96,7 @@ function insufficientEvidence(checkId: AuditCheckId, reason: string): AuditCheck
     missingEvidence: [
       {
         requirement: `${checkId} check execution`,
-        reason,
+        reason: CHECK_EXECUTION_FAILURE_REASON,
         sourceRefs: [`runtime-error:${checkId}`],
       },
     ],
@@ -172,16 +191,20 @@ export class ParallelAuditCheckRunner {
             auditId: request.auditId,
             subjectId: request.subject.id,
             checkId,
+            ...(request.skill === "audit_strategy" &&
+            (checkId === "param-robustness" || checkId === "cost-stress")
+              ? { frozenStrategySpec: request.subject.input }
+              : {}),
           },
         },
         { signal },
       );
-      return parseAuditCheckResult(JSON.parse(result.output) as unknown, checkId);
+      return parseAuditCheckResult(parseAgentJson(result.output), checkId);
     } catch (error) {
       if (signal?.aborted) {
         throw signal.reason ?? error;
       }
-      return insufficientEvidence(checkId, errorMessage(error));
+      return insufficientEvidence(checkId);
     }
   }
 }

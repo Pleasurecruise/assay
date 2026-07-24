@@ -8,6 +8,7 @@ import { Agent, type AgentMessage, type AgentOptions } from "@oh-my-pi/pi-agent-
 import type { Model } from "@oh-my-pi/pi-ai";
 import { AgentRegistry } from "./registry";
 import { ToolPolicy } from "./policy";
+import { assertExactRunExperimentCompletion, guardRuntimeToolCall } from "./runtime-tool-guard";
 
 const DEFAULT_MAX_RUN_MS = 19 * 60 * 1_000;
 
@@ -91,6 +92,8 @@ export class AgentRuntime {
     const events: RuntimeEvent[] = [];
     let sequence = 0;
     let output = "";
+    let runExperimentCallCount = 0;
+    let successfulRunExperimentCallCount = 0;
 
     const emit = async (payload: RuntimeEventPayload): Promise<void> => {
       const event: RuntimeEvent = {
@@ -113,8 +116,23 @@ export class AgentRuntime {
         tools,
         messages: [],
       },
+      // The sprint's Ark Responses endpoint accepts reasoning effort but not
+      // OpenAI's optional reasoning.summary request field.
+      hideThinkingSummary: true,
       getApiKey: this.#getApiKey,
       beforeToolCall: async ({ toolCall, args }) => {
+        const guard = guardRuntimeToolCall(
+          toolCall.name,
+          args,
+          request.metadata?.specHash,
+          request.metadata?.frozenStrategySpec,
+          runExperimentCallCount,
+        );
+        runExperimentCallCount = guard.runExperimentCallCount;
+        if (guard.blockReason !== undefined) {
+          return { block: true, reason: guard.blockReason };
+        }
+
         const tool = tools.find((candidate) => candidate.name === toolCall.name);
         const decision = await this.#toolPolicy.evaluate(
           {
@@ -178,6 +196,9 @@ export class AgentRuntime {
           });
           break;
         case "tool_execution_end":
+          if (event.toolName === "run_experiment" && event.isError !== true) {
+            successfulRunExperimentCallCount += 1;
+          }
           void emit({
             type: "tool.completed",
             agentId: definition.id,
@@ -207,6 +228,11 @@ export class AgentRuntime {
       if (agent.state.error) {
         throw new Error(agent.state.error);
       }
+      assertExactRunExperimentCompletion(
+        tools.some((tool) => tool.name === "run_experiment"),
+        runExperimentCallCount,
+        successfulRunExperimentCallCount,
+      );
 
       await emit({
         type: "agent.completed",

@@ -60,4 +60,23 @@ describe("ArkResponsesStrategyParser", () => {
     await expect(parser.parse("strategy")).resolves.toEqual({ specVersion: "1" });
     expect(attempts).toBe(2);
   });
+
+  test("retries one malformed model output within the same bounded attempt budget", async () => {
+    let attempts = 0;
+    const parser = new ArkResponsesStrategyParser({
+      apiKey: "secret-test-key",
+      model: "ep-test",
+      maxAttempts: 2,
+      fetchImpl: async () => {
+        attempts += 1;
+        return Response.json({
+          output_text:
+            attempts === 1 ? "I cannot produce the requested object." : '{"specVersion":"1"}',
+        });
+      },
+    });
+
+    await expect(parser.parse("strategy")).resolves.toEqual({ specVersion: "1" });
+    expect(attempts).toBe(2);
+  });
 });

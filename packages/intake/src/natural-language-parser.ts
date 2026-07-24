@@ -67,7 +67,7 @@ The supported StrategySpec shape is:
   "window": { "start": "YYYYMMDD", "end": "YYYYMMDD" },
   "costs": { "model": "none" | "standard" | "realistic" | "pessimistic" },
   "claims": {
-    "annualReturn": number,
+    "annualReturn": number, // decimal ratio: 18% must be 0.18
     "sharpe": number,
     "maxDrawdown": number
   }
@@ -249,16 +249,51 @@ export class ArkResponsesStrategyParser implements NaturalLanguageStrategyParser
       try {
         payload = await response.json();
       } catch (cause) {
-        throw new ArkParserError("response_invalid", "Ark returned an invalid JSON response", {
-          cause,
-        });
+        const failure = new ArkParserError(
+          "response_invalid",
+          "Ark returned an invalid JSON response",
+          {
+            cause,
+          },
+        );
+        if (attempt === this.#maxAttempts) {
+          throw failure;
+        }
+        lastFailure = failure;
+        continue;
       }
 
       const outputText = extractOutputText(payload);
       if (outputText === undefined) {
-        throw new ArkParserError("response_invalid", "Ark response did not contain output text");
+        const failure = new ArkParserError(
+          "response_invalid",
+          "Ark response did not contain output text",
+        );
+        if (attempt === this.#maxAttempts) {
+          throw failure;
+        }
+        lastFailure = failure;
+        continue;
       }
-      return parseJsonObject(outputText);
+
+      try {
+        return parseJsonObject(outputText);
+      } catch (cause) {
+        const failure =
+          cause instanceof ArkParserError
+            ? cause
+            : new ArkParserError(
+                "response_unparseable",
+                "Ark returned output that is not a StrategySpec JSON object",
+                {
+                  cause,
+                },
+              );
+        if (attempt === this.#maxAttempts) {
+          throw failure;
+        }
+        lastFailure = failure;
+      }
     }
 
     throw (

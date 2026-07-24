@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "sprint-real-golden-v1",
+  "dataMode": "pandadata-factor-close-trade-status-v3-cache",
+  "input": "沪深 300 每月底买过去 20 天涨幅最大的 50 只，等权持有，宣称年化 18% 夏普 1.9",
+  "provenance": {
+    "specHash": "sha256:a76adf550c3f94aa8892726f0ffa5de597725fe40406d0b409e2c351c8d063f6",
+    "codeRevision": "sprint-vertical"
+  },
+  "cache": {
+    "datasetVersion": "factor-close-trade-status-v3",
+    "sha256": "22c549566998d98e2f0ee05dce7137a6d0a020c28e855edbea841d944fc2c72d",
+    "universeHash": "4239252582fb99af",
+    "rows": 216577,
+    "symbols": 300,
+    "tradingDates": 727,
+    "start": "2023-07-24",
+    "end": "2026-07-23"
+  },
+  "expected": {
+    "param": {
+      "conclusion": "pass",
+      "metric": "neighborhoodSharpeRetention",
+      "value": 1.035,
+      "sourceRef": "artifact:backtest/param-grid"
+    },
+    "cost": {
+      "conclusion": "pass_with_reservations",
+      "metric": "pessimistic_annualReturn",
+      "value": 0.2429,
+      "sourceRef": "artifact:backtest/cost-ladder"
+    },
+    "insufficientChecks": ["data-availability", "regime-dependency", "homogeneity-decay"],
+    "verdict": "UNVERIFIABLE"
+  }
+}

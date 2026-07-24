@@ -387,7 +387,7 @@ describe("Assay A2A Skeleton over HTTP+JSON", () => {
     });
   });
 
-  test("missing window completes with an insufficient-information early exit", async () => {
+  test("missing window uses the sprint trailing-three-year default", async () => {
     const input =
       "Audit a CSI 300 monthly 20-day momentum strategy holding the top 50 " +
       "equal-weighted names with standard costs.";
@@ -405,13 +405,19 @@ describe("Assay A2A Skeleton over HTTP+JSON", () => {
       const result = artifact.results[0];
 
       expect(parserCalls).toEqual([input]);
-      expect(requests).toHaveLength(0);
+      expect(requests).toHaveLength(1);
       expect(result?.verdict).toBe("UNVERIFIABLE");
-      expect(result?.reasonCode).toBe("insufficient_information");
-      expect(result?.missingInformation?.some((item) => item.requirement === "$.window")).toBe(
+      expect(result?.reasonCode).toBeUndefined();
+      expect(result?.strategySpec?.window).toEqual({
+        start: "20230724",
+        end: "20260724",
+      });
+      expect(result?.defaultsApplied).toContain(
+        "window=20230724..20260724 (sprint trailing-3y default)",
+      );
+      expect(result?.checks.every((check) => check.conclusion === "insufficient_evidence")).toBe(
         true,
       );
-      expect(result?.checks.every((check) => check.conclusion === "not_applicable")).toBe(true);
       expect(await store.load(task.id)).toEqual(artifact);
     });
   });

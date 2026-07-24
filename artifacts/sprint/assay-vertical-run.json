@@ -1,0 +1,221 @@
+{
+  "schemaVersion": "sprint-acceptance-bundle-v1",
+  "artifactRole": "mechanism-fixture",
+  "fixtureId": "synthetic-cost-fail-v1",
+  "generatedAt": "2026-07-24T09:47:17.184Z",
+  "input": "沪深 300 每月底买过去 20 天涨幅最大的 50 只，等权持有，宣称年化 18% 夏普 1.9",
+  "dataMode": "synthetic-cache",
+  "artifact": {
+    "schemaVersion": "1.0.0",
+    "kind": "strategy_audit",
+    "auditId": "audit_f996b795-4c07-47b5-b9ae-333cc7db94e3",
+    "generatedAt": "2026-07-24T09:47:17.113Z",
+    "results": [
+      {
+        "subjectId": "strategy_f996b795-4c07-47b5-b9ae-333cc7db94e3",
+        "verdict": "RETIRE",
+        "confidence": 0,
+        "summary": "At least one material check failed without a verified recovery path.",
+        "checks": [
+          {
+            "id": "param-robustness",
+            "conclusion": "pass",
+            "confidence": 0.95,
+            "evidence": [
+              {
+                "metric": "neighborhoodSharpeRetention",
+                "value": 1,
+                "unit": "ratio (non-baseline variant Sharpe median / baseline Sharpe)",
+                "sourceRefs": ["artifact:backtest/param-grid"]
+              },
+              {
+                "metric": "baselineSharpe",
+                "value": -0.5669,
+                "unit": "Sharpe ratio",
+                "sourceRefs": ["artifact:backtest/param-grid"]
+              },
+              {
+                "metric": "nonBaselineVariantCount",
+                "value": 14,
+                "unit": "count",
+                "sourceRefs": ["artifact:backtest/param-grid"]
+              },
+              {
+                "metric": "nonBaselineVariantSharpeMedian",
+                "value": -0.5669,
+                "unit": "Sharpe ratio",
+                "sourceRefs": ["artifact:backtest/param-grid"]
+              },
+              {
+                "metric": "maxSharpeDeviationFromBaseline",
+                "value": 0,
+                "unit": "absolute Sharpe difference",
+                "sourceRefs": ["artifact:backtest/param-grid"]
+              }
+            ],
+            "missingEvidence": []
+          },
+          {
+            "id": "data-availability",
+            "conclusion": "insufficient_evidence",
+            "confidence": 0,
+            "evidence": [],
+            "missingEvidence": [
+              {
+                "requirement": "逐历史时点的成分股数据，包含调入调出日期",
+                "reason": "需要 000300.SH 在 2023-07-23 至 2026-07-23 每个月的成分股列表，以评估幸存者偏差和成分股变动影响",
+                "sourceRefs": ["input:strategy-description"]
+              },
+              {
+                "requirement": "逐日的停复牌和退市状态数据",
+                "reason": "需要所有成分股及候选股在回测期内的停复牌、退市日期，以判断可交易状态和避免前视偏差",
+                "sourceRefs": ["input:strategy-description"]
+              },
+              {
+                "requirement": "财务信息和其他信号的披露时间点数据",
+                "reason": "需要财务数据（若信号涉及）的确切公告或披露日期，以验证信号计算时是否使用了未来数据",
+                "sourceRefs": ["input:strategy-description"]
+              },
+              {
+                "requirement": "实际交易价格和流动性数据",
+                "reason": "需要每月调仓日收盘价及成交量，以确认当时能否以指定价格成交，并检查流动性缺失导致的不可交易情况",
+                "sourceRefs": ["input:strategy-description"]
+              }
+            ]
+          },
+          {
+            "id": "cost-stress",
+            "conclusion": "fail",
+            "confidence": 0.95,
+            "evidence": [
+              {
+                "metric": "pessimistic annualReturn",
+                "value": -0.0006038323366154286,
+                "unit": "fraction/year",
+                "sourceRefs": ["artifact:backtest/cost-ladder"]
+              },
+              {
+                "metric": "realistic annualReturn",
+                "value": -0.0004024694845031762,
+                "unit": "fraction/year",
+                "sourceRefs": ["artifact:backtest/cost-ladder"]
+              },
+              {
+                "metric": "baseline annualReturn",
+                "value": -0.00008046659165283909,
+                "unit": "fraction/year",
+                "sourceRefs": ["artifact:backtest/cost-ladder"]
+              },
+              {
+                "metric": "annualTurnover",
+                "value": 0.16091954022988506,
+                "unit": "fraction/year",
+                "sourceRefs": ["artifact:backtest/cost-ladder"]
+              }
+            ],
+            "missingEvidence": []
+          },
+          {
+            "id": "regime-dependency",
+            "conclusion": "insufficient_evidence",
+            "confidence": 0,
+            "evidence": [],
+            "missingEvidence": [
+              {
+                "requirement": "环境划分与分段指标",
+                "reason": "缺少市场环境定义（趋势/波动率/风格划分）以及各环境下的分段收益统计，无法评估收益是否集中在少数环境。",
+                "sourceRefs": ["input:strategy-description"]
+              }
+            ]
+          },
+          {
+            "id": "homogeneity-decay",
+            "conclusion": "insufficient_evidence",
+            "confidence": 0,
+            "evidence": [],
+            "missingEvidence": [
+              {
+                "requirement": "平台因子库数据",
+                "reason": "需要平台因子库以计算信号与现有因子的相关性，从而评估同质化程度，但当前未提供。",
+                "sourceRefs": ["input:strategy-description"]
+              },
+              {
+                "requirement": "截面收益数据",
+                "reason": "需要截面收益数据以计算年度 IC/RankIC 并评估信号衰减，但当前未提供。",
+                "sourceRefs": ["input:strategy-description"]
+              },
+              {
+                "requirement": "IC/RankIC 计算工具",
+                "reason": "需要工具计算年度 IC 或 RankIC 序列并分析衰减趋势，但当前不可用。",
+                "sourceRefs": ["input:strategy-description"]
+              }
+            ]
+          }
+        ],
+        "moire": {
+          "disputesOpened": 0,
+          "resolved": [],
+          "unresolved": []
+        },
+        "recoveryConditions": [],
+        "reviewTriggers": [],
+        "assumptionsAndLimits": [
+          "The Skeleton phase does not run Moiré refinement or live coverage probes.",
+          "Recovery-condition reasoning is not implemented in the Skeleton phase, so failures that VERDICT_SPEC §2 would grade QUARANTINE are graded RETIRE.",
+          "The sprint backtester uses one fixed CSI 300 constituent snapshot, so survivorship bias is not controlled.",
+          "Suspensions, delistings, and missing prices are forward-filled without target replacement in the sprint engine.",
+          "This local sprint demonstration used a deterministic flat-price synthetic cache because PandaData credentials were unavailable; its numbers are integration evidence only, not market evidence."
+        ],
+        "strategySpec": {
+          "specVersion": "1",
+          "universe": {
+            "index": "000300.SH"
+          },
+          "signal": {
+            "kind": "template",
+            "template": "momentum",
+            "params": {
+              "window": 20
+            }
+          },
+          "selection": {
+            "topN": 50,
+            "weighting": "equal"
+          },
+          "rebalance": {
+            "frequency": "monthly",
+            "at": "close"
+          },
+          "window": {
+            "start": "20230723",
+            "end": "20260723"
+          },
+          "costs": {
+            "model": "standard"
+          },
+          "claims": {
+            "annualReturn": 0.18,
+            "sharpe": 1.9
+          }
+        },
+        "defaultsApplied": [
+          "costs.model=standard",
+          "window=20230723..20260723 (sprint trailing-3y default)"
+        ],
+        "parsingAssumptions": [
+          "Natural-language input was parsed by the configured Ark Responses model."
+        ]
+      }
+    ],
+    "comparison": null,
+    "riskDisclosure": [
+      "This is a technical robustness audit, not investment advice or a return promise."
+    ],
+    "provenance": {
+      "inputHash": "sha256:a76adf550c3f94aa8892726f0ffa5de597725fe40406d0b409e2c351c8d063f6",
+      "dataAsOf": "2026-07-23",
+      "dataSources": [],
+      "codeRevision": "sprint-vertical"
+    }
+  }
+}
