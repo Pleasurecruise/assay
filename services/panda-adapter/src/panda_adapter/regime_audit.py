@@ -9,7 +9,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from .audit_cache import IndexDailyCache, load_index_daily_cache
+from .audit_cache import (
+    IndexDailyCache,
+    PitMembershipCache,
+    load_index_daily_cache,
+    load_pit_membership_cache,
+)
 from .engine.constants import (
     AUDIT_TOOL_CONTRACT_VERSION,
     ENGINE_VERSION,
@@ -24,6 +29,7 @@ from .engine.strategy import parse_momentum_strategy
 from .market_panel import MarketPanel, load_cached_market_panel
 
 IndexLoader = Callable[[], IndexDailyCache | None]
+MembershipLoader = Callable[[], PitMembershipCache]
 
 
 def run_regime_split(
@@ -33,6 +39,7 @@ def run_regime_split(
         load_cached_market_panel
     ),
     index_loader: IndexLoader = load_index_daily_cache,
+    membership_loader: MembershipLoader = load_pit_membership_cache,
 ) -> dict[str, Any]:
     strategy = parse_momentum_strategy(spec)
     panel = panel_loader(spec)
@@ -50,13 +57,32 @@ def run_regime_split(
     ]
     if cached_index is None:
         mode = "constituent_proxy"
-        index_close = _constituent_equal_weight_proxy(panel.adjusted_close)
+        membership_cache = membership_loader()
+        index_close = _constituent_equal_weight_proxy(
+            panel.adjusted_close,
+            membership_cache.snapshots,
+        )
+        available_symbols = set(panel.adjusted_close.columns)
+        unavailable_members = (
+            set().union(*membership_cache.snapshots.values()) - available_symbols
+        )
         assumptions.append(
             (
                 "The prepared index-daily cache was unavailable; the cached "
-                "constituent panel's equal-weight return was used as the "
-                "authorized deterministic proxy. Membership history before "
-                "the first cached PIT snapshot remains a limitation."
+                f"{membership_cache.cache_version} PIT constituent timeline's "
+                "equal-weight return was used as the authorized deterministic "
+                "proxy. A snapshot becomes eligible only after its effective "
+                "date, so future constituents cannot enter earlier proxy "
+                "returns. Days before the first cached PIT snapshot remain "
+                "unlabeled."
+            )
+        )
+        assumptions.append(
+            (
+                f"{len(unavailable_members)} PIT member(s) absent from the "
+                "frozen price panel were omitted under the authorized "
+                "remove-only degradation; each proxy day uses the intersection "
+                "of its as-of PIT membership and the frozen panel."
             )
         )
     else:
@@ -270,6 +296,7 @@ def split_returns_by_regime(
 
 def _constituent_equal_weight_proxy(
     adjusted_close: pd.DataFrame,
+    snapshots: Mapping[pd.Timestamp, frozenset[str]],
 ) -> pd.Series:
     if not isinstance(adjusted_close, pd.DataFrame) or adjusted_close.empty:
         raise ValueError("constituent proxy requires a non-empty price panel")
@@ -277,9 +304,68 @@ def _constituent_equal_weight_proxy(
         pd.to_numeric,
         errors="coerce",
     )
+    prices.index = pd.DatetimeIndex(pd.to_datetime(prices.index))
+    if prices.index.has_duplicates or prices.columns.has_duplicates:
+        raise ValueError("constituent proxy price keys must be unique")
+    if not snapshots:
+        raise ValueError("constituent proxy requires PIT membership snapshots")
+    ordered_snapshots: list[tuple[pd.Timestamp, frozenset[str]]] = []
+    for raw_date, raw_members in sorted(snapshots.items()):
+        date = pd.Timestamp(raw_date)
+        if (
+            pd.isna(date)
+            or not isinstance(raw_members, frozenset)
+            or not raw_members
+            or any(
+                not isinstance(symbol, str) or not symbol
+                for symbol in raw_members
+            )
+        ):
+            raise ValueError("constituent proxy PIT membership is invalid")
+        ordered_snapshots.append((date, raw_members))
+    if len({date for date, _ in ordered_snapshots}) != len(ordered_snapshots):
+        raise ValueError("constituent proxy PIT dates must be unique")
+
     returns = prices.pct_change(fill_method=None)
-    equal_weight_return = returns.mean(axis=1, skipna=True).fillna(0.0)
-    return (1.0 + equal_weight_return).cumprod().rename("close")
+    proxy_close: dict[pd.Timestamp, float] = {}
+    snapshot_position = 0
+    active_members: frozenset[str] | None = None
+    first_snapshot_date = ordered_snapshots[0][0]
+    first_position = int(prices.index.searchsorted(first_snapshot_date, side="left"))
+    if first_position >= len(prices.index):
+        raise ValueError("constituent proxy PIT timeline is outside the price window")
+    initial_date = pd.Timestamp(prices.index[first_position])
+    proxy_close[initial_date] = 1.0
+    current_close = 1.0
+
+    for position in range(first_position + 1, len(prices.index)):
+        previous_date = pd.Timestamp(prices.index[position - 1])
+        while (
+            snapshot_position < len(ordered_snapshots)
+            and ordered_snapshots[snapshot_position][0] <= previous_date
+        ):
+            active_members = ordered_snapshots[snapshot_position][1]
+            snapshot_position += 1
+        if active_members is None:
+            continue
+        available = sorted(active_members & set(prices.columns))
+        if not available:
+            raise RuntimeError(
+                "constituent proxy PIT membership has no cached price coverage"
+            )
+        current_date = pd.Timestamp(prices.index[position])
+        daily = returns.loc[current_date, available].dropna().astype(float)
+        if daily.empty or not np.isfinite(daily.to_numpy(dtype=float)).all():
+            raise RuntimeError(
+                "constituent proxy PIT membership has no valid daily returns"
+            )
+        current_close *= 1.0 + float(daily.mean())
+        if not isfinite(current_close) or current_close <= 0:
+            raise RuntimeError("constituent proxy produced an invalid close")
+        proxy_close[current_date] = current_close
+    if len(proxy_close) < 2:
+        raise RuntimeError("constituent proxy has insufficient PIT-covered dates")
+    return pd.Series(proxy_close, dtype=float, name="close")
 
 
 def _normalize_index_close(value: pd.Series) -> pd.Series:

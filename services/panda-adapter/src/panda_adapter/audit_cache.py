@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from hashlib import sha256
@@ -29,6 +30,12 @@ class IndexDailyCache:
 @dataclass(frozen=True, slots=True)
 class ComparatorFactorCache:
     values: Mapping[str, pd.DataFrame]
+    cache_version: str
+
+
+@dataclass(frozen=True, slots=True)
+class PitMembershipCache:
+    snapshots: Mapping[pd.Timestamp, frozenset[str]]
     cache_version: str
 
 
@@ -287,6 +294,102 @@ def load_comparator_factor_cache(
     )
 
 
+def load_pit_membership_cache(
+    root: Path | None = None,
+) -> PitMembershipCache:
+    """Read the promoted P1 PIT membership timeline without any live fallback."""
+
+    cache_root, manifest = _read_ready_manifest(root)
+    if manifest is None:
+        raise RuntimeError("PIT constituent proxy requires the prepared v9 cache")
+    if manifest.get("cacheVersion") != V9_CACHE_VERSION:
+        raise RuntimeError("PIT constituent proxy cache version is invalid")
+    if manifest.get("promoted") is not True:
+        raise RuntimeError("PIT constituent proxy cache is not promoted")
+    datasets = manifest["datasets"]
+    dataset = datasets.get("pitTimeline")
+    if not isinstance(dataset, Mapping) or dataset.get("status") != "ready":
+        raise RuntimeError("PIT constituent proxy timeline is not ready")
+    if dataset.get("columns") != [
+        "requestedDate",
+        "effectiveDate",
+        "symbols",
+    ]:
+        raise RuntimeError("PIT constituent proxy timeline columns are invalid")
+
+    directory = _dataset_directory(cache_root, dataset)
+    paths = sorted(directory.glob("*.json"))
+    if not paths:
+        raise RuntimeError("PIT constituent proxy timeline is empty")
+
+    snapshots: dict[pd.Timestamp, frozenset[str]] = {}
+    member_counts: dict[str, int] = {}
+    union: set[str] = set()
+    row_count = 0
+    for path in paths:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise RuntimeError("PIT constituent proxy snapshot is unreadable") from error
+        if not isinstance(payload, Mapping):
+            raise RuntimeError("PIT constituent proxy snapshot must be an object")
+        requested_text = payload.get("requestedDate")
+        effective_text = payload.get("effectiveDate")
+        symbols = payload.get("symbols")
+        requested = pd.to_datetime(requested_text, errors="coerce")
+        effective = pd.to_datetime(effective_text, errors="coerce")
+        if (
+            payload.get("schemaVersion") != "pit-index-snapshot-v1"
+            or payload.get("indexSymbol") != INDEX_SYMBOL
+            or not isinstance(requested_text, str)
+            or pd.isna(requested)
+            or pd.Timestamp(requested).strftime("%Y-%m-%d") != requested_text
+            or path.stem != pd.Timestamp(requested).strftime("%Y%m%d")
+            or not isinstance(effective_text, str)
+            or pd.isna(effective)
+            or pd.Timestamp(effective).strftime("%Y-%m-%d") != effective_text
+            or pd.Timestamp(effective) > pd.Timestamp(requested)
+            or not isinstance(symbols, list)
+            or not symbols
+            or any(
+                not isinstance(symbol, str)
+                or re.fullmatch(r"\d{6}\.(?:SH|SZ)", symbol) is None
+                for symbol in symbols
+            )
+            or symbols != sorted(set(symbols))
+        ):
+            raise RuntimeError("PIT constituent proxy snapshot identity is invalid")
+        requested_date = pd.Timestamp(requested)
+        if requested_date in snapshots:
+            raise RuntimeError("PIT constituent proxy dates are duplicated")
+        members = frozenset(symbols)
+        snapshots[requested_date] = members
+        member_counts[requested_text] = len(members)
+        union.update(members)
+        row_count += len(members)
+
+    quality = dataset.get("quality")
+    if (
+        type(dataset.get("downloaded")) is not int
+        or dataset.get("downloaded") != len(snapshots)
+        or type(dataset.get("tradingDates")) is not int
+        or dataset.get("tradingDates") != len(snapshots)
+        or type(dataset.get("rowCount")) is not int
+        or dataset.get("rowCount") != row_count
+        or type(dataset.get("symbols")) is not int
+        or dataset.get("symbols") != len(union)
+        or not isinstance(quality, Mapping)
+        or quality.get("pointCount") != len(snapshots)
+        or quality.get("memberCounts") != member_counts
+        or quality.get("primaryKeysValid") is not True
+    ):
+        raise RuntimeError("PIT constituent proxy timeline does not reconcile")
+    return PitMembershipCache(
+        snapshots=dict(sorted(snapshots.items())),
+        cache_version=_cache_version(manifest),
+    )
+
+
 def _read_ready_manifest(
     root: Path | None,
 ) -> tuple[Path, Mapping[str, Any] | None]:
@@ -356,3 +459,24 @@ def _dataset_path(
     if not resolved.is_file():
         raise RuntimeError("v9 cache ready dataset file is missing")
     return resolved
+
+
+def _dataset_directory(
+    root: Path,
+    dataset: Mapping[str, Any],
+) -> Path:
+    value = dataset.get("path")
+    if not isinstance(value, str) or not value:
+        raise RuntimeError("v9 cache dataset path is missing")
+    relative = Path(value)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise RuntimeError("v9 cache dataset path must be a contained relative path")
+    candidates = [
+        candidate
+        for candidate in ((root / relative).resolve(), (root.parent / relative).resolve())
+        if candidate.is_dir()
+    ]
+    unique = list(dict.fromkeys(candidates))
+    if len(unique) != 1:
+        raise RuntimeError("v9 cache dataset directory is missing or ambiguous")
+    return unique[0]

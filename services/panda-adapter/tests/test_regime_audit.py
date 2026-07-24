@@ -6,7 +6,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from panda_adapter.audit_cache import IndexDailyCache
+from panda_adapter.audit_cache import IndexDailyCache, PitMembershipCache
 from panda_adapter.engine.constants import (
     AUDIT_TOOL_CONTRACT_VERSION,
     REGIME_SPLIT_SOURCE_REF,
@@ -14,6 +14,7 @@ from panda_adapter.engine.constants import (
 from panda_adapter.engine.protocol import run_request
 from panda_adapter.market_panel import MarketPanel
 from panda_adapter.regime_audit import (
+    _constituent_equal_weight_proxy,
     label_regimes,
     run_regime_split,
     split_returns_by_regime,
@@ -159,6 +160,29 @@ class RegimeAuditKnownAnswerTest(unittest.TestCase):
         self.assertEqual(environments[0]["days"], 2)
         self.assertAlmostEqual(environments[0]["pnlShare"], 11 / 21)
 
+    def test_constituent_proxy_never_uses_a_future_pit_membership(self) -> None:
+        dates = pd.DatetimeIndex(
+            ["2026-01-30", "2026-02-02", "2026-02-03", "2026-02-04"]
+        )
+        prices = pd.DataFrame(
+            {
+                "A": [100.0, 101.0, 102.0, 103.0],
+                "B": [100.0, 200.0, 400.0, 404.0],
+            },
+            index=dates,
+        )
+        snapshots = {
+            dates[0]: frozenset({"A"}),
+            dates[2]: frozenset({"B"}),
+        }
+
+        proxy = _constituent_equal_weight_proxy(prices, snapshots)
+
+        self.assertEqual(proxy.index.tolist(), dates.tolist())
+        self.assertAlmostEqual(float(proxy.loc[dates[1]]), 1.01)
+        self.assertAlmostEqual(float(proxy.loc[dates[2]]), 1.02)
+        self.assertAlmostEqual(float(proxy.loc[dates[3]]), 1.0302)
+
     def test_runner_returns_the_frozen_response_shape(self) -> None:
         dates = pd.bdate_range("2024-01-02", periods=320)
         prices = pd.DataFrame(
@@ -222,6 +246,24 @@ class RegimeAuditKnownAnswerTest(unittest.TestCase):
         self.assertEqual(result["sourceRef"], REGIME_SPLIT_SOURCE_REF)
         self.assertTrue(
             any("pnlShare is deterministically set" in item for item in result["assumptions"])
+        )
+
+        proxy_result = run_regime_split(
+            spec,
+            panel_loader=lambda _: panel,
+            index_loader=lambda: None,
+            membership_loader=lambda: PitMembershipCache(
+                snapshots={dates[0]: frozenset(prices.columns)},
+                cache_version="known-answer",
+            ),
+        )
+
+        self.assertEqual(proxy_result["mode"], "constituent_proxy")
+        self.assertTrue(
+            any(
+                "future constituents cannot enter" in item
+                for item in proxy_result["assumptions"]
+            )
         )
 
     def test_protocol_dispatches_regime_without_loading_plain_panel(
