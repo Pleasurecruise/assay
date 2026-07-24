@@ -296,6 +296,13 @@ export class AssayAgentExecutor implements AgentExecutor {
   readonly #codeRevision: string;
   readonly #now: () => Date;
   readonly #executionErrorLogger: ExecutionErrorLogger;
+  readonly #activeExecutions = new Map<
+    string,
+    {
+      contextId: string;
+      controller: AbortController;
+    }
+  >();
 
   constructor(options: AssayAgentExecutorOptions) {
     this.#intake = options.intake;
@@ -309,6 +316,11 @@ export class AssayAgentExecutor implements AgentExecutor {
 
   async execute(requestContext: RequestContext, eventBus: ExecutionEventBus): Promise<void> {
     const { taskId, contextId } = requestContext;
+    if (this.#activeExecutions.has(taskId)) {
+      throw new Error(`Task "${taskId}" is already executing`);
+    }
+    const controller = new AbortController();
+    this.#activeExecutions.set(taskId, { contextId, controller });
     const identity: AuditExecutionIdentity = {
       auditId: `audit_${taskId}`,
       subjectId: `strategy_${taskId}`,
@@ -359,7 +371,7 @@ export class AssayAgentExecutor implements AgentExecutor {
           },
         });
       } else {
-        const intakeResult = await this.#intake.intakeText(decoded.text);
+        const intakeResult = await this.#intake.intakeText(decoded.text, controller.signal);
         if (intakeResult.kind === "early_exit") {
           artifact = createEarlyExitAuditArtifact({
             auditId: identity.auditId,
@@ -383,8 +395,28 @@ export class AssayAgentExecutor implements AgentExecutor {
             },
           });
         } else {
+          eventBus.publish(
+            AgentEvent.statusUpdate({
+              taskId,
+              contextId,
+              status: {
+                state: TaskState.TASK_STATE_WORKING,
+                message: createStatusMessage(
+                  taskId,
+                  contextId,
+                  "Running five independent audit checks with guarded data tools.",
+                ),
+                timestamp: this.#now().toISOString(),
+              },
+              metadata: {
+                stage: "parallel-audit-checks",
+              },
+            }),
+          );
           const request = projectFrozenAuditInput(intakeResult.frozen, identity);
-          const result = await this.#runner.run(request);
+          const result = await this.#runner.run(request, {
+            signal: controller.signal,
+          });
           artifact = buildExecutedAuditArtifact({
             frozen: intakeResult.frozen,
             identity,
@@ -394,6 +426,7 @@ export class AssayAgentExecutor implements AgentExecutor {
         }
       }
 
+      controller.signal.throwIfAborted();
       const validatedArtifact = parseAuditArtifact(artifact);
       await this.#artifactStore.save(taskId, validatedArtifact);
       eventBus.publish(
@@ -419,6 +452,9 @@ export class AssayAgentExecutor implements AgentExecutor {
         }),
       );
     } catch (error) {
+      if (controller.signal.aborted) {
+        return;
+      }
       const correlationId = identity.traceId;
       try {
         this.#executionErrorLogger({
@@ -449,10 +485,37 @@ export class AssayAgentExecutor implements AgentExecutor {
           },
         }),
       );
+    } finally {
+      const active = this.#activeExecutions.get(taskId);
+      if (active?.controller === controller) {
+        this.#activeExecutions.delete(taskId);
+      }
     }
   }
 
-  async cancelTask(_taskId: string, _eventBus: ExecutionEventBus): Promise<void> {
-    throw new Error("Task cancellation is not implemented in the Skeleton phase");
+  async cancelTask(taskId: string, eventBus: ExecutionEventBus): Promise<void> {
+    const active = this.#activeExecutions.get(taskId);
+    if (!active) {
+      throw new Error(`Task "${taskId}" is not running`);
+    }
+    const reason = new Error("Task canceled by the requester");
+    reason.name = "AbortError";
+    active.controller.abort(reason);
+    eventBus.publish(
+      AgentEvent.statusUpdate({
+        taskId,
+        contextId: active.contextId,
+        status: {
+          state: TaskState.TASK_STATE_CANCELED,
+          message: createStatusMessage(
+            taskId,
+            active.contextId,
+            "The audit was canceled by the requester.",
+          ),
+          timestamp: this.#now().toISOString(),
+        },
+        metadata: {},
+      }),
+    );
   }
 }

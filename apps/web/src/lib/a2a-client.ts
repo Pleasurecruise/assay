@@ -44,9 +44,78 @@ export interface GetTaskOptions {
   signal?: AbortSignal;
 }
 
+export interface CancelTaskOptions {
+  signal?: AbortSignal;
+}
+
 export interface PollTaskOptions extends GetTaskOptions {
   intervalMs?: number;
   timeoutMs?: number;
+}
+
+export interface AssayServiceCapabilities {
+  skill: "audit_strategy";
+  dataProvider: "PandaData";
+  dataTools: readonly string[];
+  backtester: "assay-backtester@1";
+  dataCredentialsConfigured: boolean;
+}
+
+export function a2aUrlForHostname(hostname: string): string {
+  const normalized = hostname.trim().replace(/^\[(.*)\]$/, "$1");
+  if (normalized.length === 0) {
+    throw new Error("The page hostname must not be empty");
+  }
+  const host = normalized.includes(":") ? `[${normalized}]` : normalized;
+  return `http://${host}:3001/a2a`;
+}
+
+export function sameOriginA2AUrl(origin: string): string {
+  return new URL("/a2a", origin).toString().replace(/\/+$/, "");
+}
+
+export interface A2APageLocation {
+  readonly origin: string;
+  readonly hostname: string;
+}
+
+export function resolveA2AUrl(
+  configured: string | undefined,
+  pageLocation?: A2APageLocation,
+): string | undefined {
+  const value = configured?.trim();
+  const mode = value?.toLowerCase() || "same-origin";
+  if (mode === "same-origin") {
+    return pageLocation === undefined ? undefined : sameOriginA2AUrl(pageLocation.origin);
+  }
+  if (mode === "auto") {
+    return pageLocation === undefined ? undefined : a2aUrlForHostname(pageLocation.hostname);
+  }
+  return value;
+}
+
+function parseServiceCapabilities(value: unknown): AssayServiceCapabilities {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("The Assay capabilities response must be an object");
+  }
+  const capabilities = value as Record<string, unknown>;
+  if (
+    capabilities.skill !== "audit_strategy" ||
+    capabilities.dataProvider !== "PandaData" ||
+    capabilities.backtester !== "assay-backtester@1" ||
+    typeof capabilities.dataCredentialsConfigured !== "boolean" ||
+    !Array.isArray(capabilities.dataTools) ||
+    !capabilities.dataTools.every((tool) => typeof tool === "string" && tool.length > 0)
+  ) {
+    throw new Error("The Assay capabilities response is invalid");
+  }
+  return {
+    skill: capabilities.skill,
+    dataProvider: capabilities.dataProvider,
+    dataTools: capabilities.dataTools,
+    backtester: capabilities.backtester,
+    dataCredentialsConfigured: capabilities.dataCredentialsConfigured,
+  };
 }
 
 function configuredA2AUrl(): string | undefined {
@@ -55,8 +124,7 @@ function configuredA2AUrl(): string | undefined {
       readonly env?: Readonly<Record<string, string | undefined>>;
     }
   ).env;
-  const configured = environment?.VITE_A2A_URL?.trim();
-  return configured === undefined || configured.length === 0 ? undefined : configured;
+  return resolveA2AUrl(environment?.VITE_A2A_URL, globalThis.location);
 }
 
 function normalizeBaseUrl(value: string): string {
@@ -124,9 +192,13 @@ export function extractAuditArtifact(task: Task): AuditArtifact | undefined {
 
 export class AssayA2AClient {
   readonly #client: Client;
+  readonly #origin: string;
+  readonly #fetch: typeof fetch;
 
-  private constructor(client: Client) {
+  private constructor(client: Client, origin: string, fetchImpl: typeof fetch) {
     this.#client = client;
+    this.#origin = origin;
+    this.#fetch = fetchImpl;
   }
 
   static async create(options: CreateAssayA2AClientOptions = {}): Promise<AssayA2AClient> {
@@ -141,7 +213,22 @@ export class AssayA2AClient {
         polling: true,
         acceptedOutputModes: [...ACCEPTED_OUTPUT_MODES],
       }),
+      new URL(baseUrl).origin,
+      fetchImpl,
     );
+  }
+
+  async getCapabilities(options: { signal?: AbortSignal } = {}): Promise<AssayServiceCapabilities> {
+    const response = await this.#fetch(`${this.#origin}/capabilities`, {
+      headers: {
+        Accept: "application/json",
+      },
+      signal: options.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`Assay capabilities request failed with status ${response.status}`);
+    }
+    return parseServiceCapabilities(await response.json());
   }
 
   async sendTextMessage(input: string, options: SendTextMessageOptions = {}): Promise<Task> {
@@ -203,6 +290,23 @@ export class AssayA2AClient {
         tenant: "",
         id,
         historyLength,
+      },
+      {
+        signal: options.signal,
+      },
+    );
+  }
+
+  cancelTask(taskId: string, options: CancelTaskOptions = {}): Promise<Task> {
+    const id = taskId.trim();
+    if (id.length === 0) {
+      throw new Error("A task id is required");
+    }
+    return this.#client.cancelTask(
+      {
+        tenant: "",
+        id,
+        metadata: {},
       },
       {
         signal: options.signal,

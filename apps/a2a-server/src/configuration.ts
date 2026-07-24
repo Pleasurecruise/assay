@@ -1,5 +1,8 @@
 const DEFAULT_ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
-export const DEFAULT_ASSAY_A2A_CORS_ORIGIN = "http://localhost:5173";
+export const DEFAULT_ASSAY_A2A_CORS_ORIGINS = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+] as const;
 
 export interface ProductionA2AConfig {
   arkApiKey: string;
@@ -9,7 +12,8 @@ export interface ProductionA2AConfig {
   capabilitySnapshotId: string;
   codeRevision: string;
   publicUrl: string;
-  corsOrigin: string;
+  corsOrigins: readonly string[];
+  pandaDataConfigured: boolean;
 }
 
 function requireNonEmpty(value: string | undefined, name: string): string {
@@ -71,6 +75,18 @@ function requireHttpOrigin(value: string, name: string): string {
   return url.origin;
 }
 
+function requireHttpOrigins(value: string, name: string): readonly string[] {
+  const origins = value
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0)
+    .map((origin) => requireHttpOrigin(origin, name));
+  if (origins.length === 0) {
+    throw new Error(`${name} must contain at least one HTTP(S) origin`);
+  }
+  return [...new Set(origins)];
+}
+
 export function readProductionConfig(
   environment: NodeJS.ProcessEnv = process.env,
 ): ProductionA2AConfig {
@@ -78,15 +94,19 @@ export function readProductionConfig(
   const dataAsOf = environment.ASSAY_DATA_AS_OF?.trim() || utcDate();
   const listenPort = environment.ASSAY_A2A_PORT?.trim() || "3001";
   const publicUrl = environment.ASSAY_A2A_PUBLIC_URL?.trim() || `http://127.0.0.1:${listenPort}`;
-  const corsOrigin = environment.ASSAY_A2A_CORS_ORIGIN?.trim() || DEFAULT_ASSAY_A2A_CORS_ORIGIN;
+  const corsOrigins =
+    environment.ASSAY_A2A_CORS_ORIGIN?.trim() || DEFAULT_ASSAY_A2A_CORS_ORIGINS.join(",");
   return {
     arkApiKey: requireNonEmpty(environment.ARK_API_KEY, "ARK_API_KEY"),
     arkBaseUrl: requireHttpUrl(arkBaseUrl, "ARK_BASE_URL"),
     arkModel: requireNonEmpty(environment.ARK_MODEL_DEEPSEEK, "ARK_MODEL_DEEPSEEK"),
     dataAsOf: requireDate(dataAsOf, "ASSAY_DATA_AS_OF"),
-    capabilitySnapshotId: environment.ASSAY_CAPABILITY_SNAPSHOT_ID?.trim() || "skeleton:static-v1",
+    capabilitySnapshotId:
+      environment.ASSAY_CAPABILITY_SNAPSHOT_ID?.trim() || "pandadata:toolset-v1",
     codeRevision: environment.ASSAY_CODE_REVISION?.trim() || "development",
     publicUrl: requireHttpUrl(publicUrl, "ASSAY_A2A_PUBLIC_URL"),
-    corsOrigin: requireHttpOrigin(corsOrigin, "ASSAY_A2A_CORS_ORIGIN"),
+    corsOrigins: requireHttpOrigins(corsOrigins, "ASSAY_A2A_CORS_ORIGIN"),
+    pandaDataConfigured:
+      Boolean(environment.PANDA_DATA_USERNAME?.trim()) && Boolean(environment.PANDA_DATA_PASSWORD),
   };
 }

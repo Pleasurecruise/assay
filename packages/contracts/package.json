@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./audit-artifact": "./src/audit-artifact.ts"
+    "./audit-artifact": "./src/audit-artifact.ts",
+    "./audit-checks": "./src/audit-checks.ts"
   }
 }

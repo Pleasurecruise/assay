@@ -86,6 +86,25 @@ export function deriveVerdict(checks: readonly AuditCheckResult[]): AuditVerdict
   throw new Error("An executed strategy audit cannot contain only not-applicable checks");
 }
 
+function collectDataSources(
+  checks: readonly AuditCheckResult[],
+): readonly { id: string; version: string }[] {
+  const sourceRefs = new Set(
+    checks.flatMap((check) =>
+      check.evidence.flatMap((evidence) =>
+        evidence.sourceRefs.filter(
+          (sourceRef) =>
+            sourceRef.startsWith("pandadata:") || sourceRef.startsWith("assay:backtest:"),
+        ),
+      ),
+    ),
+  );
+  return [...sourceRefs].sort().map((id) => ({
+    id,
+    version: id.startsWith("pandadata:") ? "panda_data@0.0.12" : "assay-backtester@1",
+  }));
+}
+
 function deriveConfidence(checks: readonly AuditCheckResult[]): number {
   const applicable = checks.filter((check) => check.conclusion !== "not_applicable");
   if (applicable.length === 0) {
@@ -112,6 +131,13 @@ export interface BuildExecutedArtifactOptions {
 export function buildExecutedAuditArtifact(options: BuildExecutedArtifactOptions): AuditArtifact {
   const checks = validateRunnerResult(options.result, options.identity);
   const verdict = deriveVerdict(checks);
+  const refinedChecks = checks.filter((check) => check.refinedByMoire !== undefined);
+  const resolvedDisputes = refinedChecks
+    .filter((check) => check.conclusion !== "insufficient_evidence")
+    .flatMap((check) => (check.refinedByMoire ? [check.refinedByMoire] : []));
+  const unresolvedDisputes = refinedChecks
+    .filter((check) => check.conclusion === "insufficient_evidence")
+    .flatMap((check) => (check.refinedByMoire ? [check.refinedByMoire] : []));
   const artifact = {
     schemaVersion: AUDIT_ARTIFACT_SCHEMA_VERSION,
     kind: "strategy_audit",
@@ -125,9 +151,9 @@ export function buildExecutedAuditArtifact(options: BuildExecutedArtifactOptions
         summary: VERDICT_SUMMARIES[verdict],
         checks,
         moire: {
-          disputesOpened: 0,
-          resolved: [],
-          unresolved: [],
+          disputesOpened: refinedChecks.length,
+          resolved: resolvedDisputes,
+          unresolved: unresolvedDisputes,
         },
         recoveryConditions: [],
         reviewTriggers:
@@ -135,8 +161,9 @@ export function buildExecutedAuditArtifact(options: BuildExecutedArtifactOptions
             ? ["Required audit evidence or data capabilities become available."]
             : [],
         assumptionsAndLimits: [
-          "The Skeleton phase does not run Moiré refinement or live coverage probes.",
-          "Recovery-condition reasoning is not implemented in the Skeleton phase, so failures that VERDICT_SPEC §2 would grade QUARANTINE are graded RETIRE.",
+          "Moiré opens at most two verdict-changing follow-up experiments after the independent checks.",
+          "PandaData financial report rows have no verified disclosure timestamp; forecast and performance bulletin info_date fields are preferred for point-in-time evidence.",
+          "Automatic recovery-condition reasoning is not implemented, so failures that VERDICT_SPEC §2 would grade QUARANTINE are graded RETIRE.",
           "The sprint backtester uses one fixed CSI 300 constituent snapshot, so survivorship bias is not controlled.",
           "Suspensions, delistings, and missing prices are forward-filled without target replacement in the sprint engine.",
         ],
@@ -152,7 +179,7 @@ export function buildExecutedAuditArtifact(options: BuildExecutedArtifactOptions
     provenance: {
       inputHash: options.frozen.specHash,
       dataAsOf: options.frozen.dataAsOf,
-      dataSources: [],
+      dataSources: collectDataSources(checks),
       codeRevision: options.frozen.codeRevision,
     },
   } satisfies AuditArtifact;

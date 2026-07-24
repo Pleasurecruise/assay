@@ -8,7 +8,7 @@ import { describe, expect, test } from "vitest";
 import { buildExecutedAuditArtifact } from "../src/audit-orchestrator";
 
 describe("buildExecutedAuditArtifact", () => {
-  test("prioritizes fail over insufficient evidence and grades it RETIRE", () => {
+  test("prioritizes failures and summarizes provenance plus Moiré refinements", () => {
     const identity = {
       auditId: "audit_verdict_limit",
       subjectId: "strategy_verdict_limit",
@@ -62,10 +62,14 @@ describe("buildExecutedAuditArtifact", () => {
                   metric: "materialDefect",
                   value: true,
                   unit: "boolean",
-                  sourceRefs: [`test:${id}`],
+                  sourceRefs:
+                    id === "param-robustness"
+                      ? ["assay:backtest:fixture", "pandadata:market_data:fixture"]
+                      : [`test:${id}`],
                 },
               ],
               missingEvidence: [],
+              ...(id === "param-robustness" ? { refinedByMoire: "moire-1-param-robustness" } : {}),
             },
       ),
       startedAt: "2026-07-24T00:00:00.000Z",
@@ -82,7 +86,19 @@ describe("buildExecutedAuditArtifact", () => {
     expect(artifact.results[0]?.verdict).toBe("RETIRE");
     expect(artifact.results[0]?.confidence).toBe(0.2);
     expect(artifact.results[0]?.assumptionsAndLimits).toContain(
-      "Recovery-condition reasoning is not implemented in the Skeleton phase, so failures that VERDICT_SPEC §2 would grade QUARANTINE are graded RETIRE.",
+      "Automatic recovery-condition reasoning is not implemented, so failures that VERDICT_SPEC §2 would grade QUARANTINE are graded RETIRE.",
     );
+    expect(artifact.results[0]?.moire).toEqual({
+      disputesOpened: 1,
+      resolved: ["moire-1-param-robustness"],
+      unresolved: [],
+    });
+    expect(artifact.provenance.dataSources).toEqual([
+      { id: "assay:backtest:fixture", version: "assay-backtester@1" },
+      {
+        id: "pandadata:market_data:fixture",
+        version: "panda_data@0.0.12",
+      },
+    ]);
   });
 });

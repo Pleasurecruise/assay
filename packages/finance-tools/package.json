@@ -1,0 +1,13 @@
+{
+  "name": "@assay/finance-tools",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@assay/agent-runtime": "workspace:*",
+    "zod": "4.4.3"
+  }
+}

@@ -74,7 +74,9 @@ export async function runSprintVertical(): Promise<string> {
     capabilitySnapshotId: `sprint:${golden.cache.datasetVersion}:${golden.cache.sha256.slice(0, 12)}`,
     codeRevision: golden.provenance.codeRevision,
     publicUrl: "http://127.0.0.1",
-    corsOrigin: "http://localhost:5173",
+    corsOrigins: ["http://localhost:5173"],
+    pandaDataConfigured:
+      Boolean(process.env.PANDA_DATA_USERNAME?.trim()) && Boolean(process.env.PANDA_DATA_PASSWORD),
   });
   const server = app.listen(0, "127.0.0.1");
   try {

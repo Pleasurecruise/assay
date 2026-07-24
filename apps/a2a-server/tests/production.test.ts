@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { DEFAULT_ASSAY_A2A_CORS_ORIGIN, readProductionConfig } from "../src/configuration";
+import { DEFAULT_ASSAY_A2A_CORS_ORIGINS, readProductionConfig } from "../src/configuration";
 
 const BASE_ENVIRONMENT: NodeJS.ProcessEnv = {
   ARK_API_KEY: "test-key",
@@ -19,14 +19,29 @@ describe("readProductionConfig", () => {
     expect(readProductionConfig(BASE_ENVIRONMENT).arkModel).toBe("ep-test-deepseek");
   });
 
-  test("defaults the browser origin and accepts an explicit HTTP origin", () => {
-    expect(readProductionConfig(BASE_ENVIRONMENT).corsOrigin).toBe(DEFAULT_ASSAY_A2A_CORS_ORIGIN);
+  test("reports PandaData readiness without retaining credential values", () => {
+    const config = readProductionConfig({
+      ...BASE_ENVIRONMENT,
+      PANDA_DATA_USERNAME: "86+13800000000",
+      PANDA_DATA_PASSWORD: "test-password",
+    });
+
+    expect(config.pandaDataConfigured).toBe(true);
+    expect(config).not.toHaveProperty("pandaDataUsername");
+    expect(config).not.toHaveProperty("pandaDataPassword");
+  });
+
+  test("defaults the browser origins and accepts a comma-separated allowlist", () => {
+    expect(readProductionConfig(BASE_ENVIRONMENT).corsOrigins).toEqual(
+      DEFAULT_ASSAY_A2A_CORS_ORIGINS,
+    );
     expect(
       readProductionConfig({
         ...BASE_ENVIRONMENT,
-        ASSAY_A2A_CORS_ORIGIN: "https://assay.example.com:8443/",
-      }).corsOrigin,
-    ).toBe("https://assay.example.com:8443");
+        ASSAY_A2A_CORS_ORIGIN:
+          "https://assay.example.com:8443/, http://100.102.132.89:5173, https://assay.example.com:8443",
+      }).corsOrigins,
+    ).toEqual(["https://assay.example.com:8443", "http://100.102.132.89:5173"]);
   });
 
   test("rejects a CORS value that is a URL rather than an origin", () => {
