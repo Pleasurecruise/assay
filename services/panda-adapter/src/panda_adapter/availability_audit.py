@@ -25,6 +25,7 @@ from typing import Any, Final, Literal
 import numpy as np
 import pandas as pd
 
+from .audit_cache import V9_CACHE_VERSION
 from .client import create_initialized_client
 from .data_transport import (
     DEFAULT_RETRY_POLICY,
@@ -291,6 +292,22 @@ def run_availability_audit(
                 "historical constituents absent from the existing panel."
             )
         )
+
+    # Host-only Moiré M2 context. The corrected panel and membership mask are
+    # persisted below the PIT cache boundary and never enter the model-visible
+    # availability response.
+    from .moire_audit import persist_corrected_backtest_context
+
+    persist_corrected_backtest_context(
+        spec=spec,
+        panel=expanded_panel,
+        eligible=eligibility,
+        availability_mode=mode,
+        cache_version=V9_CACHE_VERSION,
+        pit_dataset_version=PIT_DATASET_VERSION,
+        pit_cache_root=root,
+    )
+
     return {
         "contractVersion": AUDIT_TOOL_CONTRACT_VERSION,
         "engineVersion": ENGINE_VERSION,

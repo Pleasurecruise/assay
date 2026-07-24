@@ -1,5 +1,9 @@
 import { AgentRegistry, AgentRuntime, createRuntimeTimelineLogger } from "@assay/agent-runtime";
-import { createAuditCheckAgentDefinitions, ParallelAuditCheckRunner } from "@assay/agents";
+import {
+  createAuditCheckAgentDefinitions,
+  ParallelAuditCheckRunner,
+  SubprocessMoireExperimentExecutor,
+} from "@assay/agents";
 import { createPandaDataTools, PandaDataProcessGateway } from "@assay/finance-tools";
 import { ArkResponsesStrategyParser, StrategyIntake } from "@assay/intake";
 import { buildModel } from "@oh-my-pi/pi-catalog/build";
@@ -54,7 +58,15 @@ export function createProductionA2AApp(config: ProductionA2AConfig): AssayA2AApp
     getApiKey: () => config.arkApiKey,
     onEvent: createRuntimeTimelineLogger(),
   });
-  const runner = new ParallelAuditCheckRunner(runtime);
+  const runner = new ParallelAuditCheckRunner(runtime, {
+    enableDiscriminativeMoire: true,
+    moireExecutor: new SubprocessMoireExperimentExecutor(),
+    moirePlanningContext: {
+      // The independent cost-stress tool runs on the frozen as-of panel.
+      // M2 alone is authorized to rerun the ladder on the PIT-corrected panel.
+      costBaselineMode: "uncorrected",
+    },
+  });
   const executor = new AssayAgentExecutor({
     intake,
     runner,

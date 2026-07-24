@@ -113,32 +113,31 @@ def run_cost_ladder(
     adjusted_close: pd.DataFrame,
     *,
     tradable: pd.DataFrame | None = None,
+    eligible: pd.DataFrame | None = None,
     strategy: Mapping[str, Any],
 ) -> dict[str, Any]:
     baseline_parameters = _strategy_parameters(strategy)
     baseline_result = run_momentum_backtest(
         adjusted_close,
         tradable=tradable,
+        eligible=eligible,
         **baseline_parameters,
     )
     shared_parameters = {
-        key: value
-        for key, value in baseline_parameters.items()
-        if key != "cost_model"
+        key: value for key, value in baseline_parameters.items() if key != "cost_model"
     }
     results = []
     for model in COST_LADDER:
         result = run_momentum_backtest(
             adjusted_close,
             tradable=tradable,
+            eligible=eligible,
             cost_model=model,
             **shared_parameters,
         )
         results.append(
             _result_summary(
-                _public_parameters(
-                    {**shared_parameters, "cost_model": model}
-                ),
+                _public_parameters({**shared_parameters, "cost_model": model}),
                 result,
             )
         )

@@ -5,3 +5,4 @@ export * from "./run-availability-audit-tool";
 export * from "./run-experiment-tool";
 export * from "./run-homogeneity-tool";
 export * from "./run-regime-split-tool";
+export * from "./subprocess-moire-executor";
