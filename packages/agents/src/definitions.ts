@@ -41,6 +41,13 @@ missingEvidence 至少一项。调用工具后必须继续完成最终 JSON；�
 仅有思考过程。
 `.trim();
 
+function outputIdentityGuard(id: AuditCheckId): string {
+  return `
+最终 JSON 的 "id" 必须严格等于 "${id}"。工具请求中的 kind、工具名称、响应 kind
+或任何内部标签都不是检查 id，不得复制到最终 JSON 的 "id"。
+`.trim();
+}
+
 const checkPrompts: Readonly<Record<AuditCheckId, string>> = {
   "param-robustness": `
 你负责参数稳健性检查。使用回测工具执行请求中唯一的预声明参数网格，比较基线与变体表现，
@@ -195,7 +202,7 @@ export function createAuditCheckAgentDefinitions(
       name: checkNames[id],
       description: checkPrompts[id],
       thinkingLevel: highThinkingChecks.has(id) ? high : medium,
-      systemPrompt: [sharedGuardrails, checkPrompts[id]],
+      systemPrompt: [sharedGuardrails, outputIdentityGuard(id), checkPrompts[id]],
       tools,
     };
   });

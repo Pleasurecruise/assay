@@ -142,6 +142,17 @@ describe("run_experiment tool", () => {
     });
   });
 
+  test("binds every final JSON id to the canonical check rather than a tool kind", () => {
+    const definitions = createAuditCheckAgentDefinitions({ experimentProcess: mockProcess });
+
+    for (const definition of definitions) {
+      const prompt = definition.systemPrompt.join("\n");
+      expect(prompt).toContain(`"id" 必须严格等于 "${definition.id}"`);
+      expect(prompt).toContain("工具请求中的 kind");
+      expect(prompt).toContain("不得复制到最终 JSON");
+    }
+  });
+
   test("pins each check to one experiment kind and rejects an over-budget grid", async () => {
     const gridTool = createRunExperimentTool("grid", mockProcess);
     const costTool = createRunExperimentTool("cost_ladder", mockProcess);
