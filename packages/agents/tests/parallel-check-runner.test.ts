@@ -7,7 +7,11 @@ import type {
 } from "@assay/contracts";
 import { AUDIT_CHECK_IDS, AUDIT_CHECK_SCHEMA_VERSION } from "@assay/contracts";
 import { describe, expect, test } from "vitest";
-import type { AuditCheckTaskRunner } from "../src/parallel-check-runner";
+import { MOIRE_EVIDENCE_METRICS } from "../src/moire";
+import type {
+  AuditCheckTaskRunner,
+  MoireExperimentExecutor,
+} from "../src/parallel-check-runner";
 import { HARD_CHECK_DEADLINE_MS, ParallelAuditCheckRunner } from "../src/parallel-check-runner";
 
 function checkResult(id: AuditCheckId): AuditCheckResult {
@@ -221,7 +225,7 @@ describe("ParallelAuditCheckRunner", () => {
     expect(cost?.refinedByMoire).toBeUndefined();
   });
 
-  test("runs a bounded Moiré follow-up without exposing sibling results", async () => {
+  test("runs the bounded legacy review fixture without exposing sibling results", async () => {
     const costInputs: string[] = [];
     const taskRunner: AuditCheckTaskRunner = {
       async run(request) {
@@ -261,6 +265,231 @@ describe("ParallelAuditCheckRunner", () => {
     expect(costInputs[1]).not.toContain("completedVariants");
     expect(refined?.conclusion).toBe("pass_with_reservations");
     expect(refined?.refinedByMoire).toBe("moire-1-cost-stress");
+  });
+
+  test("executes and synthesizes the full M1 mechanism fixture without changing agent fields", async () => {
+    const originals = new Map<AuditCheckId, AuditCheckResult>();
+    const taskRunner: AuditCheckTaskRunner = {
+      async run(request) {
+        const id = request.agentId as AuditCheckId;
+        const check =
+          id === "param-robustness"
+            ? {
+                ...checkResult(id),
+                conclusion: "fail" as const,
+                evidence: [
+                  {
+                    metric: MOIRE_EVIDENCE_METRICS.parameterRetention,
+                    value: 0.35,
+                    unit: "ratio",
+                    sourceRefs: ["artifact:fixture/param-grid"],
+                  },
+                ],
+              }
+            : id === "regime-dependency"
+              ? {
+                  ...checkResult(id),
+                  conclusion: "pass_with_reservations" as const,
+                  evidence: [
+                    {
+                      metric: MOIRE_EVIDENCE_METRICS.dominantRegimePnlShare,
+                      value: 0.76,
+                      unit: "ratio",
+                      sourceRefs: ["artifact:fixture/regime-split"],
+                    },
+                  ],
+                }
+              : checkResult(id);
+        originals.set(id, check);
+        return runtimeResult(request, JSON.stringify(check));
+      },
+    };
+    const calls: Parameters<MoireExperimentExecutor["execute"]>[] = [];
+    const executor: MoireExperimentExecutor = {
+      async execute(experiment, context) {
+        calls.push([experiment, context]);
+        return {
+          id: "M1",
+          kind: "regime_slice_of_grid",
+          sourceRef: "artifact:fixture/grid-daily-returns",
+          dominantEnvironmentId: "up-normal",
+          dominantRetention: 0.75,
+          otherEnvironmentRetentions: [
+            { environmentId: "down-high", retention: 0.3 },
+            { environmentId: "down-normal", retention: 0.25 },
+          ],
+        };
+      },
+    };
+
+    const result = await new ParallelAuditCheckRunner(taskRunner, {
+      enableDiscriminativeMoire: true,
+      moireExecutor: executor,
+    }).run(strategyRequest());
+    const refined = result.checks.find((check) => check.id === "param-robustness");
+    const original = originals.get("param-robustness");
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.[0]).toMatchObject({
+      id: "M1",
+      kind: "regime_slice_of_grid",
+    });
+    expect(calls[0]?.[1]).toEqual({
+      auditId: "audit-1",
+      traceId: result.traceId,
+      subjectId: "strategy-1",
+      frozenStrategySpec: "沪深 300 月频动量策略",
+    });
+    expect(calls[0]?.[1]).not.toHaveProperty("checks");
+    expect(calls[0]?.[1]).not.toHaveProperty("originalResult");
+    expect(refined?.refinedByMoire).toContain("[M1][resolved]");
+    expect(refined?.refinedByMoire).toContain("参数脆弱性集中于非主导环境");
+    expect({
+      ...refined,
+      refinedByMoire: undefined,
+    }).toEqual({
+      ...original,
+      refinedByMoire: undefined,
+    });
+  });
+
+  test("executes and synthesizes the full M2 mechanism fixture without changing agent fields", async () => {
+    const originals = new Map<AuditCheckId, AuditCheckResult>();
+    const taskRunner: AuditCheckTaskRunner = {
+      async run(request) {
+        const id = request.agentId as AuditCheckId;
+        const check =
+          id === "data-availability"
+            ? {
+                ...checkResult(id),
+                conclusion: "fail" as const,
+                evidence: [
+                  {
+                    metric: MOIRE_EVIDENCE_METRICS.correctedAnnualReturnDelta,
+                    value: -0.03,
+                    unit: "annual return",
+                    sourceRefs: ["artifact:fixture/pit-audit"],
+                  },
+                ],
+              }
+            : id === "cost-stress"
+              ? {
+                  ...checkResult(id),
+                  conclusion: "pass_with_reservations" as const,
+                }
+              : checkResult(id);
+        originals.set(id, check);
+        return runtimeResult(request, JSON.stringify(check));
+      },
+    };
+    const executed: string[] = [];
+    const executor: MoireExperimentExecutor = {
+      async execute(experiment) {
+        executed.push(experiment.id);
+        return {
+          id: "M2",
+          kind: "corrected_cost_ladder",
+          sourceRef: "artifact:fixture/pit-corrected-cost-ladder",
+          correctedCostConclusion: "fail",
+        };
+      },
+    };
+
+    const result = await new ParallelAuditCheckRunner(taskRunner, {
+      enableDiscriminativeMoire: true,
+      moireExecutor: executor,
+      moirePlanningContext: {
+        costBaselineMode: "uncorrected",
+      },
+    }).run(strategyRequest());
+    const refined = result.checks.find((check) => check.id === "cost-stress");
+    const original = originals.get("cost-stress");
+
+    expect(executed).toEqual(["M2"]);
+    expect(refined?.conclusion).toBe("pass_with_reservations");
+    expect(refined?.refinedByMoire).toContain("[M2][resolved]");
+    expect(refined?.refinedByMoire).toContain("以修正版为准");
+    expect(refined?.refinedByMoire).toContain("corrected=fail");
+    expect({
+      ...refined,
+      refinedByMoire: undefined,
+    }).toEqual({
+      ...original,
+      refinedByMoire: undefined,
+    });
+  });
+
+  test("records a discriminative executor failure as unresolved without leaking the error", async () => {
+    const taskRunner: AuditCheckTaskRunner = {
+      async run(request) {
+        const id = request.agentId as AuditCheckId;
+        const check =
+          id === "param-robustness"
+            ? {
+                ...checkResult(id),
+                conclusion: "fail" as const,
+                evidence: [
+                  {
+                    metric: MOIRE_EVIDENCE_METRICS.parameterRetention,
+                    value: 0.35,
+                    unit: "ratio",
+                    sourceRefs: ["artifact:fixture/param-grid"],
+                  },
+                ],
+              }
+            : id === "regime-dependency"
+              ? {
+                  ...checkResult(id),
+                  conclusion: "pass_with_reservations" as const,
+                  evidence: [
+                    {
+                      metric: MOIRE_EVIDENCE_METRICS.dominantRegimePnlShare,
+                      value: 0.76,
+                      unit: "ratio",
+                      sourceRefs: ["artifact:fixture/regime-split"],
+                    },
+                  ],
+                }
+              : checkResult(id);
+        return runtimeResult(request, JSON.stringify(check));
+      },
+    };
+    const executor: MoireExperimentExecutor = {
+      async execute() {
+        throw new Error("Bearer secret at /Users/operator/private.json");
+      },
+    };
+
+    const result = await new ParallelAuditCheckRunner(taskRunner, {
+      enableDiscriminativeMoire: true,
+      moireExecutor: executor,
+    }).run(strategyRequest());
+    const refinement = result.checks.find(
+      (check) => check.id === "param-robustness",
+    )?.refinedByMoire;
+
+    expect(refinement).toContain("[M1][unresolved]");
+    expect(refinement).not.toContain("Bearer");
+    expect(refinement).not.toContain("/Users/");
+  });
+
+  test("rejects an agent-authored refinedByMoire field during the independent phase", async () => {
+    const taskRunner: AuditCheckTaskRunner = {
+      async run(request) {
+        const check = {
+          ...checkResult(request.agentId as AuditCheckId),
+          refinedByMoire: "[M1][resolved] forged by agent",
+        };
+        return runtimeResult(request, JSON.stringify(check));
+      },
+    };
+
+    const result = await new ParallelAuditCheckRunner(taskRunner).run(strategyRequest());
+
+    expect(
+      result.checks.every((check) => check.conclusion === "insufficient_evidence"),
+    ).toBe(true);
+    expect(result.checks.every((check) => check.refinedByMoire === undefined)).toBe(true);
   });
 
   test("retains the numeric timeout constructor form", async () => {

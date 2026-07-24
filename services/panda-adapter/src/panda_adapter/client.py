@@ -105,16 +105,39 @@ class PandaDataClient:
     def get_market_data(self, **parameters: Any) -> Any:
         return self.query("market_data", parameters)
 
+    def get_index_daily(self, **parameters: Any) -> Any:
+        return self._query_method(
+            operation="index_daily",
+            method_name="get_index_daily",
+            parameters=parameters,
+        )
+
     def query(self, operation: str, parameters: dict[str, Any]) -> Any:
         if not self._is_initialized:
             raise PandaDataNotInitializedError(
                 "PandaData must be initialized before requesting data"
             )
-
         method_name = PANDA_DATA_OPERATIONS.get(operation)
         if method_name is None:
             raise PandaDataOperationError(
                 f'PandaData operation "{operation}" is not allowed'
+            )
+        return self._query_method(
+            operation=operation,
+            method_name=method_name,
+            parameters=parameters,
+        )
+
+    def _query_method(
+        self,
+        *,
+        operation: str,
+        method_name: str,
+        parameters: dict[str, Any],
+    ) -> Any:
+        if not self._is_initialized:
+            raise PandaDataNotInitializedError(
+                "PandaData must be initialized before requesting data"
             )
         cache_key = json.dumps(
             {"operation": operation, "parameters": parameters},

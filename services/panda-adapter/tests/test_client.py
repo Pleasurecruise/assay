@@ -6,6 +6,7 @@ from panda_adapter.client import (
     PandaDataClient,
     PandaDataInitializationError,
     PandaDataNotInitializedError,
+    PandaDataOperationError,
 )
 from panda_adapter.settings import PandaDataSettings
 
@@ -15,6 +16,7 @@ class FakePandaDataSdk:
         self.initialization_count = 0
         self.market_data_call_count = 0
         self.last_market_data_parameters: dict[str, object] | None = None
+        self.last_index_daily_parameters: dict[str, object] | None = None
         self.last_factor_parameters: dict[str, object] | None = None
         self.last_adj_factor_parameters: dict[str, object] | None = None
         self.last_index_weights_parameters: dict[str, object] | None = None
@@ -27,6 +29,10 @@ class FakePandaDataSdk:
     def get_market_data(self, **parameters: object) -> dict[str, object]:
         self.market_data_call_count += 1
         self.last_market_data_parameters = parameters
+        return {"rows": []}
+
+    def get_index_daily(self, **parameters: object) -> dict[str, object]:
+        self.last_index_daily_parameters = parameters
         return {"rows": []}
 
     def get_factor(self, **parameters: object) -> dict[str, object]:
@@ -98,6 +104,25 @@ class PandaDataClientTest(unittest.TestCase):
         )
 
         self.assertEqual(
+            self.client.get_index_daily(
+                symbol="000300.SH",
+                start_date="20260101",
+                end_date="20260131",
+                fields=["date", "symbol", "close"],
+            ),
+            {"rows": []},
+        )
+        self.assertEqual(
+            self.sdk.last_index_daily_parameters,
+            {
+                "symbol": "000300.SH",
+                "start_date": "20260101",
+                "end_date": "20260131",
+                "fields": ["date", "symbol", "close"],
+            },
+        )
+
+        self.assertEqual(
             self.client.get_factor(
                 symbol=["000001.SZ"],
                 start_date="20260101",
@@ -158,6 +183,17 @@ class PandaDataClientTest(unittest.TestCase):
 
         self.assertIs(first, second)
         self.assertEqual(self.sdk.market_data_call_count, 1)
+
+    def test_index_daily_does_not_expand_the_generic_operation_allowlist(
+        self,
+    ) -> None:
+        self.client.initialize(self.settings)
+
+        with self.assertRaises(PandaDataOperationError):
+            self.client.query(
+                "index_daily",
+                {"symbol": "000300.SH"},
+            )
 
 
 if __name__ == "__main__":

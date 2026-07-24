@@ -12,7 +12,15 @@ import {
   AUDIT_CHECK_SCHEMA_VERSION,
   parseAuditCheckResult,
 } from "@assay/contracts";
-import { planMoireExperiments, type MoireExperiment } from "./moire";
+import {
+  planDiscriminativeMoireExperiments,
+  planReviewMoireExperiments,
+  synthesizeDiscriminativeMoire,
+  type DiscriminativeMoireExperiment,
+  type DiscriminativeMoireOutcome,
+  type DiscriminativeMoirePlanningContext,
+  type MoireExperiment,
+} from "./moire";
 
 export const HARD_CHECK_DEADLINE_MS = 120_000;
 const DEFAULT_CHECK_TIMEOUT_MS = HARD_CHECK_DEADLINE_MS;
@@ -28,7 +36,27 @@ export interface ParallelCheckRunOptions {
 
 export interface ParallelAuditCheckRunnerOptions {
   defaultTimeoutMs?: number;
+  /** @deprecated Retained as an alias for enableReviewMoire. */
   enableMoire?: boolean;
+  enableReviewMoire?: boolean;
+  enableDiscriminativeMoire?: boolean;
+  moireExecutor?: MoireExperimentExecutor;
+  moirePlanningContext?: DiscriminativeMoirePlanningContext;
+}
+
+export interface MoireExperimentExecutionContext {
+  readonly auditId: string;
+  readonly traceId: string;
+  readonly subjectId: string;
+  readonly frozenStrategySpec?: string;
+  readonly specHash?: string;
+}
+
+export interface MoireExperimentExecutor {
+  execute(
+    experiment: DiscriminativeMoireExperiment,
+    context: MoireExperimentExecutionContext,
+  ): Promise<DiscriminativeMoireOutcome>;
 }
 
 function parseAgentJson(output: string): unknown {
@@ -155,7 +183,10 @@ function buildAgentInput(
 export class ParallelAuditCheckRunner {
   readonly #taskRunner: AuditCheckTaskRunner;
   readonly #defaultTimeoutMs: number;
-  readonly #enableMoire: boolean;
+  readonly #enableReviewMoire: boolean;
+  readonly #enableDiscriminativeMoire: boolean;
+  readonly #moireExecutor?: MoireExperimentExecutor;
+  readonly #moirePlanningContext: DiscriminativeMoirePlanningContext;
 
   constructor(
     taskRunner: AuditCheckTaskRunner,
@@ -168,7 +199,17 @@ export class ParallelAuditCheckRunner {
     }
     this.#taskRunner = taskRunner;
     this.#defaultTimeoutMs = defaultTimeoutMs;
-    this.#enableMoire = normalizedOptions.enableMoire === true;
+    this.#enableReviewMoire =
+      normalizedOptions.enableReviewMoire === true || normalizedOptions.enableMoire === true;
+    this.#enableDiscriminativeMoire = normalizedOptions.enableDiscriminativeMoire === true;
+    this.#moireExecutor = normalizedOptions.moireExecutor;
+    this.#moirePlanningContext = normalizedOptions.moirePlanningContext ?? {};
+    if (this.#enableReviewMoire && this.#enableDiscriminativeMoire) {
+      throw new Error("Review-style and discriminative Moiré cannot be enabled together");
+    }
+    if (this.#enableDiscriminativeMoire && this.#moireExecutor === undefined) {
+      throw new Error("Discriminative Moiré requires a host experiment executor");
+    }
   }
 
   async run(
@@ -190,25 +231,11 @@ export class ParallelAuditCheckRunner {
         return this.#runOne(request, checkId, traceId, options.signal);
       }),
     );
-    const experiments = this.#enableMoire ? planMoireExperiments(independentChecks) : [];
-    const refinements = await Promise.all(
-      experiments.map(async (experiment) => {
-        const originalResult = independentChecks.find((check) => check.id === experiment.checkId);
-        if (!originalResult) {
-          throw new Error(`Moiré selected unknown check "${experiment.checkId}"`);
-        }
-        const result = await this.#runOne(request, experiment.checkId, traceId, options.signal, {
-          experiment,
-          originalResult,
-        });
-        return {
-          ...result,
-          refinedByMoire: experiment.id,
-        };
-      }),
-    );
-    const refinementsById = new Map(refinements.map((check) => [check.id, check]));
-    const checks = independentChecks.map((check) => refinementsById.get(check.id) ?? check);
+    const checks = this.#enableDiscriminativeMoire
+      ? await this.#runDiscriminativeMoire(request, traceId, independentChecks)
+      : this.#enableReviewMoire
+        ? await this.#runReviewMoire(request, traceId, independentChecks, options.signal)
+        : independentChecks;
 
     return {
       schemaVersion: AUDIT_CHECK_SCHEMA_VERSION,
@@ -219,6 +246,85 @@ export class ParallelAuditCheckRunner {
       startedAt,
       completedAt: new Date().toISOString(),
     };
+  }
+
+  async #runReviewMoire(
+    request: ParallelAuditChecksRequest,
+    traceId: string,
+    independentChecks: readonly AuditCheckResult[],
+    signal?: AbortSignal,
+  ): Promise<readonly AuditCheckResult[]> {
+    const experiments = planReviewMoireExperiments(independentChecks);
+    const refinements = await Promise.all(
+      experiments.map(async (experiment) => {
+        const originalResult = independentChecks.find((check) => check.id === experiment.checkId);
+        if (!originalResult) {
+          throw new Error(`Moiré selected unknown check "${experiment.checkId}"`);
+        }
+        const result = await this.#runOne(request, experiment.checkId, traceId, signal, {
+          experiment,
+          originalResult,
+        });
+        return {
+          ...result,
+          refinedByMoire: experiment.id,
+        };
+      }),
+    );
+    const refinementsById = new Map(refinements.map((check) => [check.id, check]));
+    return independentChecks.map((check) => refinementsById.get(check.id) ?? check);
+  }
+
+  async #runDiscriminativeMoire(
+    request: ParallelAuditChecksRequest,
+    traceId: string,
+    independentChecks: readonly AuditCheckResult[],
+  ): Promise<readonly AuditCheckResult[]> {
+    const executor = this.#moireExecutor;
+    if (executor === undefined) {
+      throw new Error("Discriminative Moiré executor is unavailable");
+    }
+    const experiments = planDiscriminativeMoireExperiments(
+      independentChecks,
+      this.#moirePlanningContext,
+    );
+    const context: MoireExperimentExecutionContext = {
+      auditId: request.auditId,
+      traceId,
+      subjectId: request.subject.id,
+      ...(request.skill === "audit_strategy"
+        ? { frozenStrategySpec: request.subject.input }
+        : {}),
+      ...(request.metadata?.specHash === undefined
+        ? {}
+        : { specHash: request.metadata.specHash }),
+    };
+    const refinements = await Promise.all(
+      experiments.map(async (experiment) => {
+        try {
+          const outcome = await executor.execute(experiment, context);
+          const synthesis = synthesizeDiscriminativeMoire(experiment, outcome);
+          return {
+            checkId: experiment.checkId,
+            refinedByMoire: synthesis.refinedByMoire,
+          };
+        } catch {
+          return {
+            checkId: experiment.checkId,
+            refinedByMoire:
+              `[${experiment.id}][unresolved] 判别实验未完成，` +
+              "该矛盾仍可能改变最终判决。",
+          };
+        }
+      }),
+    );
+    const refinementsById = new Map<AuditCheckId, string>(
+      refinements.map((refinement) => [refinement.checkId, refinement.refinedByMoire]),
+    );
+    return independentChecks.map((check) => {
+      const refinedByMoire = refinementsById.get(check.id);
+      return refinedByMoire === undefined ? check : { ...check, refinedByMoire };
+    });
   }
 
   async #runOne(
@@ -263,7 +369,11 @@ export class ParallelAuditCheckRunner {
         },
         { signal },
       );
-      return parseAuditCheckResult(parseAgentJson(result.output), checkId);
+      const parsed = parseAuditCheckResult(parseAgentJson(result.output), checkId);
+      if (parsed.refinedByMoire !== undefined) {
+        throw new Error("Only the host may write refinedByMoire");
+      }
+      return parsed;
     } catch (error) {
       if (signal?.aborted) {
         throw signal.reason ?? error;
