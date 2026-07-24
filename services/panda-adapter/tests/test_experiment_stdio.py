@@ -13,6 +13,65 @@ import pandas as pd
 
 
 class ExperimentStdioIntegrationTest(unittest.TestCase):
+    def test_missing_panel_cache_fails_closed_without_creating_it(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            cache_path = Path(directory) / "missing-panel.csv"
+            source_root = os.path.abspath(
+                os.path.join(os.path.dirname(__file__), "..", "src")
+            )
+            environment = {
+                **os.environ,
+                "PYTHONPATH": source_root,
+                "ASSAY_MARKET_DATA_CACHE": str(cache_path),
+            }
+            request = {
+                "kind": "grid",
+                "spec": {
+                    "specVersion": "1",
+                    "universe": {"index": "000300.SH"},
+                    "signal": {
+                        "kind": "template",
+                        "template": "momentum",
+                        "params": {"window": 20},
+                    },
+                    "selection": {"topN": 1, "weighting": "equal"},
+                    "rebalance": {"frequency": "monthly", "at": "close"},
+                    "window": {
+                        "start": "20260101",
+                        "end": "20260331",
+                    },
+                    "costs": {"model": "standard"},
+                },
+                "grid": {
+                    "signalParams": {"window": [20]},
+                    "topN": [1],
+                },
+                "budget": {"maxVariants": 1},
+            }
+
+            completed = subprocess.run(
+                [sys.executable, "-m", "panda_adapter.experiment_stdio"],
+                input=json.dumps(request),
+                text=True,
+                capture_output=True,
+                check=False,
+                env=environment,
+                timeout=10,
+            )
+
+            self.assertEqual(completed.returncode, 1)
+            self.assertEqual(completed.stdout, "")
+            self.assertEqual(
+                json.loads(completed.stderr),
+                {
+                    "error": "RuntimeError",
+                    "message": "experiment execution failed",
+                },
+            )
+            self.assertFalse(cache_path.exists())
+
     def test_availability_audit_uses_only_preseeded_offline_caches(
         self,
     ) -> None:
@@ -72,6 +131,7 @@ class ExperimentStdioIntegrationTest(unittest.TestCase):
                 "ASSAY_MARKET_DATA_CACHE": str(cache_path),
                 "ASSAY_PIT_CACHE_ROOT": str(pit_root),
             }
+            environment.pop("ASSAY_V9_CACHE_ROOT", None)
             request = {
                 "kind": "availability_audit",
                 "spec": {

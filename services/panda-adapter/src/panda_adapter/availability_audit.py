@@ -8,6 +8,9 @@ call, so interrupted runs resume from completed fragments.  The PIT membership
 timeline is mandatory and fails closed when incomplete or undated. Provider
 time is bounded separately from computation; only missing historical-member
 prices or statuses may degrade to a disclosed remove-only mode.
+
+A configured promoted v9 cache is a production boundary: the audit becomes a
+pure reader and never repairs, downloads, deletes, or rewrites PIT data.
 """
 
 from __future__ import annotations
@@ -163,6 +166,10 @@ def run_availability_audit(
         os.environ.get("ASSAY_PIT_CACHE_ROOT", str(DEFAULT_PIT_CACHE_ROOT))
     )
     configured_v9_root = os.environ.get("ASSAY_V9_CACHE_ROOT")
+    # Promotion switches availability from the resumable preparation path to
+    # a fail-closed reader.  The no-manifest development path below retains
+    # incremental acquisition and its bounded remove-only degradation.
+    cache_only = bool(configured_v9_root)
     historical_policy: HistoricalMembersPolicy | None = None
     if configured_v9_root:
         historical_policy = load_historical_members_policy(
@@ -190,6 +197,7 @@ def run_availability_audit(
         cache_root=root,
         client=lazy_client,
         budget=acquisition_budget,
+        cache_only=cache_only,
     )
     if not timeline_complete:
         # P1 makes the PIT membership timeline a hard requirement.  The only
@@ -231,6 +239,7 @@ def run_availability_audit(
                 cache_root=root,
                 client=lazy_client,
                 budget=acquisition_budget,
+                cache_only=cache_only,
             )
         except AvailabilityBudgetExceeded:
             mode = "degraded_remove_only"
@@ -454,6 +463,7 @@ def _load_pit_timeline(
     cache_root: Path,
     client: _LazyClient,
     budget: _AcquisitionBudget,
+    cache_only: bool = False,
 ) -> tuple[dict[pd.Timestamp, frozenset[str]], bool]:
     timeline: dict[pd.Timestamp, frozenset[str]] = {}
     complete = True
@@ -466,6 +476,10 @@ def _load_pit_timeline(
                 requested_date=requested_date,
             )
             continue
+        if cache_only:
+            raise RuntimeError(
+                "configured v9 cache is missing a required PIT snapshot"
+            )
         try:
             start_date = requested_date - pd.Timedelta(
                 days=INDEX_SNAPSHOT_LOOKBACK_DAYS - 1
@@ -642,6 +656,7 @@ def _load_or_fetch_extra_fragment(
     operation: Callable[[], Any],
     context: str,
     required_symbols: Sequence[str] = (),
+    cache_only: bool = False,
 ) -> pd.DataFrame:
     path = _fragment_path(
         root,
@@ -666,6 +681,11 @@ def _load_or_fetch_extra_fragment(
                 context=f"cached PIT {source}",
             )
         except _FragmentCoverageError:
+            if cache_only:
+                raise RuntimeError(
+                    "configured v9 cache has an incomplete required "
+                    "PIT extra-panel fragment"
+                ) from None
             # A structurally valid but incomplete source response must not
             # become a permanent cache hit. The exact scoped fragment is
             # recoverable, so discard it and reacquire within the same budget.
@@ -677,6 +697,10 @@ def _load_or_fetch_extra_fragment(
                 ) from error
         else:
             return frame
+    if cache_only:
+        raise RuntimeError(
+            "configured v9 cache is missing a required PIT extra-panel fragment"
+        )
     value = budget.call(label, operation)
     frame = normalize_source_frame(
         value,
@@ -755,6 +779,7 @@ def _load_or_fetch_extra_rows(
     cache_root: Path,
     client: _LazyClient,
     budget: _AcquisitionBudget,
+    cache_only: bool = False,
 ) -> pd.DataFrame:
     identity = _extra_identity(
         index_symbol=index_symbol,
@@ -794,18 +819,20 @@ def _load_or_fetch_extra_rows(
             end_date=end_date,
             trading_dates=trading_dates,
             required_status_symbols_by_date=(required_status_symbols_by_date),
+            cache_only=cache_only,
         )
-        _write_json_atomic(
-            _batch_path(root, batch),
-            {
-                "schemaVersion": PIT_EXTRA_SCHEMA_VERSION,
-                "identity": dict(identity),
-                "symbols": list(batch),
-                "rows": json.loads(
-                    frame.to_json(orient="records", double_precision=15)
-                ),
-            },
-        )
+        if not cache_only:
+            _write_json_atomic(
+                _batch_path(root, batch),
+                {
+                    "schemaVersion": PIT_EXTRA_SCHEMA_VERSION,
+                    "identity": dict(identity),
+                    "symbols": list(batch),
+                    "rows": json.loads(
+                        frame.to_json(orient="records", double_precision=15)
+                    ),
+                },
+            )
         cached_frames.append(frame)
         covered.update(batch)
 
@@ -833,6 +860,7 @@ def _fetch_extra_batch(
         pd.Timestamp,
         frozenset[str],
     ],
+    cache_only: bool = False,
 ) -> pd.DataFrame:
     factor_frames: list[pd.DataFrame] = []
     factor_windows = _factor_windows(start_date, end_date)
@@ -857,28 +885,31 @@ def _fetch_extra_batch(
                     )
                 ),
                 context="get_factor(close)",
+                cache_only=cache_only,
             )
         )
     factor = pd.concat(factor_frames, ignore_index=True)
     if factor.empty:
-        _discard_source_fragments(
-            root=root,
-            source="factor-close",
-            windows=factor_windows,
-            symbols=symbols,
-        )
+        if not cache_only:
+            _discard_source_fragments(
+                root=root,
+                source="factor-close",
+                windows=factor_windows,
+                symbols=symbols,
+            )
         raise RuntimeError("PIT historical constituents returned no prices")
     if set(factor["symbol"]) != set(symbols):
         # Cartesian date/symbol coverage is intentionally not required:
         # pre-listing, post-delisting, and suspended dates may lack prices.
         # Every PIT constituent must nevertheless appear somewhere in the
         # requested audit window, or the candidate fragments are not reusable.
-        _discard_source_fragments(
-            root=root,
-            source="factor-close",
-            windows=factor_windows,
-            symbols=symbols,
-        )
+        if not cache_only:
+            _discard_source_fragments(
+                root=root,
+                source="factor-close",
+                windows=factor_windows,
+                symbols=symbols,
+            )
         raise RuntimeError("PIT historical constituent price coverage is incomplete")
 
     status_frames: list[pd.DataFrame] = []
@@ -924,6 +955,7 @@ def _fetch_extra_batch(
                 ),
                 context="get_market_data(trade_status)",
                 required_symbols=required_symbols,
+                cache_only=cache_only,
             )
         )
     status = pd.concat(status_frames, ignore_index=True)
@@ -950,12 +982,13 @@ def _fetch_extra_batch(
                 for missing_date in missing_factor_dates
             )
         ]
-        _discard_source_fragments(
-            root=root,
-            source="factor-close",
-            windows=affected_windows,
-            symbols=symbols,
-        )
+        if not cache_only:
+            _discard_source_fragments(
+                root=root,
+                source="factor-close",
+                windows=affected_windows,
+                symbols=symbols,
+            )
         raise RuntimeError("PIT tradable status rows are missing factor close coverage")
     merged = factor.merge(
         status,

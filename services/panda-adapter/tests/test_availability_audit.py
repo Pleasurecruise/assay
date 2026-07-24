@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 import unittest
@@ -131,6 +132,34 @@ def _write_remove_only_manifest(
             },
         },
     )
+
+
+def _write_full_pit_manifest(
+    root: Path,
+    *,
+    panel: MarketPanel,
+    pit_root: Path,
+) -> None:
+    _write_remove_only_manifest(
+        root,
+        panel=panel,
+        pit_root=pit_root,
+    )
+    dataset = root / "materialized" / "historical-members.csv"
+    dataset.parent.mkdir(parents=True)
+    pd.DataFrame(
+        columns=["date", "symbol", "adjClose", "tradeStatus"]
+    ).to_csv(dataset, index=False)
+    manifest_path = root / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["state"] = "ready"
+    manifest["datasets"]["historicalMembers"] = {
+        "status": "ready",
+        "mode": "full_pit",
+        "path": "materialized/historical-members.csv",
+        "columns": ["date", "symbol", "adjClose", "tradeStatus"],
+    }
+    _write_json_atomic(manifest_path, manifest)
 
 
 def _untradable_target_count(
@@ -820,6 +849,100 @@ class AvailabilityAuditTest(unittest.TestCase):
             self.assertFalse(
                 any("90-second" in item for item in result["assumptions"])
             )
+
+    def test_configured_v9_cache_fails_closed_on_missing_pit_snapshot(
+        self,
+    ) -> None:
+        panel = _base_panel()
+        client_initializations = 0
+
+        def fail_client_factory() -> object:
+            nonlocal client_initializations
+            client_initializations += 1
+            raise AssertionError("cache-only mode must not initialize the client")
+
+        with tempfile.TemporaryDirectory() as directory:
+            common_root = Path(directory)
+            pit_root = common_root / "pit-availability-v1"
+            v9_root = common_root / "v9-p1-v1"
+            _write_remove_only_manifest(
+                v9_root,
+                panel=panel,
+                pit_root=pit_root,
+            )
+
+            with (
+                patch.dict(
+                    os.environ,
+                    {"ASSAY_V9_CACHE_ROOT": str(v9_root)},
+                ),
+                self.assertRaisesRegex(
+                    RuntimeError,
+                    "missing a required PIT snapshot",
+                ),
+            ):
+                run_availability_audit(
+                    _spec(panel.adjusted_close.index),
+                    panel_loader=lambda _: panel,
+                    client_factory=fail_client_factory,
+                    cache_root=pit_root,
+                )
+
+            self.assertEqual(client_initializations, 0)
+            self.assertFalse((pit_root / "index-weights").exists())
+
+    def test_configured_v9_cache_fails_closed_on_missing_extra_fragment(
+        self,
+    ) -> None:
+        panel = _base_panel()
+        signal_dates = _rebalance_dates(panel)
+        client_initializations = 0
+
+        def fail_client_factory() -> object:
+            nonlocal client_initializations
+            client_initializations += 1
+            raise AssertionError("cache-only mode must not initialize the client")
+
+        with tempfile.TemporaryDirectory() as directory:
+            common_root = Path(directory)
+            pit_root = common_root / "pit-availability-v1"
+            v9_root = common_root / "v9-p1-v1"
+            for date in signal_dates:
+                _write_json_atomic(
+                    _snapshot_path(pit_root, "000300.SH", date),
+                    {
+                        "schemaVersion": PIT_SNAPSHOT_SCHEMA_VERSION,
+                        "indexSymbol": "000300.SH",
+                        "requestedDate": date.strftime("%Y-%m-%d"),
+                        "effectiveDate": date.strftime("%Y-%m-%d"),
+                        "symbols": ["A", "C"],
+                    },
+                )
+            _write_full_pit_manifest(
+                v9_root,
+                panel=panel,
+                pit_root=pit_root,
+            )
+
+            with (
+                patch.dict(
+                    os.environ,
+                    {"ASSAY_V9_CACHE_ROOT": str(v9_root)},
+                ),
+                self.assertRaisesRegex(
+                    RuntimeError,
+                    "missing a required PIT extra-panel fragment",
+                ),
+            ):
+                run_availability_audit(
+                    _spec(panel.adjusted_close.index),
+                    panel_loader=lambda _: panel,
+                    client_factory=fail_client_factory,
+                    cache_root=pit_root,
+                )
+
+            self.assertEqual(client_initializations, 0)
+            self.assertFalse((pit_root / "extra-panel").exists())
 
     def test_configured_remove_only_policy_fails_closed_on_panel_mismatch(
         self,
