@@ -256,6 +256,13 @@ class PrepareV9P1CacheTest(unittest.TestCase):
                 ("2026-03-13", "terminal_as_of"),
             ],
         )
+        self.assertEqual(
+            p1._derive_pit_points(
+                [pd.Timestamp("2026-01-30")],
+                expected_count=1,
+            )[0].kind,
+            "completed_month_end",
+        )
 
     def test_repairs_only_the_incomplete_189_of_300_factor_window(self) -> None:
         symbols = _symbols()
@@ -401,6 +408,47 @@ class PrepareV9P1CacheTest(unittest.TestCase):
             ],
         )
         self.assertEqual(stats.reused, 1)
+
+    def test_comparator_cache_covers_the_full_date_universe_product(self) -> None:
+        symbols = _symbols()
+        dates = pd.DatetimeIndex(["2026-01-02", "2026-01-05"])
+        base = pd.DataFrame(
+            [
+                {
+                    "date": date,
+                    "symbol": symbol,
+                    "adjClose": 100.0,
+                    "tradeStatus": 0,
+                }
+                for date in dates
+                for symbol in symbols
+                if not (date == dates[0] and symbol == symbols[0])
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = p1._prepare_comparator_factors(
+                config=p1.P1Config(
+                    cache_root=Path(directory),
+                    base_cache=Path(directory) / "csi300-3y.csv",
+                    perform_spot_checks=False,
+                ),
+                client=FakeP1Client(
+                    base_dates=dates,
+                    base_symbols=symbols,
+                ),
+                base=base,
+                budget=p1.StageBudget(
+                    stage="factors",
+                    max_seconds=1_200,
+                    sleeper=lambda _: None,
+                ),
+            )
+
+        self.assertEqual(result["rowCount"], len(dates) * len(symbols))
+        self.assertEqual(result["tradingDates"], len(dates))
+        self.assertEqual(result["symbols"], len(symbols))
+        self.assertEqual(result["duplicatePrimaryKeys"], 0)
 
     def test_full_offline_fixture_promotes_manifest_and_resumes(self) -> None:
         symbols = _symbols()

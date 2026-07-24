@@ -1001,12 +1001,11 @@ def _derive_pit_points(
         raise CacheQualityError("cannot derive PIT points from an empty calendar")
     points: list[PITPoint] = []
     grouped = pd.Series(normalized, index=normalized).groupby(normalized.to_period("M"))
-    periods = list(grouped.groups)
-    for position, period in enumerate(periods):
-        point_date = pd.Timestamp(grouped.get_group(period).max()).normalize()
-        is_terminal_partial = (
-            position == len(periods) - 1 and point_date < period.end_time.normalize()
-        )
+    monthly_points = [pd.Timestamp(group.max()).normalize() for _, group in grouped]
+    for position, point_date in enumerate(monthly_points):
+        is_terminal_partial = position == len(
+            monthly_points
+        ) - 1 and not pd.offsets.BMonthEnd().is_on_offset(point_date)
         points.append(
             PITPoint(
                 date=point_date,
@@ -1670,17 +1669,12 @@ def _prepare_comparator_factors(
     budget: StageBudget,
 ) -> dict[str, Any]:
     symbols = _canonical_symbols(base["symbol"])
-    expected_keys = {
-        (pd.Timestamp(date).strftime("%Y-%m-%d"), str(symbol))
-        for date, symbol in zip(
-            base["date"],
-            base["symbol"],
-            strict=True,
-        )
-    }
     dates = pd.DatetimeIndex(
         sorted(pd.Timestamp(value) for value in base["date"].unique())
     )
+    expected_keys = {
+        (date.strftime("%Y-%m-%d"), symbol) for date in dates for symbol in symbols
+    }
     stats = FragmentStats()
     frames: list[pd.DataFrame] = []
 
