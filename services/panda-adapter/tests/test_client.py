@@ -58,6 +58,26 @@ class RejectingPandaDataSdk(FakePandaDataSdk):
         raise RuntimeError("vendor response that must not cross the boundary")
 
 
+class ExpiringPandaDataSdk(FakePandaDataSdk):
+    def __init__(self, *, reject_refresh: bool = False) -> None:
+        super().__init__()
+        self.reject_refresh = reject_refresh
+        self.factor_attempts = 0
+
+    def init_token(self, *, username: str, password: str) -> None:
+        if self.reject_refresh and self.initialization_count == 1:
+            raise RuntimeError("vendor refresh response that must stay private")
+        super().init_token(username=username, password=password)
+
+    def get_factor(self, **parameters: object) -> dict[str, object]:
+        self.factor_attempts += 1
+        if self.factor_attempts == 1:
+            raise RuntimeError(
+                "未登录或登录已过期，请调用 panda_data.init_token() 进行登录！"
+            )
+        return super().get_factor(**parameters)
+
+
 class PandaDataClientTest(unittest.TestCase):
     def setUp(self) -> None:
         self.sdk = FakePandaDataSdk()
@@ -88,6 +108,40 @@ class PandaDataClientTest(unittest.TestCase):
             client.initialize(self.settings)
 
         self.assertFalse(client.is_initialized)
+
+    def test_refreshes_an_expired_sdk_session_once_and_replays_the_query(
+        self,
+    ) -> None:
+        sdk = ExpiringPandaDataSdk()
+        client = PandaDataClient(sdk, max_attempts=1)
+        client.initialize(self.settings)
+
+        result = client.get_factor(
+            symbol=["000001.SZ"],
+            start_date="20260415",
+            end_date="20260415",
+            factors=["close"],
+        )
+
+        self.assertEqual(result, {"rows": []})
+        self.assertEqual(sdk.initialization_count, 2)
+        self.assertEqual(sdk.factor_attempts, 2)
+
+    def test_redacts_sdk_session_refresh_failures(self) -> None:
+        sdk = ExpiringPandaDataSdk(reject_refresh=True)
+        client = PandaDataClient(sdk)
+        client.initialize(self.settings)
+
+        with self.assertRaisesRegex(
+            PandaDataInitializationError,
+            "^PandaData token refresh failed$",
+        ):
+            client.get_factor(
+                symbol=["000001.SZ"],
+                start_date="20260415",
+                end_date="20260415",
+                factors=["close"],
+            )
 
     def test_forwards_data_calls_after_initialization(self) -> None:
         self.client.initialize(self.settings)
