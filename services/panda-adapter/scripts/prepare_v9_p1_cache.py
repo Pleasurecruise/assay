@@ -3,7 +3,8 @@
 The operator-facing command performs five bounded pieces of work:
 
 * validate and, when necessary, precisely repair the existing fixed-universe
-  price/status cache;
+  price/status cache, using a separately traced official post-adjusted fallback
+  only for single-key primary-source gaps that pass a two-sided scale check;
 * cache 37 PIT observation points while distinguishing completed month ends
   from the terminal as-of observation;
 * cache price and trade status for historical constituents absent from the
@@ -67,6 +68,15 @@ MANIFEST_SCHEMA_VERSION: Final = "assay-p1-cache-manifest-v1"
 FRAGMENT_SCHEMA_VERSION: Final = "assay-p1-fragment-v1"
 SPLIT_SCHEMA_VERSION: Final = "assay-p1-split-v1"
 VERIFIED_SOURCE_ABSENCE_SCHEMA_VERSION: Final = "assay-base-verified-source-absence-v1"
+OFFICIAL_POST_FALLBACK_SCHEMA_VERSION: Final = "assay-base-official-post-fallback-v1"
+OFFICIAL_POST_FALLBACK_INDEX_SCHEMA_VERSION: Final = (
+    "assay-base-official-post-fallback-index-v1"
+)
+PRIMARY_CLOSE_SOURCE_REF: Final = "pandadata:get_factor(close)"
+FALLBACK_CLOSE_SOURCE_REF: Final = "pandadata:get_stock_daily_post(close)"
+FALLBACK_PRICE_SOURCE_MODE: Final = "factor-close-with-validated-official-post-fallback"
+FALLBACK_SCALE_REL_TOLERANCE: Final = 1e-10
+FALLBACK_SCALE_ABS_TOLERANCE: Final = 1e-8
 EXPECTED_PIT_POINTS: Final = 37
 EXPECTED_INDEX_LOOKBACK_DAYS: Final = 200
 DEFAULT_STAGE_SECONDS: Final = 20 * 60
@@ -113,6 +123,14 @@ class CacheQualityError(P1CacheError):
 
 class BaseCoverageError(CacheQualityError):
     """Raised when the official calendar disproves base-panel date coverage."""
+
+
+class OfficialPostFallbackRejected(CacheQualityError):
+    """Carries a stable reason code for a rejected official fallback row."""
+
+    def __init__(self, reason_code: str) -> None:
+        super().__init__(reason_code)
+        self.reason_code = reason_code
 
 
 @dataclass(frozen=True, slots=True)
@@ -849,6 +867,485 @@ def _discard_base_verified_source_absence(
     _base_verified_source_absence_path(output, request).unlink(missing_ok=True)
 
 
+def _canonical_json_bytes(value: Any) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def _canonical_json_sha256(value: Any) -> str:
+    return sha256(_canonical_json_bytes(value)).hexdigest()
+
+
+def _official_post_fallback_root(version_root: Path) -> Path:
+    return version_root / "base-official-post-fallback"
+
+
+def _official_post_fallback_leaf_path(
+    version_root: Path,
+    *,
+    date: str,
+    symbol: str,
+) -> Path:
+    symbol_digest = sha256(symbol.encode("utf-8")).hexdigest()[:16]
+    return (
+        _official_post_fallback_root(version_root)
+        / "fills"
+        / date.replace("-", "")
+        / f"symbol-{symbol_digest}.json"
+    )
+
+
+def _official_post_fallback_index_path(version_root: Path) -> Path:
+    return _official_post_fallback_root(version_root) / "provenance.json"
+
+
+def _primary_leaf_request(
+    *,
+    date: str,
+    symbol: str,
+    universe_symbols: Sequence[str],
+) -> Any:
+    canonical_universe = tuple(universe_symbols)
+    timestamp = pd.Timestamp(date)
+    return BASE_BUILDER.FragmentRequest(
+        source="factor-close",
+        start_date=timestamp,
+        end_date=timestamp,
+        symbols=(symbol,),
+        universe_hash=BASE_BUILDER._universe_hash(canonical_universe),
+        universe_size=len(canonical_universe),
+    )
+
+
+def _adjacent_base_dates(
+    *,
+    status: pd.DataFrame,
+    date: str,
+    symbol: str,
+) -> tuple[str, str]:
+    scoped = status.loc[status["symbol"].eq(symbol)].sort_values("date")
+    target = scoped.loc[scoped["date"].eq(date)]
+    if len(target) != 1 or int(target.iloc[0]["tradeStatus"]) != TRADABLE_TRADE_STATUS:
+        raise OfficialPostFallbackRejected("TARGET_STATUS_NOT_TRADABLE")
+    dates = list(dict.fromkeys(str(value) for value in scoped["date"]))
+    try:
+        position = dates.index(date)
+    except ValueError as error:
+        raise OfficialPostFallbackRejected("TARGET_STATUS_KEY_MISSING") from error
+    if position == 0 or position == len(dates) - 1:
+        raise OfficialPostFallbackRejected("TWO_SIDED_ANCHORS_UNAVAILABLE")
+    return dates[position - 1], dates[position + 1]
+
+
+def _primary_anchor_rows(
+    *,
+    factor: pd.DataFrame,
+    symbol: str,
+    target_date: str,
+    before_date: str,
+    after_date: str,
+) -> dict[str, float]:
+    scoped = factor.loc[factor["symbol"].eq(symbol)]
+    if scoped["date"].eq(target_date).any():
+        raise OfficialPostFallbackRejected("PRIMARY_TARGET_CONFLICT")
+    anchors: dict[str, float] = {}
+    for role, date in (("before", before_date), ("after", after_date)):
+        rows = scoped.loc[scoped["date"].eq(date), "adjClose"]
+        if len(rows) != 1:
+            raise OfficialPostFallbackRejected(
+                f"{role.upper()}_PRIMARY_ANCHOR_UNAVAILABLE"
+            )
+        anchors[role] = float(rows.iloc[0])
+    return anchors
+
+
+def _validated_official_post_fallback(
+    *,
+    request: Any,
+    factor: pd.DataFrame,
+    status: pd.DataFrame,
+    client: Any,
+    budget: StageBudget,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    target_date = request.start_date.strftime("%Y-%m-%d")
+    symbol = str(request.symbols[0])
+    before_date, after_date = _adjacent_base_dates(
+        status=status,
+        date=target_date,
+        symbol=symbol,
+    )
+    primary_anchors = _primary_anchor_rows(
+        factor=factor,
+        symbol=symbol,
+        target_date=target_date,
+        before_date=before_date,
+        after_date=after_date,
+    )
+    raw = budget.call(
+        "get_stock_daily_post(close) fallback",
+        lambda: client.get_stock_daily_post(
+            symbol=[symbol],
+            start_date=before_date.replace("-", ""),
+            end_date=after_date.replace("-", ""),
+            fields=["symbol", "date", "close"],
+        ),
+    )
+    try:
+        fallback = normalize_source_frame(
+            raw,
+            source="factor-close",
+            start_date=pd.Timestamp(before_date),
+            end_date=pd.Timestamp(after_date),
+            symbols=[symbol],
+            context="get_stock_daily_post(close) fallback",
+        )
+    except RuntimeError as error:
+        raise OfficialPostFallbackRejected("FALLBACK_RESPONSE_INVALID") from error
+
+    expected_keys = {
+        (before_date, symbol),
+        (target_date, symbol),
+        (after_date, symbol),
+    }
+    if _frame_keys(fallback) != expected_keys:
+        raise OfficialPostFallbackRejected("FALLBACK_KEYSET_MISMATCH")
+
+    anchors: list[dict[str, Any]] = []
+    for role, date in (("before", before_date), ("after", after_date)):
+        fallback_close = float(
+            fallback.loc[
+                fallback["date"].eq(date) & fallback["symbol"].eq(symbol),
+                "adjClose",
+            ].iloc[0]
+        )
+        primary_close = primary_anchors[role]
+        ratio = fallback_close / primary_close
+        relative_error = abs(fallback_close - primary_close) / abs(primary_close)
+        if not math.isclose(
+            fallback_close,
+            primary_close,
+            rel_tol=FALLBACK_SCALE_REL_TOLERANCE,
+            abs_tol=FALLBACK_SCALE_ABS_TOLERANCE,
+        ):
+            raise OfficialPostFallbackRejected("FALLBACK_SCALE_MISMATCH")
+        anchors.append(
+            {
+                "role": role,
+                "date": date,
+                "primaryClose": primary_close,
+                "fallbackClose": fallback_close,
+                "ratio": ratio,
+                "relativeError": relative_error,
+            }
+        )
+
+    target = fallback.loc[
+        fallback["date"].eq(target_date) & fallback["symbol"].eq(symbol)
+    ].reset_index(drop=True)
+    if len(target) != 1:
+        raise OfficialPostFallbackRejected("FALLBACK_TARGET_NOT_UNIQUE")
+    row = {
+        "date": target_date,
+        "symbol": symbol,
+        "adjClose": float(target.iloc[0]["adjClose"]),
+    }
+    row_digest = _canonical_json_sha256(row)
+    payload = {
+        "schemaVersion": OFFICIAL_POST_FALLBACK_SCHEMA_VERSION,
+        "request": BASE_BUILDER._request_metadata(request),
+        "filledKey": {
+            "date": target_date,
+            "symbol": symbol,
+        },
+        "primary": {
+            "sourceRef": PRIMARY_CLOSE_SOURCE_REF,
+            "field": "close",
+            "adjustment": "post",
+            "outcome": "verified-empty",
+        },
+        "fallback": {
+            "sourceRef": FALLBACK_CLOSE_SOURCE_REF,
+            "field": "close",
+            "adjustment": "post",
+            "queryWindow": {
+                "start": before_date,
+                "end": after_date,
+            },
+            "requestedFields": ["symbol", "date", "close"],
+        },
+        "scaleCheck": {
+            "method": "two-sided-exact-overlap",
+            "relativeTolerance": FALLBACK_SCALE_REL_TOLERANCE,
+            "absoluteTolerance": FALLBACK_SCALE_ABS_TOLERANCE,
+            "anchors": anchors,
+            "accepted": True,
+        },
+        "row": row,
+        "rowSha256": row_digest,
+        "sourceRefs": [
+            PRIMARY_CLOSE_SOURCE_REF,
+            FALLBACK_CLOSE_SOURCE_REF,
+        ],
+    }
+    return pd.DataFrame([row]), payload
+
+
+def _read_official_post_fallback(
+    *,
+    path: Path,
+    request: Any,
+    factor: pd.DataFrame,
+    status: pd.DataFrame,
+) -> tuple[pd.DataFrame, dict[str, Any]] | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, Mapping):
+        return None
+    target_date = request.start_date.strftime("%Y-%m-%d")
+    symbol = str(request.symbols[0])
+    try:
+        before_date, after_date = _adjacent_base_dates(
+            status=status,
+            date=target_date,
+            symbol=symbol,
+        )
+        primary_anchors = _primary_anchor_rows(
+            factor=factor,
+            symbol=symbol,
+            target_date=target_date,
+            before_date=before_date,
+            after_date=after_date,
+        )
+    except OfficialPostFallbackRejected:
+        return None
+    row = payload.get("row")
+    scale_check = payload.get("scaleCheck")
+    fallback = payload.get("fallback")
+    if (
+        payload.get("schemaVersion") != OFFICIAL_POST_FALLBACK_SCHEMA_VERSION
+        or payload.get("request") != BASE_BUILDER._request_metadata(request)
+        or payload.get("filledKey") != {"date": target_date, "symbol": symbol}
+        or payload.get("primary")
+        != {
+            "sourceRef": PRIMARY_CLOSE_SOURCE_REF,
+            "field": "close",
+            "adjustment": "post",
+            "outcome": "verified-empty",
+        }
+        or not isinstance(fallback, Mapping)
+        or fallback.get("sourceRef") != FALLBACK_CLOSE_SOURCE_REF
+        or fallback.get("field") != "close"
+        or fallback.get("adjustment") != "post"
+        or fallback.get("queryWindow") != {"start": before_date, "end": after_date}
+        or fallback.get("requestedFields") != ["symbol", "date", "close"]
+        or not isinstance(row, Mapping)
+        or row.get("date") != target_date
+        or row.get("symbol") != symbol
+        or not isinstance(row.get("adjClose"), (int, float))
+        or isinstance(row.get("adjClose"), bool)
+        or not math.isfinite(float(row["adjClose"]))
+        or float(row["adjClose"]) <= 0
+        or payload.get("rowSha256") != _canonical_json_sha256(dict(row))
+        or payload.get("sourceRefs")
+        != [PRIMARY_CLOSE_SOURCE_REF, FALLBACK_CLOSE_SOURCE_REF]
+        or not isinstance(scale_check, Mapping)
+        or scale_check.get("method") != "two-sided-exact-overlap"
+        or scale_check.get("relativeTolerance") != FALLBACK_SCALE_REL_TOLERANCE
+        or scale_check.get("absoluteTolerance") != FALLBACK_SCALE_ABS_TOLERANCE
+        or scale_check.get("accepted") is not True
+    ):
+        return None
+    anchors = scale_check.get("anchors")
+    if not isinstance(anchors, list) or len(anchors) != 2:
+        return None
+    for index, (role, date) in enumerate(
+        (("before", before_date), ("after", after_date))
+    ):
+        anchor = anchors[index]
+        if (
+            not isinstance(anchor, Mapping)
+            or anchor.get("role") != role
+            or anchor.get("date") != date
+            or not isinstance(anchor.get("primaryClose"), (int, float))
+            or not isinstance(anchor.get("fallbackClose"), (int, float))
+            or not isinstance(anchor.get("ratio"), (int, float))
+            or not isinstance(anchor.get("relativeError"), (int, float))
+        ):
+            return None
+        primary_close = primary_anchors[role]
+        fallback_close = float(anchor["fallbackClose"])
+        ratio = fallback_close / primary_close
+        relative_error = abs(fallback_close - primary_close) / abs(primary_close)
+        if (
+            float(anchor["primaryClose"]) != primary_close
+            or not math.isclose(
+                fallback_close,
+                primary_close,
+                rel_tol=FALLBACK_SCALE_REL_TOLERANCE,
+                abs_tol=FALLBACK_SCALE_ABS_TOLERANCE,
+            )
+            or not math.isclose(
+                float(anchor["ratio"]),
+                ratio,
+                rel_tol=1e-15,
+                abs_tol=0,
+            )
+            or not math.isclose(
+                float(anchor["relativeError"]),
+                relative_error,
+                rel_tol=1e-15,
+                abs_tol=0,
+            )
+        ):
+            return None
+    canonical_row = pd.DataFrame(
+        [
+            {
+                "date": target_date,
+                "symbol": symbol,
+                "adjClose": float(row["adjClose"]),
+            }
+        ]
+    )
+    return canonical_row, dict(payload)
+
+
+def _prepare_official_post_fallbacks(
+    *,
+    config: P1Config,
+    client: Any,
+    budget: StageBudget,
+    factor: pd.DataFrame,
+    status: pd.DataFrame,
+    universe_symbols: Sequence[str],
+    verified_source_absences: set[tuple[str, str]],
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    accepted_rows: list[pd.DataFrame] = []
+    accepted_records: list[dict[str, Any]] = []
+    rejected_records: list[dict[str, str]] = []
+    retained_leaf_paths: set[Path] = set()
+    for date, symbol in sorted(verified_source_absences):
+        request = _primary_leaf_request(
+            date=date,
+            symbol=symbol,
+            universe_symbols=universe_symbols,
+        )
+        primary_leaf = BASE_BUILDER._read_fragment(config.base_cache, request)
+        if _read_base_verified_source_absence(
+            output=config.base_cache,
+            request=request,
+            frame=primary_leaf,
+        ) != (date, symbol):
+            raise CacheQualityError(
+                "official fallback lacks an identity-bound primary absence"
+            )
+        leaf_path = _official_post_fallback_leaf_path(
+            config.version_root,
+            date=date,
+            symbol=symbol,
+        )
+        cached = _read_official_post_fallback(
+            path=leaf_path,
+            request=request,
+            factor=factor,
+            status=status,
+        )
+        if cached is not None:
+            row, payload = cached
+        else:
+            try:
+                row, payload = _validated_official_post_fallback(
+                    request=request,
+                    factor=factor,
+                    status=status,
+                    client=client,
+                    budget=budget,
+                )
+            except OfficialPostFallbackRejected as error:
+                leaf_path.unlink(missing_ok=True)
+                rejected_records.append(
+                    {
+                        "date": date,
+                        "symbol": symbol,
+                        "reasonCode": error.reason_code,
+                    }
+                )
+                continue
+            _write_json_atomic(leaf_path, payload)
+        accepted_rows.append(row)
+        accepted_records.append(
+            {
+                "filledKey": payload["filledKey"],
+                "rowSha256": payload["rowSha256"],
+                "recordSha256": _canonical_json_sha256(payload),
+                "sourceRefs": payload["sourceRefs"],
+                "scaleCheck": payload["scaleCheck"],
+            }
+        )
+        retained_leaf_paths.add(leaf_path.resolve())
+
+    fills_root = _official_post_fallback_root(config.version_root) / "fills"
+    if fills_root.is_dir():
+        for candidate in fills_root.rglob("*.json"):
+            if candidate.resolve() not in retained_leaf_paths:
+                candidate.unlink()
+
+    rejected_reason_counts: dict[str, int] = {}
+    for record in rejected_records:
+        reason_code = record["reasonCode"]
+        rejected_reason_counts[reason_code] = (
+            rejected_reason_counts.get(reason_code, 0) + 1
+        )
+    index_payload = {
+        "schemaVersion": OFFICIAL_POST_FALLBACK_INDEX_SCHEMA_VERSION,
+        "cacheVersion": CACHE_VERSION,
+        "priceSourceMode": FALLBACK_PRICE_SOURCE_MODE,
+        "primarySourceRef": PRIMARY_CLOSE_SOURCE_REF,
+        "fallbackSourceRef": FALLBACK_CLOSE_SOURCE_REF,
+        "scaleCheckPolicy": {
+            "method": "two-sided-exact-overlap",
+            "relativeTolerance": FALLBACK_SCALE_REL_TOLERANCE,
+            "absoluteTolerance": FALLBACK_SCALE_ABS_TOLERANCE,
+            "rescalingAllowed": False,
+            "interpolationAllowed": False,
+            "forwardFillAllowed": False,
+        },
+        "accepted": accepted_records,
+        "rejected": rejected_records,
+        "rejectedReasonCounts": rejected_reason_counts,
+    }
+    index_path = _official_post_fallback_index_path(config.version_root)
+    _write_json_atomic(index_path, index_payload)
+    index_digest = sha256(index_path.read_bytes()).hexdigest()
+    filled_keys = [dict(record["filledKey"]) for record in accepted_records]
+    fallback_frame = (
+        pd.concat(accepted_rows, ignore_index=True)
+        if accepted_rows
+        else pd.DataFrame(columns=["date", "symbol", "adjClose"])
+    )
+    return fallback_frame, {
+        "priceSourceMode": FALLBACK_PRICE_SOURCE_MODE,
+        "primarySourceRef": PRIMARY_CLOSE_SOURCE_REF,
+        "fallbackSourceRef": FALLBACK_CLOSE_SOURCE_REF,
+        "fallbackFillCount": len(accepted_records),
+        "fallbackFilledKeys": filled_keys,
+        "fallbackRejectedCount": len(rejected_records),
+        "fallbackRejectedReasonCounts": rejected_reason_counts,
+        "fallbackProvenance": {
+            "schemaVersion": OFFICIAL_POST_FALLBACK_INDEX_SCHEMA_VERSION,
+            "path": _relative_cache_path(index_path, config.cache_root),
+            "sha256": index_digest,
+        },
+        "scaleCheckPolicy": dict(index_payload["scaleCheckPolicy"]),
+    }
+
+
 def _read_base_status(
     *,
     output: Path,
@@ -917,23 +1414,35 @@ def _repair_base_factor_fragment(
             frame=cached,
         )
         if verified_absence is not None:
-            verified_source_absences.add(verified_absence)
-        if _base_fragment_complete(
+            # A successful empty response proves only that request, not a
+            # permanent provider condition. Re-probe it on each explicit cache
+            # preparation so a recovered primary row supersedes any fallback.
+            path.unlink()
+            _discard_base_verified_source_absence(
+                output=output,
+                request=request,
+            )
+            repaired.append(
+                f"{request.start_date.strftime('%Y-%m-%d')}/"
+                f"{request.end_date.strftime('%Y-%m-%d')}"
+            )
+        elif _base_fragment_complete(
             cached,
             status,
             request,
             verified_source_absences,
         ):
             return cached
-        path.unlink()
-        _discard_base_verified_source_absence(
-            output=output,
-            request=request,
-        )
-        repaired.append(
-            f"{request.start_date.strftime('%Y-%m-%d')}/"
-            f"{request.end_date.strftime('%Y-%m-%d')}"
-        )
+        else:
+            path.unlink()
+            _discard_base_verified_source_absence(
+                output=output,
+                request=request,
+            )
+            repaired.append(
+                f"{request.start_date.strftime('%Y-%m-%d')}/"
+                f"{request.end_date.strftime('%Y-%m-%d')}"
+            )
 
     split_plan = BASE_BUILDER._split_request(request)
     marker = BASE_BUILDER._split_marker_path(path)
@@ -1018,13 +1527,23 @@ def _repair_base_factor_fragment(
 
 def _strict_base_merge(
     factor: pd.DataFrame,
+    fallback: pd.DataFrame,
     status: pd.DataFrame,
     verified_source_absences: set[tuple[str, str]],
 ) -> pd.DataFrame:
     factor_keys = _frame_keys(factor)
+    fallback_keys = _frame_keys(fallback)
     status_keys = _frame_keys(status)
     if factor_keys - status_keys:
         raise CacheQualityError("base factor rows lack trade-status coverage")
+    if fallback_keys - status_keys:
+        raise CacheQualityError("base fallback rows lack trade-status coverage")
+    if factor_keys & fallback_keys:
+        raise CacheQualityError("base primary and fallback price rows overlap")
+    if fallback_keys - verified_source_absences:
+        raise CacheQualityError(
+            "base fallback rows lack a verified primary-source absence"
+        )
     tradable_keys = _frame_keys(
         status.loc[status["tradeStatus"] == TRADABLE_TRADE_STATUS]
     )
@@ -1033,9 +1552,12 @@ def _strict_base_merge(
         raise CacheQualityError(
             "verified source absence does not match a status-only key"
         )
-    if (tradable_keys - factor_keys) - verified_source_absences:
+    effective_factor = pd.concat([factor, fallback], ignore_index=True)
+    effective_keys = factor_keys | fallback_keys
+    unresolved_absences = verified_source_absences - fallback_keys
+    if (tradable_keys - effective_keys) - unresolved_absences:
         raise CacheQualityError("base cache lacks tradable factor-close rows")
-    merged = factor.merge(
+    merged = effective_factor.merge(
         status,
         on=["date", "symbol"],
         how="left",
@@ -1278,8 +1800,18 @@ def _prepare_base_cache(
             )
         )
     factor = pd.concat(factor_frames, ignore_index=True)
+    fallback, fallback_result = _prepare_official_post_fallbacks(
+        config=config,
+        client=client,
+        budget=budget,
+        factor=factor,
+        status=status,
+        universe_symbols=symbols,
+        verified_source_absences=verified_source_absences,
+    )
     repaired_base = _strict_base_merge(
         factor,
+        fallback,
         status,
         verified_source_absences,
     )
@@ -1296,17 +1828,26 @@ def _prepare_base_cache(
             row=sample,
         )
     quality = _frame_quality(repaired_base)
-    status_only_keys = _frame_keys(status) - _frame_keys(factor)
+    primary_keys = _frame_keys(factor)
+    fallback_keys = _frame_keys(fallback)
+    status_only_keys = _frame_keys(status) - primary_keys
     quality["statusOnlyNonTradable"] = len(status_only_keys - verified_source_absences)
     quality["verifiedSourceAbsenceCount"] = len(verified_source_absences)
+    quality["officialFallbackFillCount"] = len(fallback_keys)
     quality["repairedFragments"] = sorted(set(repaired))
     assumptions: list[str] = []
-    if verified_source_absences:
+    if fallback_keys:
         assumptions.append(
-            f"{len(verified_source_absences)} identity-bound single-key "
-            "get_factor(close) requests returned verified empty responses; "
-            "those keys are non-tradable because effective tradability "
-            "requires both price availability and trade_status."
+            f"{len(fallback_keys)} identity-bound single-key get_factor(close) "
+            "gaps were filled from get_stock_daily_post(close) only after "
+            "both adjacent trading-date prices matched the primary source."
+        )
+    unresolved_absences = verified_source_absences - fallback_keys
+    if unresolved_absences:
+        assumptions.append(
+            f"{len(unresolved_absences)} identity-bound single-key "
+            "get_factor(close) gaps did not pass the official fallback gate; "
+            "those keys remain non-tradable."
         )
     return repaired_base, {
         "status": "ready",
@@ -1316,12 +1857,18 @@ def _prepare_base_cache(
         "factorWindowAnchorSource": factor_window_anchor_source,
         "effectiveTradabilityRule": "price_available_and_trade_status",
         "assumptions": assumptions,
+        **fallback_result,
         **quality,
         "quality": {
             "primaryKeysValid": True,
             "effectiveTradableFactorCoverage": True,
             "providerTradableFactorCoverage": (len(verified_source_absences) == 0),
+            "officialSdkEffectiveTradableFactorCoverage": (
+                len(unresolved_absences) == 0
+            ),
             "verifiedSourceAbsenceCount": len(verified_source_absences),
+            "officialFallbackFillCount": len(fallback_keys),
+            "officialFallbackRejectedCount": len(unresolved_absences),
             "unverifiedTradableMissingKeys": 0,
         },
         "spotCheck": spot,

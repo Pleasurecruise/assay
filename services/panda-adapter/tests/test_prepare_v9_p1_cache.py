@@ -131,15 +131,18 @@ class FakeP1Client:
         base_symbols: list[str],
         extra_symbol: str = "XTRA",
         absent_factor_keys: set[tuple[str, str]] | None = None,
+        fallback_close_multiplier: float = 1.0,
     ) -> None:
         self.base_dates = pd.DatetimeIndex(base_dates)
         self.base_symbols = list(base_symbols)
         self.extra_symbol = extra_symbol
         self.absent_factor_keys = absent_factor_keys or set()
+        self.fallback_close_multiplier = fallback_close_multiplier
         self.positions = {
             symbol: index for index, symbol in enumerate([*base_symbols, extra_symbol])
         }
         self.factor_calls: list[dict[str, object]] = []
+        self.stock_daily_post_calls: list[dict[str, object]] = []
         self.status_calls: list[dict[str, object]] = []
         self.index_weight_calls: list[dict[str, object]] = []
         self.index_daily_calls: list[dict[str, object]] = []
@@ -228,6 +231,29 @@ class FakeP1Client:
                     "symbol": symbol,
                     "trade_status": 0,
                 }
+                for symbol in symbols
+            ]
+        )
+
+    def get_stock_daily_post(self, **parameters: object) -> pd.DataFrame:
+        self.stock_daily_post_calls.append(parameters)
+        symbols = [str(value) for value in parameters["symbol"]]
+        start = pd.Timestamp(str(parameters["start_date"]))
+        end = pd.Timestamp(str(parameters["end_date"]))
+        dates = self.base_dates[(self.base_dates >= start) & (self.base_dates <= end)]
+        return pd.DataFrame(
+            [
+                {
+                    "date": date.strftime("%Y%m%d"),
+                    "symbol": symbol,
+                    "close": _price(
+                        date,
+                        symbol,
+                        symbol_positions=self.positions,
+                    )
+                    * self.fallback_close_multiplier,
+                }
+                for date in dates
                 for symbol in symbols
             ]
         )
@@ -432,7 +458,7 @@ class PrepareV9P1CacheTest(unittest.TestCase):
             self.assertEqual(retained_path.read_bytes(), retained_before)
             self.assertFalse(drifted_path.exists())
 
-    def test_verified_single_key_source_absence_is_persisted_and_counted(
+    def test_verified_primary_absence_uses_a_traced_official_post_fallback(
         self,
     ) -> None:
         symbols = _symbols()
@@ -452,13 +478,14 @@ class PrepareV9P1CacheTest(unittest.TestCase):
                 base_cache=output,
                 perform_spot_checks=False,
             )
+            client = FakeP1Client(
+                base_dates=dates,
+                base_symbols=symbols,
+                absent_factor_keys={absent_key},
+            )
             repaired, result = p1._prepare_base_cache(
                 config=config,
-                client=FakeP1Client(
-                    base_dates=dates,
-                    base_symbols=symbols,
-                    absent_factor_keys={absent_key},
-                ),
+                client=client,
                 budget=p1.StageBudget(
                     stage="base",
                     max_seconds=1_200,
@@ -466,11 +493,26 @@ class PrepareV9P1CacheTest(unittest.TestCase):
                 ),
             )
 
-            self.assertFalse(
+            self.assertTrue(
                 (
                     repaired["date"].eq(absent_key[0])
                     & repaired["symbol"].eq(absent_key[1])
                 ).any()
+            )
+            repaired_close = float(
+                repaired.loc[
+                    repaired["date"].eq(absent_key[0])
+                    & repaired["symbol"].eq(absent_key[1]),
+                    "adjClose",
+                ].iloc[0]
+            )
+            self.assertEqual(
+                repaired_close,
+                _price(
+                    pd.Timestamp(absent_key[0]),
+                    absent_key[1],
+                    symbol_positions=client.positions,
+                ),
             )
             self.assertEqual(
                 result["verifiedSourceAbsenceCount"],
@@ -486,12 +528,44 @@ class PrepareV9P1CacheTest(unittest.TestCase):
             )
             self.assertTrue(result["quality"]["effectiveTradableFactorCoverage"])
             self.assertFalse(result["quality"]["providerTradableFactorCoverage"])
+            self.assertTrue(
+                result["quality"]["officialSdkEffectiveTradableFactorCoverage"]
+            )
+            self.assertEqual(result["fallbackFillCount"], 1)
+            self.assertEqual(result["fallbackRejectedCount"], 0)
+            self.assertEqual(
+                result["fallbackFilledKeys"],
+                [{"date": absent_key[0], "symbol": absent_key[1]}],
+            )
+            self.assertEqual(
+                result["priceSourceMode"],
+                p1.FALLBACK_PRICE_SOURCE_MODE,
+            )
+            self.assertEqual(
+                result["primarySourceRef"],
+                p1.PRIMARY_CLOSE_SOURCE_REF,
+            )
+            self.assertEqual(
+                result["fallbackSourceRef"],
+                p1.FALLBACK_CLOSE_SOURCE_REF,
+            )
             self.assertEqual(
                 result["effectiveTradabilityRule"],
                 "price_available_and_trade_status",
             )
             self.assertEqual(len(result["assumptions"]), 1)
             self.assertIn("1 identity-bound", result["assumptions"][0])
+            self.assertIn("both adjacent", result["assumptions"][0])
+            self.assertEqual(len(client.stock_daily_post_calls), 1)
+            self.assertEqual(
+                client.stock_daily_post_calls[0],
+                {
+                    "symbol": [absent_key[1]],
+                    "start_date": "20260414",
+                    "end_date": "20260416",
+                    "fields": ["symbol", "date", "close"],
+                },
+            )
 
             leaf = p1.BASE_BUILDER.FragmentRequest(
                 source="factor-close",
@@ -511,10 +585,37 @@ class PrepareV9P1CacheTest(unittest.TestCase):
                 ),
                 absent_key,
             )
+            primary_rows = [
+                row
+                for path in output.parent.rglob("*.part.json")
+                if "factor-close" in path.parts
+                for row in json.loads(path.read_text(encoding="utf-8"))["rows"]
+            ]
+            self.assertFalse(
+                any(
+                    row.get("date") == absent_key[0]
+                    and row.get("symbol") == absent_key[1]
+                    for row in primary_rows
+                )
+            )
 
+            provenance_path = cache_root / result["fallbackProvenance"]["path"]
+            provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                provenance["schemaVersion"],
+                p1.OFFICIAL_POST_FALLBACK_INDEX_SCHEMA_VERSION,
+            )
+            self.assertEqual(len(provenance["accepted"]), 1)
+            self.assertEqual(provenance["rejected"], [])
+
+            resumed_client = FakeP1Client(
+                base_dates=dates,
+                base_symbols=symbols,
+                absent_factor_keys={absent_key},
+            )
             resumed, resumed_result = p1._prepare_base_cache(
                 config=config,
-                client=NoNetworkClient(),
+                client=resumed_client,
                 budget=p1.StageBudget(
                     stage="base",
                     max_seconds=1_200,
@@ -526,6 +627,90 @@ class PrepareV9P1CacheTest(unittest.TestCase):
                 resumed_result["verifiedSourceAbsenceCount"],
                 1,
             )
+            self.assertEqual(resumed_result["fallbackFillCount"], 1)
+            self.assertEqual(
+                resumed_result["fallbackProvenance"]["sha256"],
+                result["fallbackProvenance"]["sha256"],
+            )
+            self.assertEqual(len(resumed_client.factor_calls), 1)
+            self.assertEqual(resumed_client.stock_daily_post_calls, [])
+
+            recovered_client = FakeP1Client(
+                base_dates=dates,
+                base_symbols=symbols,
+            )
+            recovered, recovered_result = p1._prepare_base_cache(
+                config=config,
+                client=recovered_client,
+                budget=p1.StageBudget(
+                    stage="base",
+                    max_seconds=1_200,
+                    sleeper=lambda _: None,
+                ),
+            )
+            self.assertIn(absent_key, p1._frame_keys(recovered))
+            self.assertEqual(recovered_result["verifiedSourceAbsenceCount"], 0)
+            self.assertEqual(recovered_result["fallbackFillCount"], 0)
+            self.assertEqual(recovered_result["fallbackFilledKeys"], [])
+            self.assertEqual(len(recovered_client.factor_calls), 1)
+            self.assertFalse(
+                p1._official_post_fallback_leaf_path(
+                    config.version_root,
+                    date=absent_key[0],
+                    symbol=absent_key[1],
+                ).exists()
+            )
+
+    def test_official_post_fallback_scale_mismatch_remains_non_tradable(
+        self,
+    ) -> None:
+        symbols = _symbols()
+        dates = pd.bdate_range("2026-04-14", "2026-04-16")
+        absent_key = ("2026-04-15", symbols[0])
+
+        with tempfile.TemporaryDirectory() as directory:
+            cache_root = Path(directory)
+            output = _seed_base_cache(
+                cache_root=cache_root,
+                dates=dates,
+                symbols=symbols,
+                missing_factor_keys={absent_key},
+            )
+            repaired, result = p1._prepare_base_cache(
+                config=p1.P1Config(
+                    cache_root=cache_root,
+                    base_cache=output,
+                    perform_spot_checks=False,
+                ),
+                client=FakeP1Client(
+                    base_dates=dates,
+                    base_symbols=symbols,
+                    absent_factor_keys={absent_key},
+                    fallback_close_multiplier=1.01,
+                ),
+                budget=p1.StageBudget(
+                    stage="base",
+                    max_seconds=1_200,
+                    sleeper=lambda _: None,
+                ),
+            )
+
+            self.assertNotIn(absent_key, p1._frame_keys(repaired))
+            self.assertEqual(result["fallbackFillCount"], 0)
+            self.assertEqual(result["fallbackRejectedCount"], 1)
+            self.assertEqual(
+                result["fallbackRejectedReasonCounts"],
+                {"FALLBACK_SCALE_MISMATCH": 1},
+            )
+            self.assertEqual(
+                result["quality"]["officialFallbackRejectedCount"],
+                1,
+            )
+            self.assertFalse(result["quality"]["providerTradableFactorCoverage"])
+            self.assertFalse(
+                result["quality"]["officialSdkEffectiveTradableFactorCoverage"]
+            )
+            self.assertIn("remain non-tradable", result["assumptions"][0])
 
     def test_empty_factor_fragment_without_leaf_proof_remains_fail_closed(
         self,

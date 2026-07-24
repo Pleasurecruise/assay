@@ -130,11 +130,7 @@ function parseMoireRefinement(check: AuditCheckResult): ParsedMoireRefinement | 
     return { resolution: "resolved" };
   }
   const corrected = M2_CORRECTED_CONCLUSION_PATTERN.exec(refinement)?.[1];
-  if (
-    corrected !== "pass" &&
-    corrected !== "pass_with_reservations" &&
-    corrected !== "fail"
-  ) {
+  if (corrected !== "pass" && corrected !== "pass_with_reservations" && corrected !== "fail") {
     return {
       resolution: "unresolved",
       effectiveConclusion: "insufficient_evidence",
@@ -257,7 +253,7 @@ export function buildExecutedAuditArtifact(options: BuildExecutedArtifactOptions
           "Moiré v9 evaluates only the pre-enumerated M1 and M2 discriminative pairs; M3 is outside this audit version.",
           "PandaData financial report rows have no verified disclosure timestamp; forecast and performance bulletin info_date fields are preferred for point-in-time evidence.",
           "Grid, baseline cost, and regime instruments use the frozen as-of CSI 300 panel; data-availability separately reports the PIT-membership correction, and M2 uses that corrected context when triggered.",
-          "Prices may be forward-filled for valuation, but a missing factor-close observation or non-tradable trade_status makes that symbol ineligible for trading on the affected date; targets are not replaced.",
+          "Prices may be forward-filled for valuation. A primary factor-close gap is eligible only when the identity-bound official post-adjusted fallback passes the frozen two-sided scale check; otherwise a missing price or non-tradable trade_status makes that symbol ineligible on the affected date, and targets are not replaced.",
         ],
         strategySpec: options.frozen.spec,
         defaultsApplied: options.frozen.defaultsApplied,

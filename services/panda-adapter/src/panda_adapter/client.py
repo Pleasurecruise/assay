@@ -112,6 +112,13 @@ class PandaDataClient:
             parameters=parameters,
         )
 
+    def get_stock_daily_post(self, **parameters: Any) -> Any:
+        return self._query_method(
+            operation="stock_daily_post",
+            method_name="get_stock_daily_post",
+            parameters=parameters,
+        )
+
     def query(self, operation: str, parameters: dict[str, Any]) -> Any:
         if not self._is_initialized:
             raise PandaDataNotInitializedError(
