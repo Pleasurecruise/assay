@@ -5,7 +5,8 @@ import { dirname, resolve } from "node:path";
 import { TaskState } from "@a2a-js/sdk";
 import { createAssayA2AClient, extractAuditArtifact } from "../../../apps/web/src/lib/a2a-client";
 import {
-  assertRealDataAcceptance,
+  assertRealDataMechanism,
+  assertRealDataSnapshot,
   inspectSprintRealCache,
   loadSprintRealGolden,
   SPRINT_ACCEPTANCE_BUNDLE_VERSION,
@@ -109,7 +110,8 @@ export async function runSprintVertical(): Promise<string> {
       cacheSnapshot,
       artifact,
     };
-    assertRealDataAcceptance(bundle, golden);
+    const mechanismAccepted = assertRealDataMechanism(bundle);
+    assertRealDataSnapshot(mechanismAccepted, golden);
 
     const diagnosticOutput = process.env.ASSAY_DEMO_DIAGNOSTIC_OUTPUT?.trim();
     if (diagnosticOutput) {
@@ -118,8 +120,8 @@ export async function runSprintVertical(): Promise<string> {
       await writeJsonAtomic(diagnosticPath, bundle);
     }
 
-    // A failed refresh cannot overwrite the accepted real snapshot because all
-    // mechanism and golden assertions run before this atomic publication.
+    // A failed refresh cannot overwrite the accepted real snapshot because the
+    // independent mechanism and golden-snapshot layers run before publication.
     const outputPath = resolve(process.env.ASSAY_DEMO_OUTPUT || DEFAULT_REAL_ARTIFACT);
     rejectMechanismFixtureOverwrite(outputPath, "Real-data acceptance output");
     await writeJsonAtomic(outputPath, bundle);

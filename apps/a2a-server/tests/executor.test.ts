@@ -153,6 +153,91 @@ function expectSafeFailedTerminalState(
 }
 
 describe("AssayAgentExecutor", () => {
+  test("reproduces submitted claims before fan-out and applies the WATCH cap", async () => {
+    const executionOrder: string[] = [];
+    let storedArtifact: AuditArtifact | undefined;
+    const candidate = {
+      ...completeCandidate,
+      claims: { annualReturn: 0.18, sharpe: 1.9 },
+    };
+    const intake = new StrategyIntake({
+      parser: { parse: async () => candidate },
+      dataAsOf: "2026-07-23",
+      capabilitySnapshotId: "claim:test",
+      codeRevision: "test-revision",
+    });
+    const executor = new AssayAgentExecutor({
+      intake,
+      claimReproducer: {
+        reproduce: async (spec) => {
+          executionOrder.push("claim");
+          return {
+            claimed: spec.claims ?? {},
+            reproduced: {
+              annualReturn: 0.1,
+              sharpe: 1,
+              maxDrawdown: -0.2,
+            },
+            gaps: {
+              annualReturn: 0.08,
+              sharpe: 0.8999999999999999,
+            },
+            knownConventionDiffs: [],
+          };
+        },
+      },
+      runner: {
+        run: async (request) => {
+          executionOrder.push("fan-out");
+          return {
+            schemaVersion: AUDIT_CHECK_SCHEMA_VERSION,
+            auditId: request.auditId,
+            subjectId: request.subject.id,
+            traceId: request.traceId ?? "missing-trace",
+            startedAt: "2026-07-24T00:00:00Z",
+            completedAt: "2026-07-24T00:00:01Z",
+            checks: AUDIT_CHECK_IDS.map((id) => ({
+              id,
+              conclusion: "pass",
+              confidence: 0.8,
+              evidence: [
+                {
+                  metric: "verified",
+                  value: true,
+                  unit: "boolean",
+                  sourceRefs: [`test:${id}`],
+                },
+              ],
+              missingEvidence: [],
+            })),
+          };
+        },
+      },
+      artifactStore: {
+        save: async (_taskId, artifact) => {
+          storedArtifact = artifact;
+        },
+        load: async () => storedArtifact,
+      },
+      dataAsOf: "2026-07-23",
+      codeRevision: "test-revision",
+      now: () => new Date("2026-07-24T00:00:00Z"),
+    });
+
+    await executor.execute(
+      requestContext(userMessage("Audit a strategy with submitted performance claims")),
+      recordingEventBus([], []),
+    );
+
+    expect(executionOrder).toEqual(["claim", "fan-out"]);
+    expect(storedArtifact?.claimComparison?.reproduced.sharpe).toBe(1);
+    expect(storedArtifact?.results[0]?.verdict).toBe("WATCH");
+    expect(storedArtifact?.results[0]?.recoveryConditions).toContainEqual({
+      scope: "evidence",
+      condition: "提交原回测口径（ClaimProfile）后复审",
+    });
+  });
+
   test("projects the exact canonical bytes and persists the Artifact before COMPLETED", async () => {
     const order: string[] = [];
     const events: AgentExecutionEvent[] = [];

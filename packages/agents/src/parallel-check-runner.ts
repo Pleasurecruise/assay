@@ -192,7 +192,9 @@ export class ParallelAuditCheckRunner {
             subjectId: request.subject.id,
             checkId,
             ...(request.skill === "audit_strategy" &&
-            (checkId === "param-robustness" || checkId === "cost-stress")
+            (checkId === "param-robustness" ||
+              checkId === "data-availability" ||
+              checkId === "cost-stress")
               ? { frozenStrategySpec: request.subject.input }
               : {}),
           },

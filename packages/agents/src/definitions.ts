@@ -1,5 +1,14 @@
 import type { AgentDefinition } from "@assay/agent-runtime";
-import type { AuditCheckId } from "@assay/contracts";
+import {
+  AVAILABILITY_ANNUAL_RETURN_DELTA_FAIL_THRESHOLD,
+  AVAILABILITY_CONTAMINATED_SELECTION_RATE_FAIL_THRESHOLD,
+  CHECKS_WIRING_POLICY_VERSION,
+  type AuditCheckId,
+} from "@assay/contracts";
+import {
+  AVAILABILITY_AUDIT_SOURCE_REF,
+  createRunAvailabilityAuditTool,
+} from "./run-availability-audit-tool";
 import {
   createRunExperimentTool,
   defaultExperimentProcessConfig,
@@ -46,10 +55,24 @@ evidence（样本量、置信区间、绝对收益差或缺失率）和该引用
 你负责数据可得性检查。逐历史时点核对股票池、可交易状态和财务信息可得时间，识别幸存者
 偏差、前视偏差和披露时点缺口。不要执行参数扰动、成本压力、市场环境或同质化分析。
 
-当前冲刺未向你提供逐历史时点成分、停复牌、退市或披露时间数据，也没有数据工具。策略描述
-和主机声明的局限不等于上述事实证据，不得据此宣称偏差“存在”或“不存在”。必须诚实返回
-insufficient_evidence，evidence=[]，并用非空 missingEvidence 逐项说明缺少的数据；
-missingEvidence.sourceRefs 固定使用 ["input:strategy-description"]。
+必须且只能调用一次 run_availability_audit，固定调用形状为
+{"kind":"availability_audit","budget":{"maxVariants":1}}。canonical StrategySpec 由宿主
+注入；不得提交 spec，不得追加第二次调用。工具会一次性返回 PIT 成分差异、可交易性核对、
+PIT 修正重跑数值、运行模式与假设声明。
+
+CHECKS_WIRING_POLICY_VERSION="${CHECKS_WIRING_POLICY_VERSION}"。严格按预声明准则独立判断：
+futureConstituentCount=0 → pass；futureConstituentCount>0 且
+|corrected.delta| < ${AVAILABILITY_ANNUAL_RETURN_DELTA_FAIL_THRESHOLD} 且
+contaminatedSelectionRate < ${AVAILABILITY_CONTAMINATED_SELECTION_RATE_FAIL_THRESHOLD}
+→ pass_with_reservations；|corrected.delta| >=
+${AVAILABILITY_ANNUAL_RETURN_DELTA_FAIL_THRESHOLD} 或 contaminatedSelectionRate >=
+${AVAILABILITY_CONTAMINATED_SELECTION_RATE_FAIL_THRESHOLD} → fail。
+
+确定性结论必须把 futureConstituentCount、affectedRebalances 数量、untradableTargets、
+contaminatedSelectionRate、corrected.annualReturn、corrected.sharpe 和 corrected.delta
+写成数值 evidence，所有 sourceRefs 固定包含 ${AVAILABILITY_AUDIT_SOURCE_REF}。工具若为
+degraded_remove_only，必须在 evidence 或 missingEvidence 中如实披露其 assumptions；不得把部分修正
+描述成完整 PIT 修正。本期动量信号不含财务字段，不得声称已核对 fina_reports.date。
 `.trim(),
   "cost-stress": `
 你负责交易成本压力测试。使用回测工具按常规费率、冲击成本和悲观情形分档重跑，测算换手
@@ -108,12 +131,14 @@ const experimentKindByCheck = {
 
 export interface AuditCheckAgentDefinitionOptions {
   readonly experimentProcess?: ExperimentProcessConfig;
+  readonly availabilityProcess?: ExperimentProcessConfig;
 }
 
 export function createAuditCheckAgentDefinitions(
   options: AuditCheckAgentDefinitionOptions = {},
 ): readonly AgentDefinition[] {
   const experimentProcess = options.experimentProcess ?? defaultExperimentProcessConfig();
+  const availabilityProcess = options.availabilityProcess ?? experimentProcess;
   return (Object.keys(checkPrompts) as AuditCheckId[]).map((id) => {
     const experimentKind =
       id === "param-robustness" || id === "cost-stress" ? experimentKindByCheck[id] : undefined;
@@ -123,9 +148,11 @@ export function createAuditCheckAgentDefinitions(
       description: checkPrompts[id],
       thinkingLevel: highThinkingChecks.has(id) ? high : medium,
       systemPrompt: [sharedGuardrails, checkPrompts[id]],
-      ...(experimentKind === undefined
-        ? {}
-        : { tools: [createRunExperimentTool(experimentKind, experimentProcess)] }),
+      ...(id === "data-availability"
+        ? { tools: [createRunAvailabilityAuditTool(availabilityProcess)] }
+        : experimentKind === undefined
+          ? {}
+          : { tools: [createRunExperimentTool(experimentKind, experimentProcess)] }),
     };
   });
 }

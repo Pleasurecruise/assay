@@ -13,11 +13,42 @@ from panda_adapter.market_panel import (
     ADAPTER_ROOT,
     RESUMABLE_CACHE_BUILDER,
     _download_fixed_universe_cache,
+    load_cached_market_panel,
     load_market_panel,
 )
 
 
 class MarketPanelCacheTest(unittest.TestCase):
+    def test_availability_loader_requires_existing_cache_without_download(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "missing.csv"
+            with (
+                patch.dict(
+                    os.environ,
+                    {"ASSAY_MARKET_DATA_CACHE": str(path)},
+                    clear=False,
+                ),
+                patch(
+                    "panda_adapter.market_panel._download_fixed_universe_cache"
+                ) as download,
+                self.assertRaisesRegex(
+                    RuntimeError,
+                    "^availability audit requires an existing market cache$",
+                ),
+            ):
+                load_cached_market_panel(
+                    {
+                        "universe": {"index": "000300.SH"},
+                        "window": {
+                            "start": "20260101",
+                            "end": "20260131",
+                        },
+                    }
+                )
+            download.assert_not_called()
+
     def test_loads_long_csv_and_filters_the_requested_window(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "panel.csv"

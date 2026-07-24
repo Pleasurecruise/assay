@@ -40,6 +40,36 @@ describe("guardRuntimeToolCall", () => {
     expect(args.spec).toEqual(JSON.parse(canonicalizeStrategySpec(strategySpec)));
   });
 
+  test("applies the same one-call trusted-spec binding to the availability audit", () => {
+    const args: Record<string, unknown> = {
+      kind: "availability_audit",
+      budget: { maxVariants: 1 },
+    };
+    expect(
+      guardRuntimeToolCall(
+        "run_availability_audit",
+        args,
+        specHash(strategySpec),
+        canonicalizeStrategySpec(strategySpec),
+        0,
+      ),
+    ).toEqual({ runExperimentCallCount: 1 });
+    expect(args.spec).toEqual(JSON.parse(canonicalizeStrategySpec(strategySpec)));
+
+    expect(
+      guardRuntimeToolCall(
+        "run_availability_audit",
+        {},
+        specHash(strategySpec),
+        canonicalizeStrategySpec(strategySpec),
+        1,
+      ),
+    ).toEqual({
+      runExperimentCallCount: 2,
+      blockReason: "run_availability_audit may be called at most once per task",
+    });
+  });
+
   test.each([
     ["missing hash", undefined],
     ["invalid hash", "not-a-sha256-digest"],

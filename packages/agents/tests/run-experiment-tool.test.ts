@@ -24,6 +24,31 @@ function contentText(
 }
 
 describe("run_experiment tool", () => {
+  test("runs the host-only as-of, no-cost claim baseline without variants", async () => {
+    const result = await runExperimentSubprocess(mockProcess, {
+      kind: "baseline",
+      spec: {
+        specVersion: "1",
+        costs: { model: "none" },
+      },
+      universeMode: "asOf",
+      budget: { maxVariants: 1 },
+    });
+
+    expect(result.baseline.params.costModel).toBe("none");
+    expect(result.variants).toEqual([]);
+  });
+
+  test("requires the frozen host baseline convention", async () => {
+    await expect(
+      runExperimentSubprocess(mockProcess, {
+        kind: "baseline",
+        spec: { specVersion: "1", costs: { model: "none" } },
+        budget: { maxVariants: 1 },
+      }),
+    ).rejects.toThrow('universeMode must be "asOf"');
+  });
+
   test("bridges one grid request over subprocess stdio", async () => {
     const request: RunExperimentRequest = {
       kind: "grid",
@@ -88,7 +113,7 @@ describe("run_experiment tool", () => {
     ).rejects.toThrow(message);
   });
 
-  test("exposes the tool only to parameter and cost checks", () => {
+  test("exposes only the approved coarse tool to each wired check", () => {
     const definitions = createAuditCheckAgentDefinitions({ experimentProcess: mockProcess });
     const toolsById = Object.fromEntries(
       definitions.map((definition) => [
@@ -99,7 +124,7 @@ describe("run_experiment tool", () => {
 
     expect(toolsById).toEqual({
       "param-robustness": ["run_experiment"],
-      "data-availability": [],
+      "data-availability": ["run_availability_audit"],
       "cost-stress": ["run_experiment"],
       "regime-dependency": [],
       "homogeneity-decay": [],

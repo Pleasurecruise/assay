@@ -52,6 +52,18 @@ def load_market_panel(spec: Mapping[str, Any]) -> MarketPanel:
     return _read_cache(cache_path, spec)
 
 
+def load_cached_market_panel(spec: Mapping[str, Any]) -> MarketPanel:
+    """Load the existing panel without initiating another base-universe pull."""
+
+    _require_csi300_universe(spec)
+    cache_path = Path(
+        os.environ.get("ASSAY_MARKET_DATA_CACHE", str(DEFAULT_CACHE_PATH))
+    )
+    if not cache_path.is_file():
+        raise RuntimeError("availability audit requires an existing market cache")
+    return _read_cache(cache_path, spec)
+
+
 def _read_cache(path: Path, spec: Mapping[str, Any]) -> MarketPanel:
     if path.suffix.lower() == ".parquet":
         values = pd.read_parquet(path)

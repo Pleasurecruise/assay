@@ -286,6 +286,32 @@ class EngineProtocolTest(unittest.TestCase):
             },
         )
 
+    def test_claim_baseline_uses_as_of_universe_and_no_costs(self) -> None:
+        spec = {
+            **self.spec,
+            "costs": {"model": "none"},
+        }
+        baseline = run_request(
+            {
+                "kind": "baseline",
+                "spec": spec,
+                "universeMode": "asOf",
+                "budget": {"maxVariants": 1},
+            }
+        )
+
+        self.assertEqual(baseline["variants"], [])
+        self.assertEqual(baseline["baseline"]["params"]["costModel"], "none")
+
+        with self.assertRaisesRegex(ValueError, "universeMode"):
+            run_request(
+                {
+                    "kind": "baseline",
+                    "spec": spec,
+                    "budget": {"maxVariants": 1},
+                }
+            )
+
     def test_cli_errors_use_stderr_only(self) -> None:
         environment = dict(os.environ)
         source_root = os.path.abspath(

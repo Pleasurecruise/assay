@@ -5,6 +5,7 @@ import { buildModel } from "@oh-my-pi/pi-catalog/build";
 import type { ProductionA2AConfig } from "./configuration";
 import { AssayAgentExecutor } from "./executor";
 import { InMemoryAuditArtifactStore } from "./artifact-store";
+import { SubprocessClaimReproducer } from "./claim-reproducer";
 import { createAssayA2AApp, type AssayA2AApp } from "./server";
 
 export { readProductionConfig, type ProductionA2AConfig } from "./configuration";
@@ -51,6 +52,7 @@ export function createProductionA2AApp(config: ProductionA2AConfig): AssayA2AApp
   const executor = new AssayAgentExecutor({
     intake,
     runner,
+    claimReproducer: new SubprocessClaimReproducer(),
     artifactStore: new InMemoryAuditArtifactStore(),
     dataAsOf: config.dataAsOf,
     codeRevision: config.codeRevision,

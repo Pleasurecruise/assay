@@ -24,6 +24,11 @@ export const SPRINT_REAL_GOLDEN_PATH = fileURLToPath(
 
 const PARAM_CHECK_ID: AuditCheckId = "param-robustness";
 const COST_CHECK_ID: AuditCheckId = "cost-stress";
+const REAL_DATA_INSUFFICIENT_CHECK_IDS = [
+  "data-availability",
+  "regime-dependency",
+  "homogeneity-decay",
+] as const satisfies readonly AuditCheckId[];
 const OUTPUT_SAFETY_PATTERNS: readonly [RegExp, string][] = [
   [/\/Users\//, "local user path"],
   [/\/private\//, "local private path"],
@@ -291,7 +296,7 @@ function checkById(checks: readonly AuditCheckResult[], checkId: AuditCheckId): 
   return matches[0] as AuditCheckResult;
 }
 
-function assertNumericEvidence(check: AuditCheckResult, expected: GoldenMetricExpectation): void {
+function assertNumericEvidenceWithSourceRefs(check: AuditCheckResult): void {
   requireValue(
     check.evidence.some(
       (evidence) =>
@@ -301,6 +306,10 @@ function assertNumericEvidence(check: AuditCheckResult, expected: GoldenMetricEx
     ),
     `${check.id} must contain finite numeric evidence with sourceRefs`,
   );
+}
+
+function assertGoldenMetric(check: AuditCheckResult, expected: GoldenMetricExpectation): void {
+  assertNumericEvidenceWithSourceRefs(check);
   const evidence = check.evidence.find((item) => item.metric === expected.metric);
   requireValue(evidence !== undefined, `${check.id} omitted golden metric ${expected.metric}`);
   requireValue(
@@ -320,10 +329,7 @@ export function assertOutputSafe(value: unknown): void {
   }
 }
 
-export function assertRealDataAcceptance(
-  value: unknown,
-  golden: SprintRealGolden,
-): SprintAcceptanceBundle {
+export function assertRealDataMechanism(value: unknown): SprintAcceptanceBundle {
   const bundle = parseBundle(value);
   requireValue(
     bundle.schemaVersion === SPRINT_ACCEPTANCE_BUNDLE_VERSION,
@@ -334,6 +340,43 @@ export function assertRealDataAcceptance(
     "Real-data bundle role is not frozen",
   );
   requireValue(bundle.fixtureId === undefined, "Real-data bundle must not declare a fixture id");
+  requireValue(
+    bundle.dataMode === SPRINT_REAL_DATA_MODE && bundle.cacheSnapshot !== undefined,
+    "Real-data mechanism must use the verified official cache",
+  );
+
+  const result = bundle.artifact.results[0];
+  requireValue(result !== undefined, "Real-data Artifact omitted its result");
+  const parameter = checkById(result.checks, PARAM_CHECK_ID);
+  const cost = checkById(result.checks, COST_CHECK_ID);
+  assertNumericEvidenceWithSourceRefs(parameter);
+  assertNumericEvidenceWithSourceRefs(cost);
+
+  for (const checkId of REAL_DATA_INSUFFICIENT_CHECK_IDS) {
+    requireValue(
+      checkById(result.checks, checkId).conclusion === "insufficient_evidence",
+      `${checkId} must be insufficient_evidence in the real-data mechanism acceptance`,
+    );
+  }
+  requireValue(
+    result.verdict === deriveVerdict(result.checks, bundle.artifact.claimComparison),
+    "Real-data Artifact verdict does not match the deterministic rule",
+  );
+  assertOutputSafe(bundle);
+  return bundle;
+}
+
+export function assertRealDataSnapshot(
+  value: unknown,
+  golden: SprintRealGolden,
+): SprintAcceptanceBundle {
+  const bundle = parseBundle(value);
+  requireValue(
+    bundle.schemaVersion === SPRINT_ACCEPTANCE_BUNDLE_VERSION &&
+      bundle.artifactRole === "real-data-acceptance" &&
+      bundle.fixtureId === undefined,
+    "Real-data snapshot envelope changed",
+  );
   requireValue(bundle.dataMode === golden.dataMode, "Real-data bundle mode is not the golden mode");
   requireValue(bundle.input === golden.input, "Real-data bundle input changed from the golden");
   requireValue(
@@ -369,26 +412,22 @@ export function assertRealDataAcceptance(
     cost.conclusion === golden.expected.cost.conclusion,
     "Cost stress conclusion changed from the golden",
   );
-  assertNumericEvidence(parameter, golden.expected.param);
-  assertNumericEvidence(cost, golden.expected.cost);
-
-  for (const checkId of golden.expected.insufficientChecks) {
-    requireValue(
-      checkById(result.checks, checkId).conclusion === "insufficient_evidence",
-      `${checkId} must remain insufficient_evidence in the sprint real-data acceptance`,
-    );
-  }
-  const deterministicVerdict = deriveVerdict(result.checks);
-  requireValue(
-    result.verdict === deterministicVerdict,
-    "Real-data Artifact verdict does not match the deterministic rule",
-  );
+  assertGoldenMetric(parameter, golden.expected.param);
+  assertGoldenMetric(cost, golden.expected.cost);
   requireValue(
     result.verdict === golden.expected.verdict,
     "Real-data Artifact verdict changed from the golden",
   );
   assertOutputSafe(bundle);
   return bundle;
+}
+
+export function assertRealDataAcceptance(
+  value: unknown,
+  golden: SprintRealGolden,
+): SprintAcceptanceBundle {
+  const mechanismAccepted = assertRealDataMechanism(value);
+  return assertRealDataSnapshot(mechanismAccepted, golden);
 }
 
 export function assertMechanismFixture(value: unknown): SprintAcceptanceBundle {
@@ -428,11 +467,11 @@ export function assertMechanismFixture(value: unknown): SprintAcceptanceBundle {
     result.checks.some((check) => check.conclusion === "insufficient_evidence"),
     "Mechanism fixture must exercise fail priority over insufficient evidence",
   );
-  requireValue(
-    deriveVerdict(result.checks) === result.verdict,
-    "Mechanism fixture verdict does not match the deterministic rule",
-  );
   requireValue(result.verdict === "RETIRE", "Mechanism fixture must prove cost-fail to RETIRE");
+  requireValue(
+    result.recoveryConditions.length === 0,
+    "MVP fail-first mechanism fixture must not claim a recovery path",
+  );
   assertOutputSafe(bundle);
   return bundle;
 }

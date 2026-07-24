@@ -8,7 +8,11 @@ import { Agent, type AgentMessage, type AgentOptions } from "@oh-my-pi/pi-agent-
 import type { Model } from "@oh-my-pi/pi-ai";
 import { AgentRegistry } from "./registry";
 import { ToolPolicy } from "./policy";
-import { assertExactRunExperimentCompletion, guardRuntimeToolCall } from "./runtime-tool-guard";
+import {
+  assertExactRunExperimentCompletion,
+  guardRuntimeToolCall,
+  TRUSTED_SPEC_TOOL_NAMES,
+} from "./runtime-tool-guard";
 
 const DEFAULT_MAX_RUN_MS = 19 * 60 * 1_000;
 
@@ -108,6 +112,9 @@ export class AgentRuntime {
     };
 
     const tools = [...(definition.tools ?? [])];
+    const requiredTrustedSpecTool = tools.find((tool) =>
+      TRUSTED_SPEC_TOOL_NAMES.some((name) => name === tool.name),
+    )?.name;
     const agent = new Agent({
       initialState: {
         systemPrompt: [...definition.systemPrompt],
@@ -196,7 +203,10 @@ export class AgentRuntime {
           });
           break;
         case "tool_execution_end":
-          if (event.toolName === "run_experiment" && event.isError !== true) {
+          if (
+            TRUSTED_SPEC_TOOL_NAMES.some((name) => name === event.toolName) &&
+            event.isError !== true
+          ) {
             successfulRunExperimentCallCount += 1;
           }
           void emit({
@@ -229,9 +239,10 @@ export class AgentRuntime {
         throw new Error(agent.state.error);
       }
       assertExactRunExperimentCompletion(
-        tools.some((tool) => tool.name === "run_experiment"),
+        requiredTrustedSpecTool !== undefined,
         runExperimentCallCount,
         successfulRunExperimentCallCount,
+        requiredTrustedSpecTool,
       );
 
       await emit({

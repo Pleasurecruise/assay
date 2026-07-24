@@ -1,3 +1,4 @@
+from .availability_audit import run_availability_audit
 from .client import (
     PandaDataClient,
     PandaDataInitializationError,
@@ -10,4 +11,5 @@ __all__ = [
     "PandaDataInitializationError",
     "PandaDataNotInitializedError",
     "PandaDataSettings",
+    "run_availability_audit",
 ]

@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
 import type { AgentDefinition } from "@assay/agent-runtime";
 
-export type ExperimentKind = "grid" | "cost_ladder";
+export type ExperimentKind = "baseline" | "grid" | "cost_ladder";
+export type AgentExperimentKind = Exclude<ExperimentKind, "baseline">;
 
 export interface ExperimentBudget {
   readonly maxVariants: number;
@@ -16,8 +17,9 @@ export interface ExperimentGrid {
 
 export interface RunExperimentRequest {
   readonly kind: ExperimentKind;
-  readonly spec: Readonly<Record<string, unknown>>;
+  readonly spec: object;
   readonly grid?: ExperimentGrid;
+  readonly universeMode?: "asOf";
   readonly budget: ExperimentBudget;
 }
 
@@ -82,8 +84,8 @@ function assertRequest(
   if (expectedKind !== undefined && value.kind !== expectedKind) {
     throw new Error(`run_experiment expected kind "${expectedKind}"`);
   }
-  if (value.kind !== "grid" && value.kind !== "cost_ladder") {
-    throw new Error("run_experiment kind must be grid or cost_ladder");
+  if (value.kind !== "baseline" && value.kind !== "grid" && value.kind !== "cost_ladder") {
+    throw new Error("run_experiment kind must be baseline, grid, or cost_ladder");
   }
   if (!isRecord(value.spec)) {
     throw new Error("run_experiment spec must be an object");
@@ -95,13 +97,16 @@ function assertRequest(
   ) {
     throw new Error("run_experiment budget.maxVariants must be a positive integer");
   }
-  const maximumVariants = value.kind === "grid" ? 15 : 3;
+  const maximumVariants = value.kind === "grid" ? 15 : value.kind === "cost_ladder" ? 3 : 1;
   if (value.budget.maxVariants > maximumVariants) {
     throw new Error(
       `run_experiment ${value.kind} budget.maxVariants cannot exceed ${maximumVariants}`,
     );
   }
   if (value.kind === "grid") {
+    if (value.universeMode !== undefined) {
+      throw new Error("run_experiment grid does not accept universeMode");
+    }
     if (
       !isRecord(value.grid) ||
       !isRecord(value.grid.signalParams) ||
@@ -124,6 +129,20 @@ function assertRequest(
   }
   if (value.kind === "cost_ladder" && value.grid !== undefined) {
     throw new Error("run_experiment cost_ladder does not accept a caller-supplied grid");
+  }
+  if (value.kind === "cost_ladder" && value.universeMode !== undefined) {
+    throw new Error("run_experiment cost_ladder does not accept universeMode");
+  }
+  if (value.kind === "baseline") {
+    if (value.grid !== undefined) {
+      throw new Error("run_experiment baseline does not accept a caller-supplied grid");
+    }
+    if (value.universeMode !== "asOf") {
+      throw new Error('run_experiment baseline universeMode must be "asOf"');
+    }
+    if (value.budget.maxVariants !== 1) {
+      throw new Error("run_experiment baseline budget.maxVariants must equal 1");
+    }
   }
 }
 
@@ -249,6 +268,9 @@ export async function runExperimentSubprocess(
       }
       try {
         const result = parseResult(Buffer.concat(stdoutChunks).toString("utf8").trim());
+        if (request.kind === "baseline" && result.variants.length !== 0) {
+          throw new Error("run_experiment baseline subprocess must not return variants");
+        }
         finish(() => resolve(result));
       } catch (error) {
         fail(error instanceof Error ? error : new Error(String(error)));
@@ -267,7 +289,7 @@ export function defaultExperimentProcessConfig(): ExperimentProcessConfig {
   };
 }
 
-function parametersFor(kind: ExperimentKind): AgentTool["parameters"] {
+function parametersFor(kind: AgentExperimentKind): AgentTool["parameters"] {
   return {
     type: "object",
     additionalProperties: false,
@@ -300,7 +322,7 @@ const COST_LADDER_EXAMPLE = {
 } as const;
 
 export function createRunExperimentTool(
-  kind: ExperimentKind,
+  kind: AgentExperimentKind,
   config: ExperimentProcessConfig = defaultExperimentProcessConfig(),
 ): AgentTool {
   return {

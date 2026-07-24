@@ -14,7 +14,11 @@ import {
 
 export type { AuditCheckResult } from "./audit-checks";
 
-export const AUDIT_ARTIFACT_SCHEMA_VERSION = "1.0.0" as const;
+export const AUDIT_ARTIFACT_SCHEMA_VERSION = "1.1.0" as const;
+export const LEGACY_AUDIT_ARTIFACT_SCHEMA_VERSION = "1.0.0" as const;
+export type AuditArtifactSchemaVersion =
+  | typeof AUDIT_ARTIFACT_SCHEMA_VERSION
+  | typeof LEGACY_AUDIT_ARTIFACT_SCHEMA_VERSION;
 
 export const AUDIT_ARTIFACT_KINDS = [
   "strategy_audit",
@@ -100,13 +104,39 @@ export interface AuditComparison {
   readonly evidenceRefs: readonly string[];
 }
 
+export interface ClaimMetrics {
+  readonly annualReturn?: number;
+  readonly sharpe?: number;
+  readonly maxDrawdown?: number;
+}
+
+export interface ReproducedClaimMetrics {
+  readonly annualReturn: number;
+  readonly sharpe: number;
+  readonly maxDrawdown: number;
+}
+
+/**
+ * Deterministic host-side reproduction of the audited subject's own claims.
+ *
+ * Every gap is `claimed - reproduced`, so a positive annual-return or Sharpe
+ * gap means the submitted claim exceeds Assay's reproduction.
+ */
+export interface ClaimComparison {
+  readonly claimed: ClaimMetrics;
+  readonly reproduced: ReproducedClaimMetrics;
+  readonly gaps: ClaimMetrics;
+  readonly knownConventionDiffs: readonly string[];
+}
+
 export interface AuditArtifact {
-  readonly schemaVersion: typeof AUDIT_ARTIFACT_SCHEMA_VERSION;
+  readonly schemaVersion: AuditArtifactSchemaVersion;
   readonly kind: AuditArtifactKind;
   readonly auditId: string;
   readonly generatedAt: string;
   readonly results: readonly AuditArtifactResult[];
   readonly comparison: AuditComparison | null;
+  readonly claimComparison: ClaimComparison | null;
   readonly riskDisclosure: readonly string[];
   readonly provenance: AuditProvenance;
   readonly nextReview?: string;
@@ -480,6 +510,77 @@ function parseComparison(value: unknown): AuditComparison {
   };
 }
 
+const CLAIM_METRIC_KEYS = ["annualReturn", "sharpe", "maxDrawdown"] as const;
+
+function parseClaimMetrics(
+  value: unknown,
+  path: string,
+  requiredKeys?: readonly (typeof CLAIM_METRIC_KEYS)[number][],
+): ClaimMetrics {
+  if (!isRecord(value)) {
+    throw new Error(`${path} must be an object`);
+  }
+  assertExactKeys(value, CLAIM_METRIC_KEYS, path);
+  const keys = CLAIM_METRIC_KEYS.filter((key) => value[key] !== undefined);
+  if (keys.length === 0) {
+    throw new Error(`${path} must contain at least one metric`);
+  }
+  if (
+    requiredKeys !== undefined &&
+    (keys.length !== requiredKeys.length || requiredKeys.some((key) => value[key] === undefined))
+  ) {
+    throw new Error(`${path} must contain ${requiredKeys.join(", ")}`);
+  }
+  const parsed: {
+    annualReturn?: number;
+    sharpe?: number;
+    maxDrawdown?: number;
+  } = {};
+  for (const key of keys) {
+    const metric = value[key];
+    if (typeof metric !== "number" || !Number.isFinite(metric)) {
+      throw new Error(`${path}.${key} must be a finite number`);
+    }
+    parsed[key] = metric;
+  }
+  return parsed;
+}
+
+function parseClaimComparison(value: unknown): ClaimComparison {
+  if (!isRecord(value)) {
+    throw new Error("$.claimComparison must be an object or null");
+  }
+  assertExactKeys(
+    value,
+    ["claimed", "reproduced", "gaps", "knownConventionDiffs"],
+    "$.claimComparison",
+  );
+  const claimed = parseClaimMetrics(value.claimed, "$.claimComparison.claimed");
+  const reproduced = parseClaimMetrics(
+    value.reproduced,
+    "$.claimComparison.reproduced",
+    CLAIM_METRIC_KEYS,
+  ) as ReproducedClaimMetrics;
+  const claimedKeys = CLAIM_METRIC_KEYS.filter((key) => claimed[key] !== undefined);
+  const gaps = parseClaimMetrics(value.gaps, "$.claimComparison.gaps", claimedKeys);
+  for (const key of claimedKeys) {
+    const expectedGap = (claimed[key] as number) - reproduced[key];
+    if (Math.abs((gaps[key] as number) - expectedGap) > 1e-12) {
+      throw new Error(`$.claimComparison.gaps.${key} must equal claimed minus reproduced`);
+    }
+  }
+  return {
+    claimed,
+    reproduced,
+    gaps,
+    knownConventionDiffs: parseStringArray(
+      value.knownConventionDiffs,
+      "$.claimComparison.knownConventionDiffs",
+      true,
+    ),
+  };
+}
+
 export function parseAuditArtifact(value: unknown): AuditArtifact {
   if (!isRecord(value)) {
     throw new Error("Audit Artifact must be a JSON object");
@@ -493,14 +594,20 @@ export function parseAuditArtifact(value: unknown): AuditArtifact {
       "generatedAt",
       "results",
       "comparison",
+      "claimComparison",
       "riskDisclosure",
       "provenance",
       "nextReview",
     ],
     "$",
   );
-  if (value.schemaVersion !== AUDIT_ARTIFACT_SCHEMA_VERSION) {
-    throw new Error(`schemaVersion must be "${AUDIT_ARTIFACT_SCHEMA_VERSION}"`);
+  if (
+    value.schemaVersion !== AUDIT_ARTIFACT_SCHEMA_VERSION &&
+    value.schemaVersion !== LEGACY_AUDIT_ARTIFACT_SCHEMA_VERSION
+  ) {
+    throw new Error(
+      `schemaVersion must be "${AUDIT_ARTIFACT_SCHEMA_VERSION}" or "${LEGACY_AUDIT_ARTIFACT_SCHEMA_VERSION}"`,
+    );
   }
   if (!includesValue(AUDIT_ARTIFACT_KINDS, value.kind)) {
     throw new Error("$.kind is invalid");
@@ -566,6 +673,29 @@ export function parseAuditArtifact(value: unknown): AuditArtifact {
     comparison = null;
   }
 
+  const isLegacy = value.schemaVersion === LEGACY_AUDIT_ARTIFACT_SCHEMA_VERSION;
+  if (!isLegacy && value.claimComparison === undefined) {
+    throw new Error("$.claimComparison is required by the current schema");
+  }
+  const claimComparison =
+    value.claimComparison === undefined || value.claimComparison === null
+      ? null
+      : parseClaimComparison(value.claimComparison);
+  const executedStrategyResult = value.kind === "strategy_audit" ? results[0] : undefined;
+  const strategyClaims = executedStrategyResult?.strategySpec?.claims;
+  if (strategyClaims === undefined) {
+    if (claimComparison !== null) {
+      throw new Error("$.claimComparison must be null when the StrategySpec has no claims");
+    }
+  } else if (!isLegacy) {
+    if (claimComparison === null) {
+      throw new Error("$.claimComparison is required when the StrategySpec has claims");
+    }
+    if (stableJson(claimComparison.claimed) !== stableJson(strategyClaims)) {
+      throw new Error("$.claimComparison.claimed must match StrategySpec claims");
+    }
+  }
+
   const riskDisclosure = parseStringArray(value.riskDisclosure, "$.riskDisclosure", false);
   const provenance = parseProvenance(value.provenance);
   if (value.nextReview !== undefined && !isNonEmptyString(value.nextReview)) {
@@ -573,12 +703,13 @@ export function parseAuditArtifact(value: unknown): AuditArtifact {
   }
 
   return {
-    schemaVersion: AUDIT_ARTIFACT_SCHEMA_VERSION,
+    schemaVersion: value.schemaVersion,
     kind: value.kind,
     auditId: value.auditId.trim(),
     generatedAt: value.generatedAt,
     results,
     comparison,
+    claimComparison,
     riskDisclosure,
     provenance,
     ...(value.nextReview === undefined ? {} : { nextReview: value.nextReview.trim() }),
@@ -629,6 +760,7 @@ export function createEarlyExitAuditArtifact(
       },
     ],
     comparison: null,
+    claimComparison: null,
     riskDisclosure: input.riskDisclosure ?? [DEFAULT_RISK_DISCLOSURE],
     provenance: input.provenance,
     ...(input.nextReview === undefined ? {} : { nextReview: input.nextReview }),

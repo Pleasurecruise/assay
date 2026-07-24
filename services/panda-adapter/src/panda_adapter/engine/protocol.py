@@ -9,15 +9,17 @@ import pandas as pd
 
 from ..market_panel import MarketPanel
 from .constants import COST_LADDER
-from .experiments import run_cost_ladder, run_grid
+from .experiments import run_baseline, run_cost_ladder, run_grid
 
 PanelLoader = Callable[[Mapping[str, Any]], MarketPanel]
+AvailabilityRunner = Callable[[Mapping[str, Any]], dict[str, Any]]
 
 
 def run_request(
     request: Mapping[str, Any],
     *,
     panel_loader: PanelLoader | None = None,
+    availability_runner: AvailabilityRunner | None = None,
 ) -> dict[str, Any]:
     """Execute one ``kind/spec/grid?/budget`` JSON request.
 
@@ -32,13 +34,36 @@ def run_request(
     spec = request.get("spec")
     if not isinstance(spec, Mapping):
         raise ValueError("request requires spec")
+    max_variants = _parse_budget(request.get("budget"))
+    if kind == "availability_audit":
+        if max_variants != 1:
+            raise ValueError(
+                "availability_audit budget.maxVariants must equal 1"
+            )
+        if request.get("grid") is not None:
+            raise ValueError("availability_audit does not accept grid")
+        if availability_runner is None:
+            from ..availability_audit import run_availability_audit
+
+            availability_runner = run_availability_audit
+        return availability_runner(spec)
+
     panel = (
         panel_loader(spec)
         if panel_loader is not None
         else _parse_embedded_test_panel(spec)
     )
     baseline = _parse_strategy_spec(spec)
-    max_variants = _parse_budget(request.get("budget"))
+    if kind == "baseline":
+        if request.get("universeMode") != "asOf":
+            raise ValueError('baseline request universeMode must equal "asOf"')
+        if max_variants != 1:
+            raise ValueError("baseline request budget.maxVariants must equal 1")
+        return run_baseline(
+            panel.adjusted_close,
+            tradable=panel.tradable,
+            strategy=baseline,
+        )
     if kind == "grid":
         grid = request.get("grid")
         if not isinstance(grid, Mapping):
@@ -60,7 +85,9 @@ def run_request(
             tradable=panel.tradable,
             strategy=baseline,
         )
-    raise ValueError("kind must be grid or cost_ladder")
+    raise ValueError(
+        "kind must be baseline, grid, cost_ladder, or availability_audit"
+    )
 
 
 def _parse_embedded_test_panel(spec: Mapping[str, Any]) -> MarketPanel:

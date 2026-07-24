@@ -2,16 +2,21 @@ import {
   AUDIT_ARTIFACT_SCHEMA_VERSION,
   AUDIT_CHECK_IDS,
   AUDIT_CHECK_SCHEMA_VERSION,
+  CLAIM_PROFILE_RECOVERY_CONDITION,
   DEFAULT_RISK_DISCLOSURE,
+  FAILURE_RECOVERY_CONDITION_BY_CHECK,
   parseAuditArtifact,
   parseAuditCheckResult,
   type AuditArtifact,
   type AuditCheckResult,
   type AuditVerdict,
+  type ClaimComparison,
   type ParallelAuditChecksRequest,
   type ParallelAuditChecksResult,
+  type RecoveryCondition,
 } from "@assay/contracts";
 import type { FrozenAuditInput } from "@assay/intake";
+import { claimComparisonTriggersWatchCap } from "./claim-reproducer";
 
 export interface AuditExecutionIdentity {
   auditId: string;
@@ -70,9 +75,17 @@ function validateRunnerResult(
   return AUDIT_CHECK_IDS.map((id, index) => parseAuditCheckResult(result.checks[index], id));
 }
 
-export function deriveVerdict(checks: readonly AuditCheckResult[]): AuditVerdict {
-  if (checks.some((check) => check.conclusion === "fail")) {
-    return "RETIRE";
+export function deriveVerdict(
+  checks: readonly AuditCheckResult[],
+  claimComparison: ClaimComparison | null = null,
+): AuditVerdict {
+  const failedChecks = checks.filter((check) => check.conclusion === "fail");
+  if (failedChecks.length > 0) {
+    return failedChecks.every(
+      (check) => FAILURE_RECOVERY_CONDITION_BY_CHECK[check.id] !== undefined,
+    )
+      ? "QUARANTINE"
+      : "RETIRE";
   }
   if (checks.some((check) => check.conclusion === "insufficient_evidence")) {
     return "UNVERIFIABLE";
@@ -81,9 +94,32 @@ export function deriveVerdict(checks: readonly AuditCheckResult[]): AuditVerdict
     return "WATCH";
   }
   if (checks.some((check) => check.conclusion === "pass")) {
-    return "KEEP";
+    return claimComparisonTriggersWatchCap(claimComparison) ? "WATCH" : "KEEP";
   }
   throw new Error("An executed strategy audit cannot contain only not-applicable checks");
+}
+
+function deriveRecoveryConditions(
+  checks: readonly AuditCheckResult[],
+  verdict: AuditVerdict,
+  claimComparison: ClaimComparison | null,
+): readonly RecoveryCondition[] {
+  const checkConditions =
+    verdict === "QUARANTINE"
+      ? checks.flatMap((check): RecoveryCondition[] => {
+          if (check.conclusion !== "fail") {
+            return [];
+          }
+          const condition = FAILURE_RECOVERY_CONDITION_BY_CHECK[check.id];
+          return condition === undefined ? [] : [{ scope: check.id, condition }];
+        })
+      : [];
+  return [
+    ...checkConditions,
+    ...(claimComparisonTriggersWatchCap(claimComparison)
+      ? [{ scope: "evidence" as const, condition: CLAIM_PROFILE_RECOVERY_CONDITION }]
+      : []),
+  ];
 }
 
 function deriveConfidence(checks: readonly AuditCheckResult[]): number {
@@ -107,11 +143,13 @@ export interface BuildExecutedArtifactOptions {
   identity: AuditExecutionIdentity;
   result: ParallelAuditChecksResult;
   generatedAt: string;
+  claimComparison?: ClaimComparison | null;
 }
 
 export function buildExecutedAuditArtifact(options: BuildExecutedArtifactOptions): AuditArtifact {
   const checks = validateRunnerResult(options.result, options.identity);
-  const verdict = deriveVerdict(checks);
+  const claimComparison = options.claimComparison ?? null;
+  const verdict = deriveVerdict(checks, claimComparison);
   const artifact = {
     schemaVersion: AUDIT_ARTIFACT_SCHEMA_VERSION,
     kind: "strategy_audit",
@@ -129,14 +167,13 @@ export function buildExecutedAuditArtifact(options: BuildExecutedArtifactOptions
           resolved: [],
           unresolved: [],
         },
-        recoveryConditions: [],
+        recoveryConditions: deriveRecoveryConditions(checks, verdict, claimComparison),
         reviewTriggers:
           verdict === "UNVERIFIABLE"
             ? ["Required audit evidence or data capabilities become available."]
             : [],
         assumptionsAndLimits: [
           "The Skeleton phase does not run Moiré refinement or live coverage probes.",
-          "Recovery-condition reasoning is not implemented in the Skeleton phase, so failures that VERDICT_SPEC §2 would grade QUARANTINE are graded RETIRE.",
           "The sprint backtester uses one fixed CSI 300 constituent snapshot, so survivorship bias is not controlled.",
           "Suspensions, delistings, and missing prices are forward-filled without target replacement in the sprint engine.",
         ],
@@ -148,6 +185,7 @@ export function buildExecutedAuditArtifact(options: BuildExecutedArtifactOptions
       },
     ],
     comparison: null,
+    claimComparison,
     riskDisclosure: [DEFAULT_RISK_DISCLOSURE],
     provenance: {
       inputHash: options.frozen.specHash,

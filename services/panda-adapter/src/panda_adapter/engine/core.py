@@ -41,6 +41,7 @@ def run_momentum_backtest(
     adjusted_close: pd.DataFrame,
     *,
     tradable: pd.DataFrame | None = None,
+    eligible: pd.DataFrame | None = None,
     window: int,
     top_n: int,
     cost_model: str = "standard",
@@ -63,6 +64,7 @@ def run_momentum_backtest(
 
     raw_prices, prices = _normalize_prices(adjusted_close)
     tradable_mask = _normalize_tradable(tradable, raw_prices)
+    eligible_mask = _normalize_eligible(eligible, raw_prices)
     signal = prices.div(prices.shift(window)).sub(1.0)
     dates = prices.index
     symbols = list(prices.columns)
@@ -80,6 +82,7 @@ def run_momentum_backtest(
     )
     raw_available = raw_prices.notna().to_numpy(dtype=bool)
     tradable_values = tradable_mask.to_numpy(dtype=bool)
+    eligible_values = eligible_mask.to_numpy(dtype=bool)
     signal_values = signal.to_numpy(dtype=float)
 
     weights = np.zeros(len(symbols), dtype=float)
@@ -103,6 +106,7 @@ def run_momentum_backtest(
                 signal_values[signal_position],
                 symbols,
                 top_n,
+                eligible=eligible_values[signal_position],
             )
             target = _target_weights_without_backfill(
                 selected=selected,
@@ -244,6 +248,35 @@ def _normalize_tradable(
     return mask.fillna(False).astype(bool)
 
 
+def _normalize_eligible(
+    eligible: pd.DataFrame | None,
+    raw_prices: pd.DataFrame,
+) -> pd.DataFrame:
+    """Normalize point-in-time selection membership.
+
+    Eligibility is deliberately separate from tradability: a constituent that
+    leaves the index remains sellable at the next rebalance, while a suspended
+    holding remains locked by the existing execution mask.
+    """
+
+    if eligible is None:
+        return pd.DataFrame(
+            True,
+            index=raw_prices.index,
+            columns=raw_prices.columns,
+            dtype=bool,
+        )
+    if not isinstance(eligible, pd.DataFrame):
+        raise TypeError("eligible must be a pandas DataFrame")
+    if eligible.index.has_duplicates or eligible.columns.has_duplicates:
+        raise ValueError("eligible dates and symbols must be unique")
+    mask = eligible.copy()
+    mask.index = pd.DatetimeIndex(pd.to_datetime(mask.index))
+    mask.columns = [str(column) for column in mask.columns]
+    mask = mask.reindex(index=raw_prices.index, columns=raw_prices.columns)
+    return mask.fillna(False).astype(bool)
+
+
 def _month_end_positions(dates: pd.DatetimeIndex) -> list[int]:
     periods = dates.to_period("M")
     return [
@@ -257,8 +290,13 @@ def _select_top_n(
     signal_row: np.ndarray,
     symbols: list[str],
     top_n: int,
+    *,
+    eligible: np.ndarray | None = None,
 ) -> list[int]:
-    valid = np.flatnonzero(np.isfinite(signal_row)).tolist()
+    valid_mask = np.isfinite(signal_row)
+    if eligible is not None:
+        valid_mask &= eligible
+    valid = np.flatnonzero(valid_mask).tolist()
     ranked = sorted(
         valid,
         key=lambda position: (-float(signal_row[position]), symbols[position]),
