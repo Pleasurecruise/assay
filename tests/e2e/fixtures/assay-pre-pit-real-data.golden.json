@@ -1,5 +1,6 @@
 {
   "schemaVersion": "sprint-real-golden-v1",
+  "archiveRole": "pre-pit-archive",
   "dataMode": "pandadata-factor-close-trade-status-v3-cache",
   "input": "沪深 300 每月底买过去 20 天涨幅最大的 50 只，等权持有，宣称年化 18% 夏普 1.9",
   "provenance": {

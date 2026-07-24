@@ -1,6 +1,7 @@
 export * from "./audit-checks";
 export * from "./audit-artifact";
 export * from "./audit-request";
+export * from "./audit-tool-contracts";
 export * from "./strategy-spec";
 export * from "./strategy-spec-hash";
 export * from "./verdict-policy";

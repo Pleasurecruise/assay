@@ -19,7 +19,7 @@ export const SPRINT_REAL_DATA_MODE = "pandadata-factor-close-trade-status-v3-cac
 export const SPRINT_DEMO_INPUT =
   "沪深 300 每月底买过去 20 天涨幅最大的 50 只，等权持有，宣称年化 18% 夏普 1.9";
 export const SPRINT_REAL_GOLDEN_PATH = fileURLToPath(
-  new URL("../fixtures/assay-real-data.golden.json", import.meta.url),
+  new URL("../fixtures/assay-pre-pit-real-data.golden.json", import.meta.url),
 );
 
 const PARAM_CHECK_ID: AuditCheckId = "param-robustness";
