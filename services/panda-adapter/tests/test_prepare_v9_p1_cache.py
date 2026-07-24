@@ -46,6 +46,7 @@ def _seed_base_cache(
     dates: pd.DatetimeIndex,
     symbols: list[str],
     truncate_date: pd.Timestamp | None = None,
+    factor_start_date: pd.Timestamp | None = None,
 ) -> Path:
     output = cache_root / "csi300-3y.csv"
     positions = {symbol: index for index, symbol in enumerate(symbols)}
@@ -86,7 +87,7 @@ def _seed_base_cache(
         p1.BASE_BUILDER._write_fragment(output, request, scoped)
 
     for start_date, end_date in p1.BASE_BUILDER._factor_windows(
-        dates[0],
+        factor_start_date if factor_start_date is not None else dates[0],
         dates[-1],
     ):
         request = p1._base_request(
@@ -328,6 +329,91 @@ class PrepareV9P1CacheTest(unittest.TestCase):
                 "20260419",
             )
             self.assertEqual(second_path.read_bytes(), second_before)
+
+    def test_reuses_fragments_when_request_start_precedes_first_trading_day(
+        self,
+    ) -> None:
+        symbols = _symbols()
+        dates = pd.bdate_range("2026-04-13", "2026-05-01")
+        request_start = pd.Timestamp("2026-04-12")
+        truncated = pd.Timestamp("2026-04-15")
+
+        with tempfile.TemporaryDirectory() as directory:
+            cache_root = Path(directory)
+            output = _seed_base_cache(
+                cache_root=cache_root,
+                dates=dates,
+                symbols=symbols,
+                truncate_date=truncated,
+                factor_start_date=request_start,
+            )
+            retained_request = p1._base_request(
+                source="factor-close",
+                start_date=pd.Timestamp("2026-04-19"),
+                end_date=pd.Timestamp("2026-04-25"),
+                symbols=symbols,
+            )
+            retained_path = p1.BASE_BUILDER._fragment_path(
+                output,
+                retained_request,
+            )
+            retained_before = retained_path.read_bytes()
+            drifted_request = p1._base_request(
+                source="factor-close",
+                start_date=dates[0],
+                end_date=dates[0] + pd.Timedelta(days=6),
+                symbols=symbols,
+            )
+            drifted_path = p1.BASE_BUILDER._fragment_path(
+                output,
+                drifted_request,
+            )
+            client = FakeP1Client(
+                base_dates=dates,
+                base_symbols=symbols,
+            )
+
+            repaired, result = p1._prepare_base_cache(
+                config=p1.P1Config(
+                    cache_root=cache_root,
+                    base_cache=output,
+                    perform_spot_checks=False,
+                ),
+                client=client,
+                budget=p1.StageBudget(
+                    stage="base",
+                    max_seconds=1_200,
+                    sleeper=lambda _: None,
+                ),
+            )
+
+            repaired_day = repaired.loc[
+                repaired["date"] == truncated.strftime("%Y-%m-%d")
+            ]
+            self.assertEqual(repaired_day["symbol"].nunique(), 300)
+            self.assertEqual(len(client.factor_calls), 1)
+            self.assertEqual(
+                client.factor_calls[0]["start_date"],
+                "20260412",
+            )
+            self.assertEqual(
+                client.factor_calls[0]["end_date"],
+                "20260418",
+            )
+            self.assertEqual(
+                result["repairedFragments"],
+                ["2026-04-12/2026-04-18"],
+            )
+            self.assertEqual(
+                result["factorWindowAnchor"],
+                "2026-04-12",
+            )
+            self.assertEqual(
+                result["factorWindowAnchorSource"],
+                "identity_bound_parent_fragments",
+            )
+            self.assertEqual(retained_path.read_bytes(), retained_before)
+            self.assertFalse(drifted_path.exists())
 
     def test_fragment_split_resumes_only_the_interrupted_child(self) -> None:
         symbols = ("A", "B", "C", "D")

@@ -926,6 +926,107 @@ def _frame_quality(frame: pd.DataFrame) -> dict[str, Any]:
     }
 
 
+def _recover_base_factor_window_anchor(
+    *,
+    output: Path,
+    symbols: Sequence[str],
+    status: pd.DataFrame,
+    first_observed_date: pd.Timestamp,
+    last_observed_date: pd.Timestamp,
+) -> tuple[pd.Timestamp, str]:
+    """Recover the request partition phase from identity-bound parent fragments.
+
+    A provider request may begin on a weekend or holiday, so the first returned
+    trading date is not a safe substitute for the original request boundary.
+    Re-anchoring on that returned row makes every seven-day fragment miss its
+    cache identity and turns one precise repair into an unnecessary full pull.
+
+    Complete, full-universe, seven-day parent fragments carry enough signed
+    request identity to recover the partition phase.  If no single phase wins,
+    retaining the historical observed-date behavior is the safe compatibility
+    fallback: it may fetch more data, but it never weakens coverage validation.
+    """
+
+    universe_hash = BASE_BUILDER._universe_hash(symbols)
+    factor_root = (
+        BASE_BUILDER._parts_root(
+            output,
+            universe_hash,
+            len(symbols),
+        )
+        / "factor-close"
+    )
+    if not factor_root.is_dir():
+        return first_observed_date, "observed_date_fallback"
+
+    phase_counts: dict[int, int] = {}
+    expected_symbols = list(symbols)
+    for path in factor_root.rglob("*.part.json"):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        metadata = payload.get("request")
+        if not isinstance(metadata, dict):
+            continue
+        if (
+            metadata.get("source") != "factor-close"
+            or metadata.get("symbols") != expected_symbols
+            or metadata.get("universeHash") != universe_hash
+            or metadata.get("universeSize") != len(symbols)
+        ):
+            continue
+        start = pd.to_datetime(metadata.get("start"), errors="coerce")
+        end = pd.to_datetime(metadata.get("end"), errors="coerce")
+        if pd.isna(start) or pd.isna(end):
+            continue
+        start_date = pd.Timestamp(start).normalize()
+        end_date = pd.Timestamp(end).normalize()
+        if end_date - start_date != pd.Timedelta(
+            days=BASE_BUILDER.FACTOR_WINDOW_DAYS - 1
+        ):
+            continue
+        if end_date < first_observed_date or start_date > last_observed_date:
+            continue
+
+        request = _base_request(
+            source="factor-close",
+            start_date=start_date,
+            end_date=end_date,
+            symbols=symbols,
+        )
+        if metadata != BASE_BUILDER._request_metadata(request):
+            continue
+        if path != BASE_BUILDER._fragment_path(output, request):
+            continue
+        try:
+            frame = BASE_BUILDER._read_fragment(output, request)
+        except RuntimeError:
+            continue
+        if not _base_fragment_complete(frame, status, request):
+            continue
+        phase = start_date.toordinal() % BASE_BUILDER.FACTOR_WINDOW_DAYS
+        phase_counts[phase] = phase_counts.get(phase, 0) + 1
+
+    if not phase_counts:
+        return first_observed_date, "observed_date_fallback"
+    strongest = max(phase_counts.values())
+    winning_phases = [
+        phase for phase, count in phase_counts.items() if count == strongest
+    ]
+    if len(winning_phases) != 1:
+        return first_observed_date, "observed_date_fallback"
+
+    phase = winning_phases[0]
+    offset = (first_observed_date.toordinal() - phase) % BASE_BUILDER.FACTOR_WINDOW_DAYS
+    return (
+        first_observed_date - pd.Timedelta(days=offset),
+        "identity_bound_parent_fragments",
+    )
+
+
 def _prepare_base_cache(
     *,
     config: P1Config,
@@ -942,10 +1043,19 @@ def _prepare_base_cache(
         symbols=symbols,
         dates=dates,
     )
+    factor_window_anchor, factor_window_anchor_source = (
+        _recover_base_factor_window_anchor(
+            output=config.base_cache,
+            symbols=symbols,
+            status=status,
+            first_observed_date=dates[0],
+            last_observed_date=dates[-1],
+        )
+    )
     factor_frames: list[pd.DataFrame] = []
     repaired: list[str] = []
     for start_date, end_date in BASE_BUILDER._factor_windows(
-        dates[0],
+        factor_window_anchor,
         dates[-1],
     ):
         factor_frames.append(
@@ -982,6 +1092,8 @@ def _prepare_base_cache(
         "status": "ready",
         "path": _relative_cache_path(config.base_cache, config.cache_root),
         "columns": list(HISTORICAL_COLUMNS),
+        "factorWindowAnchor": factor_window_anchor.strftime("%Y-%m-%d"),
+        "factorWindowAnchorSource": factor_window_anchor_source,
         **quality,
         "quality": {
             "primaryKeysValid": True,
