@@ -12,20 +12,24 @@ prices or statuses may degrade to a disclosed remove-only mode.
 
 from __future__ import annotations
 
+import json
+import os
+import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from hashlib import sha256
-import json
-import os
 from pathlib import Path
 from time import monotonic, sleep
-import tempfile
 from typing import Any, Final, Literal
 
 import numpy as np
 import pandas as pd
 
-from .audit_cache import V9_CACHE_VERSION
+from .audit_cache import (
+    V9_CACHE_VERSION,
+    HistoricalMembersPolicy,
+    load_historical_members_policy,
+)
 from .client import create_initialized_client
 from .data_transport import (
     DEFAULT_RETRY_POLICY,
@@ -158,6 +162,15 @@ def run_availability_audit(
     root = cache_root or Path(
         os.environ.get("ASSAY_PIT_CACHE_ROOT", str(DEFAULT_PIT_CACHE_ROOT))
     )
+    configured_v9_root = os.environ.get("ASSAY_V9_CACHE_ROOT")
+    historical_policy: HistoricalMembersPolicy | None = None
+    if configured_v9_root:
+        historical_policy = load_historical_members_policy(
+            Path(configured_v9_root),
+            pit_cache_root=root,
+            base_symbols=base_symbols,
+            panel_dates=panel.adjusted_close.index,
+        )
     acquisition_budget = _AcquisitionBudget(
         max_blocked_seconds=float(max_blocked_seconds),
         clock=clock,
@@ -186,7 +199,11 @@ def run_availability_audit(
             "PIT constituent timeline acquisition is incomplete"
         )
 
-    mode: AvailabilityMode = "full_pit"
+    mode: AvailabilityMode = (
+        "degraded_remove_only"
+        if historical_policy is not None and historical_policy.mode == "remove_only"
+        else "full_pit"
+    )
     historical_symbols = sorted(
         set().union(*timeline.values()) - set(base_symbols) if timeline else set()
     )
@@ -283,6 +300,8 @@ def run_availability_audit(
                 "fetched incrementally with get_factor(close) and trade_status."
             )
         )
+    elif historical_policy is not None:
+        assumptions.append(_manifest_remove_only_assumption(historical_policy))
     else:
         assumptions.append(
             (
@@ -337,6 +356,16 @@ def run_availability_audit(
         "sourceRef": AVAILABILITY_SOURCE_REF,
         "assumptions": assumptions,
     }
+
+
+def _manifest_remove_only_assumption(policy: HistoricalMembersPolicy) -> str:
+    if policy.reason_code is None:
+        raise RuntimeError("remove-only policy requires a reason code")
+    return (
+        f"The promoted {policy.cache_version} manifest authorizes remove-only "
+        f"historical-member handling ({policy.reason_code}); no live "
+        "historical-member acquisition was attempted."
+    )
 
 
 def _parse_strategy(spec: Mapping[str, Any]) -> dict[str, Any]:

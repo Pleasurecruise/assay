@@ -1,17 +1,23 @@
 from __future__ import annotations
 
-from http.client import IncompleteRead
-from pathlib import Path
+import os
 import tempfile
 import unittest
+from hashlib import sha256
+from http.client import IncompleteRead
+from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
-
+from panda_adapter.audit_cache import (
+    V9_CACHE_MANIFEST_SCHEMA_VERSION,
+    V9_CACHE_VERSION,
+)
 from panda_adapter.availability_audit import (
     AVAILABILITY_SOURCE_REF,
-    AvailabilityBudgetExceeded,
     PIT_SNAPSHOT_SCHEMA_VERSION,
+    AvailabilityBudgetExceeded,
     _count_untradable_targets,
     _snapshot_path,
     _write_json_atomic,
@@ -67,6 +73,64 @@ def _rebalance_dates(panel: MarketPanel) -> list[pd.Timestamp]:
         for position in range(len(dates) - 1)
         if periods[position] != periods[position + 1]
     ]
+
+
+def _write_remove_only_manifest(
+    root: Path,
+    *,
+    panel: MarketPanel,
+    pit_root: Path,
+) -> None:
+    symbols = sorted(
+        str(value).strip().upper() for value in panel.adjusted_close.columns
+    )
+    _write_json_atomic(
+        root / "manifest.json",
+        {
+            "schemaVersion": V9_CACHE_MANIFEST_SCHEMA_VERSION,
+            "cacheVersion": V9_CACHE_VERSION,
+            "state": "degraded",
+            "promoted": True,
+            "window": {
+                "start": panel.adjusted_close.index.min().strftime("%Y-%m-%d"),
+                "end": panel.adjusted_close.index.max().strftime("%Y-%m-%d"),
+            },
+            "universe": {
+                "indexSymbol": "000300.SH",
+                "baseSymbols": len(symbols),
+                "baseUniverseHash": sha256(
+                    "\n".join(symbols).encode("utf-8")
+                ).hexdigest()[:16],
+            },
+            "datasets": {
+                "basePanel": {"status": "ready"},
+                "pitTimeline": {
+                    "status": "ready",
+                    "path": (
+                        f"{pit_root.name}/index-weights/"
+                        "000300_SH"
+                    ),
+                },
+                "historicalMembers": {
+                    "status": "degraded",
+                    "mode": "remove_only",
+                    "path": None,
+                    "columns": ["date", "symbol", "adjClose", "tradeStatus"],
+                    "reasonCode": "HISTORICAL_MEMBER_DATA_UNAVAILABLE",
+                    "rowCount": 0,
+                    "tradingDates": 0,
+                    "symbols": 0,
+                    "quality": {
+                        "primaryKeysValid": False,
+                        "verified": False,
+                    },
+                    "assumptions": [
+                        "Historical-member data is unavailable; use remove-only."
+                    ],
+                },
+            },
+        },
+    )
 
 
 def _untradable_target_count(
@@ -688,6 +752,130 @@ class AvailabilityAuditTest(unittest.TestCase):
             self.assertEqual(len(client.factor_calls), 1)
             self.assertEqual(client.factor_calls[0]["symbol"], ["C"])
             self.assertEqual(client.status_calls, [])
+
+    def test_promoted_remove_only_policy_skips_redundant_live_acquisition(
+        self,
+    ) -> None:
+        panel = _base_panel()
+        signal_dates = _rebalance_dates(panel)
+        client_initializations = 0
+
+        def fail_client_factory() -> object:
+            nonlocal client_initializations
+            client_initializations += 1
+            raise AssertionError("remove-only policy must not initialize the client")
+
+        with tempfile.TemporaryDirectory() as directory:
+            common_root = Path(directory)
+            pit_root = common_root / "pit-availability-v1"
+            v9_root = common_root / "v9-p1-v1"
+            for date in signal_dates:
+                _write_json_atomic(
+                    _snapshot_path(pit_root, "000300.SH", date),
+                    {
+                        "schemaVersion": PIT_SNAPSHOT_SCHEMA_VERSION,
+                        "indexSymbol": "000300.SH",
+                        "requestedDate": date.strftime("%Y-%m-%d"),
+                        "effectiveDate": date.strftime("%Y-%m-%d"),
+                        "symbols": ["A", "C"],
+                    },
+                )
+            _write_remove_only_manifest(
+                v9_root,
+                panel=panel,
+                pit_root=pit_root,
+            )
+
+            with patch.dict(
+                os.environ,
+                {"ASSAY_V9_CACHE_ROOT": str(v9_root)},
+            ):
+                result = run_availability_audit(
+                    _spec(panel.adjusted_close.index),
+                    panel_loader=lambda _: panel,
+                    client_factory=fail_client_factory,
+                    cache_root=pit_root,
+                    retry_policy=RetryPolicy(
+                        max_attempts=1,
+                        initial_delay_seconds=0,
+                        max_delay_seconds=0,
+                    ),
+                )
+
+            self.assertEqual(result["mode"], "degraded_remove_only")
+            self.assertEqual(client_initializations, 0)
+            self.assertFalse((pit_root / "extra-panel").exists())
+            self.assertEqual(result["futureConstituentCount"], 1)
+            self.assertEqual(result["sampleSymbols"], ["B"])
+            self.assertTrue(np.isfinite(result["corrected"]["delta"]))
+            self.assertEqual(result["sourceRef"], AVAILABILITY_SOURCE_REF)
+            self.assertTrue(
+                any(
+                    V9_CACHE_VERSION in item
+                    and "HISTORICAL_MEMBER_DATA_UNAVAILABLE" in item
+                    and "no live historical-member acquisition" in item
+                    for item in result["assumptions"]
+                )
+            )
+            self.assertFalse(
+                any("90-second" in item for item in result["assumptions"])
+            )
+
+    def test_configured_remove_only_policy_fails_closed_on_panel_mismatch(
+        self,
+    ) -> None:
+        panel = _base_panel()
+        signal_dates = _rebalance_dates(panel)
+        client_initializations = 0
+
+        def fail_client_factory() -> object:
+            nonlocal client_initializations
+            client_initializations += 1
+            raise AssertionError("invalid policy must not initialize the client")
+
+        with tempfile.TemporaryDirectory() as directory:
+            common_root = Path(directory)
+            pit_root = common_root / "pit-availability-v1"
+            v9_root = common_root / "v9-p1-v1"
+            for date in signal_dates:
+                _write_json_atomic(
+                    _snapshot_path(pit_root, "000300.SH", date),
+                    {
+                        "schemaVersion": PIT_SNAPSHOT_SCHEMA_VERSION,
+                        "indexSymbol": "000300.SH",
+                        "requestedDate": date.strftime("%Y-%m-%d"),
+                        "effectiveDate": date.strftime("%Y-%m-%d"),
+                        "symbols": ["A", "C"],
+                    },
+                )
+            _write_remove_only_manifest(
+                v9_root,
+                panel=panel,
+                pit_root=pit_root,
+            )
+            mismatched_panel = MarketPanel(
+                adjusted_close=panel.adjusted_close.rename(columns={"B": "D"}),
+                tradable=panel.tradable.rename(columns={"B": "D"}),
+            )
+
+            with (
+                patch.dict(
+                    os.environ,
+                    {"ASSAY_V9_CACHE_ROOT": str(v9_root)},
+                ),
+                self.assertRaisesRegex(
+                    RuntimeError,
+                    "universe does not match",
+                ),
+            ):
+                run_availability_audit(
+                    _spec(panel.adjusted_close.index),
+                    panel_loader=lambda _: mismatched_panel,
+                    client_factory=fail_client_factory,
+                    cache_root=pit_root,
+                )
+
+            self.assertEqual(client_initializations, 0)
 
     def test_signal_day_untradability_is_not_an_execution_target_event(
         self,

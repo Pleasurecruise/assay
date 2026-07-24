@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass
 import json
 import math
 import os
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 import pandas as pd
 
@@ -29,6 +30,165 @@ class IndexDailyCache:
 class ComparatorFactorCache:
     values: Mapping[str, pd.DataFrame]
     cache_version: str
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalMembersPolicy:
+    mode: Literal["full_pit", "remove_only"]
+    cache_version: str
+    reason_code: str | None
+
+
+def load_historical_members_policy(
+    root: Path,
+    *,
+    pit_cache_root: Path,
+    base_symbols: Sequence[str],
+    panel_dates: Sequence[pd.Timestamp],
+) -> HistoricalMembersPolicy:
+    """Read a promoted P1 policy bound to the panel and PIT cache in use."""
+
+    cache_root, manifest = _read_ready_manifest(root)
+    if manifest is None:
+        raise RuntimeError("configured v9 cache manifest is missing")
+    if manifest.get("cacheVersion") != V9_CACHE_VERSION:
+        raise RuntimeError("v9 cache manifest version cannot govern availability")
+    if manifest.get("promoted") is not True:
+        raise RuntimeError("v9 cache manifest is not promoted")
+    state = manifest.get("state")
+    if state not in {"ready", "degraded"}:
+        raise RuntimeError("v9 cache manifest state cannot govern availability")
+
+    _validate_manifest_panel_identity(
+        manifest,
+        base_symbols=base_symbols,
+        panel_dates=panel_dates,
+    )
+    datasets = manifest["datasets"]
+    base_panel = datasets.get("basePanel")
+    if not isinstance(base_panel, Mapping) or base_panel.get("status") != "ready":
+        raise RuntimeError("v9 cache base panel is not ready")
+    timeline = datasets.get("pitTimeline")
+    if not isinstance(timeline, Mapping) or timeline.get("status") != "ready":
+        raise RuntimeError("v9 cache PIT timeline is not ready")
+    _validate_pit_root_binding(
+        cache_root=cache_root,
+        pit_cache_root=pit_cache_root,
+        dataset=timeline,
+    )
+    historical = datasets.get("historicalMembers")
+    if not isinstance(historical, Mapping):
+        raise RuntimeError("v9 historical-members policy is missing")
+    if historical.get("columns") != [
+        "date",
+        "symbol",
+        "adjClose",
+        "tradeStatus",
+    ]:
+        raise RuntimeError("v9 historical-members columns are invalid")
+
+    status = historical.get("status")
+    mode = historical.get("mode")
+    if status == "ready" and mode == "full_pit":
+        _dataset_path(cache_root, historical)
+        return HistoricalMembersPolicy(
+            mode="full_pit",
+            cache_version=V9_CACHE_VERSION,
+            reason_code=None,
+        )
+    assumptions = historical.get("assumptions")
+    quality = historical.get("quality")
+    if (
+        state == "degraded"
+        and status == "degraded"
+        and mode == "remove_only"
+        and historical.get("reasonCode")
+        == "HISTORICAL_MEMBER_DATA_UNAVAILABLE"
+        and historical.get("path") is None
+        and isinstance(assumptions, list)
+        and assumptions
+        and all(isinstance(item, str) and item.strip() for item in assumptions)
+        and all(
+            type(historical.get(name)) is int and historical.get(name) == 0
+            for name in ("rowCount", "tradingDates", "symbols")
+        )
+        and isinstance(quality, Mapping)
+        and quality.get("primaryKeysValid") is False
+        and quality.get("verified") is False
+    ):
+        return HistoricalMembersPolicy(
+            mode="remove_only",
+            cache_version=V9_CACHE_VERSION,
+            reason_code="HISTORICAL_MEMBER_DATA_UNAVAILABLE",
+        )
+    raise RuntimeError("v9 historical-members policy is not authorized")
+
+
+def _validate_manifest_panel_identity(
+    manifest: Mapping[str, Any],
+    *,
+    base_symbols: Sequence[str],
+    panel_dates: Sequence[pd.Timestamp],
+) -> None:
+    symbols = tuple(sorted(str(value).strip().upper() for value in base_symbols))
+    if (
+        not symbols
+        or any(not symbol for symbol in symbols)
+        or len(set(symbols)) != len(symbols)
+    ):
+        raise RuntimeError("availability panel symbol identity is invalid")
+    universe = manifest.get("universe")
+    if not isinstance(universe, Mapping):
+        raise RuntimeError("v9 cache universe identity is missing")
+    universe_hash = sha256("\n".join(symbols).encode("utf-8")).hexdigest()[:16]
+    if (
+        universe.get("indexSymbol") != INDEX_SYMBOL
+        or universe.get("baseSymbols") != len(symbols)
+        or universe.get("baseUniverseHash") != universe_hash
+    ):
+        raise RuntimeError("v9 cache universe does not match the availability panel")
+
+    dates = pd.DatetimeIndex(pd.to_datetime(list(panel_dates), errors="coerce"))
+    if dates.empty or dates.isna().any():
+        raise RuntimeError("availability panel date identity is invalid")
+    window = manifest.get("window")
+    if not isinstance(window, Mapping):
+        raise RuntimeError("v9 cache window identity is missing")
+    start = _canonical_manifest_date(window.get("start"), "start")
+    end = _canonical_manifest_date(window.get("end"), "end")
+    if start > dates.min() or end < dates.max():
+        raise RuntimeError("v9 cache window does not cover the availability panel")
+
+
+def _canonical_manifest_date(value: Any, name: str) -> pd.Timestamp:
+    if not isinstance(value, str):
+        raise RuntimeError(f"v9 cache window {name} is invalid")
+    parsed = pd.to_datetime(value, errors="coerce")
+    if pd.isna(parsed) or pd.Timestamp(parsed).strftime("%Y-%m-%d") != value:
+        raise RuntimeError(f"v9 cache window {name} is invalid")
+    return pd.Timestamp(parsed)
+
+
+def _validate_pit_root_binding(
+    *,
+    cache_root: Path,
+    pit_cache_root: Path,
+    dataset: Mapping[str, Any],
+) -> None:
+    value = dataset.get("path")
+    if not isinstance(value, str) or not value:
+        raise RuntimeError("v9 cache PIT timeline path is missing")
+    relative = Path(value)
+    if relative.is_absolute():
+        raise RuntimeError("v9 cache PIT timeline path must be relative")
+    observed = (cache_root.parent / relative).resolve()
+    expected = (
+        pit_cache_root
+        / "index-weights"
+        / INDEX_SYMBOL.replace(".", "_")
+    ).resolve()
+    if observed != expected:
+        raise RuntimeError("v9 cache PIT timeline is bound to another cache root")
 
 
 def load_index_daily_cache(
