@@ -1,0 +1,398 @@
+{
+  "schemaVersion": "assay-v9-simplification-deviation-inventory-v1",
+  "artifactRole": "pre-terminal-simplification-deviation-inventory",
+  "generatedAt": "2026-07-24T18:22:11Z",
+  "cacheVersion": "assay-v9-p1-v1",
+  "state": "pre-terminal",
+  "sourceManifest": {
+    "path": ".cache/assay/v9-p1-v1/manifest.json",
+    "schemaVersion": "assay-p1-cache-manifest-v1",
+    "cacheVersion": "assay-v9-p1-v1",
+    "state": "degraded",
+    "promoted": true
+  },
+  "finalAcceptance": {
+    "status": "blocked",
+    "nonBlockingAuthorizedEntryIds": [
+      "official_post_strict_gap_fill",
+      "historical_members_remove_only",
+      "pit_constituent_equal_weight_proxy",
+      "homogeneity_classic_only",
+      "price_only_financial_timing_not_activated",
+      "manual_spearman_scipy_equivalence",
+      "terminal_as_of_not_month_end"
+    ],
+    "completedGateIds": ["single_agent_smokes"],
+    "blockingGateIds": ["terminal_golden_snapshot", "real_online_e2e", "remote_head_verification"]
+  },
+  "entries": [
+    {
+      "id": "official_post_strict_gap_fill",
+      "type": "authorized_source_bypass",
+      "status": "active_authorized",
+      "summary": "111 identity-bound single-key get_factor(close) gaps are filled from the official post-adjusted daily close source.",
+      "authorization": {
+        "status": "authorized",
+        "scope": "base panel price gaps only",
+        "condition": "Each target must be a verified primary-source absence, the same symbol must match the primary source on both adjacent trading dates within frozen tolerances, and rescaling, interpolation, and forward fill remain forbidden."
+      },
+      "impact": {
+        "affectedChecks": [
+          "param-robustness",
+          "data-availability",
+          "cost-stress",
+          "regime-dependency",
+          "homogeneity-decay"
+        ],
+        "effect": "The base panel is complete for effective tradability, but 111 price keys have an explicitly different official source identity from the primary factor feed.",
+        "residualRisk": "Any future fallback key that fails identity, source-absence, two-sided scale, or status coverage must remain unfilled and fail closed."
+      },
+      "evidenceRefs": [
+        {
+          "kind": "manifest",
+          "path": ".cache/assay/v9-p1-v1/manifest.json",
+          "jsonPointers": [
+            "/datasets/basePanel/priceSourceMode",
+            "/datasets/basePanel/fallbackFillCount",
+            "/datasets/basePanel/scaleCheckPolicy",
+            "/datasets/basePanel/fallbackProvenance"
+          ]
+        },
+        {
+          "kind": "cache_provenance",
+          "path": ".cache/assay/v9-p1-v1/base-official-post-fallback/provenance.json"
+        },
+        {
+          "kind": "source",
+          "path": "services/panda-adapter/scripts/prepare_v9_p1_cache.py",
+          "symbol": "_validated_official_post_fallback"
+        },
+        {
+          "kind": "test",
+          "path": "services/panda-adapter/tests/test_prepare_v9_p1_cache.py",
+          "case": "test_verified_primary_absence_uses_a_traced_official_post_fallback"
+        }
+      ],
+      "blocksFinalAcceptance": false
+    },
+    {
+      "id": "historical_members_remove_only",
+      "type": "authorized_degradation",
+      "status": "active_authorized",
+      "summary": "Historical constituents absent from the frozen base panel are not added; PIT correction removes future constituents only.",
+      "authorization": {
+        "status": "authorized",
+        "scope": "data-availability and PIT-dependent proxy intersections",
+        "condition": "The promoted manifest must carry mode=remove_only and reasonCode=HISTORICAL_MEMBER_DATA_UNAVAILABLE, and every result must disclose the degradation."
+      },
+      "impact": {
+        "affectedChecks": ["data-availability", "regime-dependency"],
+        "effect": "Survivorship correction can remove names that were not yet constituents but cannot restore historical members missing from the frozen price panel.",
+        "residualRisk": "The measured correction can understate the full effect of historical constituent turnover and must not be described as full PIT reconstruction."
+      },
+      "evidenceRefs": [
+        {
+          "kind": "manifest",
+          "path": ".cache/assay/v9-p1-v1/manifest.json",
+          "jsonPointers": [
+            "/datasets/historicalMembers/status",
+            "/datasets/historicalMembers/mode",
+            "/datasets/historicalMembers/reasonCode",
+            "/datasets/historicalMembers/assumptions"
+          ]
+        },
+        {
+          "kind": "source",
+          "path": "services/panda-adapter/src/panda_adapter/availability_audit.py",
+          "symbol": "_manifest_remove_only_assumption"
+        },
+        {
+          "kind": "test",
+          "path": "services/panda-adapter/tests/test_availability_audit.py",
+          "case": "test_promoted_remove_only_policy_skips_redundant_live_acquisition"
+        }
+      ],
+      "blocksFinalAcceptance": false
+    },
+    {
+      "id": "pit_constituent_equal_weight_proxy",
+      "type": "authorized_degradation",
+      "status": "active_authorized",
+      "summary": "Regime labels use a PIT constituent equal-weight return proxy because official CSI 300 index daily close is unavailable.",
+      "authorization": {
+        "status": "authorized",
+        "scope": "regime-dependency only",
+        "condition": "Membership snapshots become eligible only after their effective dates; each day uses the intersection of as-of PIT membership and the frozen panel, and pre-coverage days remain unlabeled."
+      },
+      "impact": {
+        "affectedChecks": ["regime-dependency"],
+        "effect": "Trend and volatility regimes describe an equal-weight constituent proxy rather than the official capitalization-weighted index.",
+        "residualRisk": "Regime boundaries and PnL attribution can differ from those produced by official index closes, especially when unavailable historical members are omitted."
+      },
+      "evidenceRefs": [
+        {
+          "kind": "manifest",
+          "path": ".cache/assay/v9-p1-v1/manifest.json",
+          "jsonPointers": [
+            "/datasets/indexDaily/status",
+            "/datasets/indexDaily/mode",
+            "/datasets/indexDaily/reasonCode"
+          ]
+        },
+        {
+          "kind": "source",
+          "path": "services/panda-adapter/src/panda_adapter/regime_audit.py",
+          "symbol": "_constituent_equal_weight_proxy"
+        },
+        {
+          "kind": "test",
+          "path": "services/panda-adapter/tests/test_regime_audit.py",
+          "case": "test_constituent_proxy_never_uses_a_future_pit_membership"
+        }
+      ],
+      "blocksFinalAcceptance": false
+    },
+    {
+      "id": "homogeneity_classic_only",
+      "type": "authorized_degradation",
+      "status": "active_authorized",
+      "summary": "Homogeneity analysis uses the three self-built classic comparators only because ratio_pe_ttm and market_cap are unavailable.",
+      "authorization": {
+        "status": "authorized",
+        "scope": "homogeneity-decay only",
+        "condition": "The response must carry mode=classic_only and disclose that the prepared platform comparator-factor cache is unavailable."
+      },
+      "impact": {
+        "affectedChecks": ["homogeneity-decay"],
+        "effect": "The comparison set is limited to momentum_20, reversal_5, and volatility_20.",
+        "residualRisk": "Similarity to valuation and size factors is not measured, so the homogeneity conclusion has narrower factor coverage."
+      },
+      "evidenceRefs": [
+        {
+          "kind": "manifest",
+          "path": ".cache/assay/v9-p1-v1/manifest.json",
+          "jsonPointers": [
+            "/datasets/comparatorFactors/status",
+            "/datasets/comparatorFactors/mode",
+            "/datasets/comparatorFactors/reasonCode"
+          ]
+        },
+        {
+          "kind": "source",
+          "path": "services/panda-adapter/src/panda_adapter/homogeneity_audit.py",
+          "symbol": "run_homogeneity"
+        },
+        {
+          "kind": "test",
+          "path": "services/panda-adapter/tests/test_homogeneity_audit.py",
+          "case": "test_runner_supports_full_and_classic_only_modes"
+        }
+      ],
+      "blocksFinalAcceptance": false
+    },
+    {
+      "id": "price_only_financial_timing_not_activated",
+      "type": "authorized_scope_omission",
+      "status": "active_authorized",
+      "summary": "Financial-report disclosure timing is not evaluated because the frozen strategy signal is price momentum only.",
+      "authorization": {
+        "status": "authorized",
+        "scope": "the frozen price-only momentum StrategySpec",
+        "condition": "This omission is valid only while signal construction and selection use no accounting, forecast, performance, or report field."
+      },
+      "impact": {
+        "affectedChecks": ["data-availability"],
+        "effect": "No financial point-in-time join or info_date gate is exercised in this acceptance.",
+        "residualRisk": "The result cannot be generalized to a fundamental or mixed price-and-financial strategy; such a strategy would require disclosure-time wiring before acceptance."
+      },
+      "evidenceRefs": [
+        {
+          "kind": "source",
+          "path": "services/panda-adapter/src/panda_adapter/availability_audit.py",
+          "symbol": "run_availability_audit"
+        },
+        {
+          "kind": "source",
+          "path": "services/panda-adapter/src/panda_adapter/engine/strategy.py",
+          "symbol": "parse_momentum_strategy"
+        }
+      ],
+      "blocksFinalAcceptance": false
+    },
+    {
+      "id": "manual_spearman_scipy_equivalence",
+      "type": "implementation_substitution",
+      "status": "active_authorized",
+      "summary": "Spearman correlation is implemented locally as Pearson correlation over average ranks instead of importing scipy.stats.spearmanr.",
+      "authorization": {
+        "status": "authorized",
+        "scope": "homogeneity and RankIC calculations",
+        "condition": "Pairs with missing values are removed consistently, ties use average ranks, constant inputs return no coefficient, and known-answer tests remain green."
+      },
+      "impact": {
+        "affectedChecks": ["homogeneity-decay"],
+        "effect": "The implementation avoids a SciPy runtime dependency while preserving the defined coefficient semantics.",
+        "residualRisk": "Only insignificant floating-point representation differences are acceptable; any change in tie, missing-value, or constant-input behavior is a blocking semantic regression."
+      },
+      "evidenceRefs": [
+        {
+          "kind": "source",
+          "path": "services/panda-adapter/src/panda_adapter/homogeneity_audit.py",
+          "symbol": "spearman_coefficient"
+        },
+        {
+          "kind": "test",
+          "path": "services/panda-adapter/tests/test_homogeneity_audit.py",
+          "case": "test_spearman_matches_tie_average_known_answers"
+        }
+      ],
+      "blocksFinalAcceptance": false
+    },
+    {
+      "id": "terminal_as_of_not_month_end",
+      "type": "authorized_temporal_deviation",
+      "status": "active_authorized",
+      "summary": "The final PIT observation is the 2026-07-23 terminal as-of snapshot, not a completed month-end rebalance snapshot.",
+      "authorization": {
+        "status": "authorized",
+        "scope": "terminal cache evidence only",
+        "condition": "The observation must remain explicitly typed as terminal_as_of and must not be counted among completed month-end rebalance signals."
+      },
+      "impact": {
+        "affectedChecks": ["data-availability", "regime-dependency"],
+        "effect": "The PIT timeline contains 36 completed month ends plus one terminal as-of observation for the cache end date.",
+        "residualRisk": "Treating the terminal observation as a completed month end would introduce a false rebalance point and invalidate timeline counts."
+      },
+      "evidenceRefs": [
+        {
+          "kind": "manifest",
+          "path": ".cache/assay/v9-p1-v1/manifest.json",
+          "jsonPointers": [
+            "/datasets/pitTimeline/completedMonthEnds",
+            "/datasets/pitTimeline/terminalAsOf",
+            "/datasets/pitTimeline/quality/terminalAsOfIsNotMonthEnd"
+          ]
+        },
+        {
+          "kind": "source",
+          "path": "services/panda-adapter/scripts/prepare_v9_p1_cache.py",
+          "symbol": "_derive_pit_points"
+        },
+        {
+          "kind": "test",
+          "path": "services/panda-adapter/tests/test_prepare_v9_p1_cache.py",
+          "case": "test_distinguishes_terminal_as_of_from_completed_month_ends"
+        }
+      ],
+      "blocksFinalAcceptance": false
+    }
+  ],
+  "acceptanceGates": [
+    {
+      "id": "single_agent_smokes",
+      "status": "completed",
+      "summary": "The three newly wired check prompts each completed an isolated runtime-cli smoke with a deterministic mechanism fixture.",
+      "impact": "The first data-availability attempt exposed a tool-kind versus canonical-check-id ambiguity; the shared output identity guard was fixed, and data-availability, regime-dependency, and homogeneity-decay then each produced a schema-valid result.",
+      "requiredAgents": ["data-availability", "regime-dependency", "homogeneity-decay"],
+      "verificationRefs": [
+        {
+          "kind": "source",
+          "path": "packages/agents/src/definitions.ts"
+        },
+        {
+          "kind": "source",
+          "path": "packages/agents/src/parallel-check-runner.ts"
+        },
+        {
+          "kind": "acceptance_requirement",
+          "ref": "P5:single-agent-smokes"
+        },
+        {
+          "kind": "expected_artifact",
+          "ref": "artifacts/v9/assay-v9-agent-smoke-evidence.json"
+        }
+      ],
+      "completionEvidenceRequired": [
+        "One successful isolated run per newly wired check agent.",
+        "The live-call count remains inside the authorized 3-5 range, including the failed contract attempt that motivated the output-id fix."
+      ],
+      "blocksFinalAcceptance": false
+    },
+    {
+      "id": "terminal_golden_snapshot",
+      "status": "pending",
+      "summary": "The terminal v9 golden snapshot has not yet been frozen from the accepted real run.",
+      "impact": "The final five-check numerical conclusions and verdict do not yet have a regression baseline bound to this cache version and accepted code revision.",
+      "verificationRefs": [
+        {
+          "kind": "source",
+          "path": "tests/e2e/src/v9-real-data.ts",
+          "symbol": "assertV9RealMechanism"
+        },
+        {
+          "kind": "expected_artifact",
+          "ref": "artifacts/v9/assay-real-data-run.json"
+        },
+        {
+          "kind": "acceptance_requirement",
+          "ref": "P5:terminal-golden-snapshot"
+        }
+      ],
+      "completionEvidenceRequired": [
+        "A schema-valid real-data acceptance artifact produced from the promoted cache.",
+        "A frozen golden snapshot that binds cacheVersion, cache digests, accepted code revision, five check conclusions, and deterministic verdict."
+      ],
+      "blocksFinalAcceptance": true
+    },
+    {
+      "id": "real_online_e2e",
+      "status": "pending",
+      "summary": "The one recorded real online five-check E2E failed at the data-availability agent deadline before an Artifact was produced; no successful terminal run exists.",
+      "impact": "The data instrument root cause has been fixed and its real-cache execution is fast offline, but the end-to-end path from request through all agents, local cache-only instruments, deterministic verdict, and final Artifact remains unverified as a whole.",
+      "verificationRefs": [
+        {
+          "kind": "test",
+          "path": "tests/e2e/src/v9-real-data.test.ts",
+          "case": "runs the one terminal real-data five-check acceptance"
+        },
+        {
+          "kind": "source",
+          "path": "tests/e2e/src/v9-real-data.ts",
+          "symbol": "runV9RealAcceptance"
+        },
+        {
+          "kind": "expected_artifact",
+          "ref": "artifacts/v9/assay-real-data-run.json"
+        }
+      ],
+      "completionEvidenceRequired": [
+        "One successful online E2E run using only the promoted local data cache for market evidence.",
+        "The resulting real Artifact passes mechanism, cache binding, deterministic verdict, output safety, and golden assertions."
+      ],
+      "blocksFinalAcceptance": true
+    },
+    {
+      "id": "remote_head_verification",
+      "status": "pending",
+      "summary": "The accepted commit has not yet been pushed and compared with the fetched remote branch HEAD.",
+      "impact": "There is no terminal proof that the remotely published revision exactly matches the locally accepted revision.",
+      "verificationRefs": [
+        {
+          "kind": "acceptance_requirement",
+          "ref": "git:remote-head-verification"
+        }
+      ],
+      "completionEvidenceRequired": [
+        "The final accepted commit is pushed to the intended remote branch.",
+        "A fresh remote lookup shows the remote branch HEAD equals the locally accepted commit."
+      ],
+      "blocksFinalAcceptance": true
+    }
+  ],
+  "safety": {
+    "containsCredentials": false,
+    "containsPersonalContactData": false,
+    "containsAbsoluteLocalPaths": false,
+    "containsVendorRawErrors": false
+  }
+}
