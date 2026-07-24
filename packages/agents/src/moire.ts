@@ -1,8 +1,24 @@
 import {
-  AVAILABILITY_ANNUAL_RETURN_DELTA_FAIL_THRESHOLD,
+  MOIRE_M1_DOMINANT_RETENTION_THRESHOLD,
+  MOIRE_M1_OTHER_RETENTION_THRESHOLD,
+  MOIRE_M1_PARAM_RETENTION_TRIGGER,
+  MOIRE_M1_REGIME_PNL_SHARE_TRIGGER,
+  MOIRE_M2_CORRECTED_RETURN_DELTA_TRIGGER,
+  MOIRE_MAX_EXPERIMENTS,
+  MOIRE_POLICY_VERSION,
   type AuditCheckId,
   type AuditCheckResult,
   type CheckConclusion,
+} from "@assay/contracts";
+
+export {
+  MOIRE_M1_DOMINANT_RETENTION_THRESHOLD,
+  MOIRE_M1_OTHER_RETENTION_THRESHOLD,
+  MOIRE_M1_PARAM_RETENTION_TRIGGER,
+  MOIRE_M1_REGIME_PNL_SHARE_TRIGGER,
+  MOIRE_M2_CORRECTED_RETURN_DELTA_TRIGGER,
+  MOIRE_MAX_EXPERIMENTS,
+  MOIRE_POLICY_VERSION,
 } from "@assay/contracts";
 
 /**
@@ -70,15 +86,6 @@ export function planMoireExperiments(
 ): readonly MoireExperiment[] {
   return planReviewMoireExperiments(checks);
 }
-
-export const MOIRE_POLICY_VERSION = "1.0.0" as const;
-export const MOIRE_MAX_EXPERIMENTS = 2 as const;
-export const MOIRE_M1_PARAM_RETENTION_TRIGGER = 0.4 as const;
-export const MOIRE_M1_REGIME_PNL_SHARE_TRIGGER = 0.7 as const;
-export const MOIRE_M1_DOMINANT_RETENTION_THRESHOLD = 0.7 as const;
-export const MOIRE_M1_OTHER_RETENTION_THRESHOLD = 0.4 as const;
-export const MOIRE_M2_CORRECTED_RETURN_DELTA_TRIGGER =
-  AVAILABILITY_ANNUAL_RETURN_DELTA_FAIL_THRESHOLD;
 
 export const MOIRE_EVIDENCE_METRICS = Object.freeze({
   parameterRetention: "neighborhoodSharpeRetention",

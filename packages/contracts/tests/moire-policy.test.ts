@@ -1,0 +1,25 @@
+import { describe, expect, test } from "vitest";
+import {
+  AVAILABILITY_ANNUAL_RETURN_DELTA_FAIL_THRESHOLD,
+  MOIRE_M1_DOMINANT_RETENTION_THRESHOLD,
+  MOIRE_M1_OTHER_RETENTION_THRESHOLD,
+  MOIRE_M1_PARAM_RETENTION_TRIGGER,
+  MOIRE_M1_REGIME_PNL_SHARE_TRIGGER,
+  MOIRE_M2_CORRECTED_RETURN_DELTA_TRIGGER,
+  MOIRE_MAX_EXPERIMENTS,
+  MOIRE_POLICY_VERSION,
+} from "../src";
+
+describe("discriminative Moiré policy", () => {
+  test("freezes the implemented v9 planner and synthesis boundaries", () => {
+    expect(MOIRE_POLICY_VERSION).toBe("1.0.0");
+    expect(MOIRE_MAX_EXPERIMENTS).toBe(2);
+    expect(MOIRE_M1_PARAM_RETENTION_TRIGGER).toBe(0.4);
+    expect(MOIRE_M1_REGIME_PNL_SHARE_TRIGGER).toBe(0.7);
+    expect(MOIRE_M1_DOMINANT_RETENTION_THRESHOLD).toBe(0.7);
+    expect(MOIRE_M1_OTHER_RETENTION_THRESHOLD).toBe(0.4);
+    expect(MOIRE_M2_CORRECTED_RETURN_DELTA_TRIGGER).toBe(
+      AVAILABILITY_ANNUAL_RETURN_DELTA_FAIL_THRESHOLD,
+    );
+  });
+});
