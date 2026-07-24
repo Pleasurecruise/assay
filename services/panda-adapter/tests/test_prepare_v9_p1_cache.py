@@ -47,6 +47,7 @@ def _seed_base_cache(
     symbols: list[str],
     truncate_date: pd.Timestamp | None = None,
     factor_start_date: pd.Timestamp | None = None,
+    missing_factor_keys: set[tuple[str, str]] | None = None,
 ) -> Path:
     output = cache_root / "csi300-3y.csv"
     positions = {symbol: index for index, symbol in enumerate(symbols)}
@@ -60,6 +61,7 @@ def _seed_base_cache(
         for symbol in symbols
     ]
     status = pd.DataFrame(status_rows)
+    missing_keys = missing_factor_keys or set()
     factor_rows = [
         {
             "date": date.strftime("%Y-%m-%d"),
@@ -72,7 +74,14 @@ def _seed_base_cache(
         }
         for date in dates
         for symbol in symbols
-        if truncate_date is None or date != truncate_date or positions[symbol] < 189
+        if (
+            (truncate_date is None or date != truncate_date or positions[symbol] < 189)
+            and (
+                date.strftime("%Y-%m-%d"),
+                symbol,
+            )
+            not in missing_keys
+        )
     ]
     factor = pd.DataFrame(factor_rows)
 
@@ -121,10 +130,12 @@ class FakeP1Client:
         base_dates: pd.DatetimeIndex,
         base_symbols: list[str],
         extra_symbol: str = "XTRA",
+        absent_factor_keys: set[tuple[str, str]] | None = None,
     ) -> None:
         self.base_dates = pd.DatetimeIndex(base_dates)
         self.base_symbols = list(base_symbols)
         self.extra_symbol = extra_symbol
+        self.absent_factor_keys = absent_factor_keys or set()
         self.positions = {
             symbol: index for index, symbol in enumerate([*base_symbols, extra_symbol])
         }
@@ -184,6 +195,11 @@ class FakeP1Client:
                     }
                     for date in dates
                     for symbol in symbols
+                    if (
+                        date.strftime("%Y-%m-%d"),
+                        symbol,
+                    )
+                    not in self.absent_factor_keys
                 ]
             )
         if factors != list(p1.COMPARATOR_FACTORS):
@@ -312,9 +328,10 @@ class PrepareV9P1CacheTest(unittest.TestCase):
             day = repaired.loc[repaired["date"] == truncated.strftime("%Y-%m-%d")]
             self.assertEqual(day["symbol"].nunique(), 300)
             self.assertEqual(
-                result["quality"]["tradableFactorCoverage"],
+                result["quality"]["effectiveTradableFactorCoverage"],
                 True,
             )
+            self.assertTrue(result["quality"]["providerTradableFactorCoverage"])
             self.assertEqual(
                 result["repairedFragments"],
                 ["2026-04-13/2026-04-19"],
@@ -414,6 +431,221 @@ class PrepareV9P1CacheTest(unittest.TestCase):
             )
             self.assertEqual(retained_path.read_bytes(), retained_before)
             self.assertFalse(drifted_path.exists())
+
+    def test_verified_single_key_source_absence_is_persisted_and_counted(
+        self,
+    ) -> None:
+        symbols = _symbols()
+        dates = pd.bdate_range("2026-04-14", "2026-04-16")
+        absent_key = ("2026-04-15", symbols[0])
+
+        with tempfile.TemporaryDirectory() as directory:
+            cache_root = Path(directory)
+            output = _seed_base_cache(
+                cache_root=cache_root,
+                dates=dates,
+                symbols=symbols,
+                missing_factor_keys={absent_key},
+            )
+            config = p1.P1Config(
+                cache_root=cache_root,
+                base_cache=output,
+                perform_spot_checks=False,
+            )
+            repaired, result = p1._prepare_base_cache(
+                config=config,
+                client=FakeP1Client(
+                    base_dates=dates,
+                    base_symbols=symbols,
+                    absent_factor_keys={absent_key},
+                ),
+                budget=p1.StageBudget(
+                    stage="base",
+                    max_seconds=1_200,
+                    sleeper=lambda _: None,
+                ),
+            )
+
+            self.assertFalse(
+                (
+                    repaired["date"].eq(absent_key[0])
+                    & repaired["symbol"].eq(absent_key[1])
+                ).any()
+            )
+            self.assertEqual(
+                result["verifiedSourceAbsenceCount"],
+                1,
+            )
+            self.assertEqual(
+                result["quality"]["verifiedSourceAbsenceCount"],
+                1,
+            )
+            self.assertEqual(
+                result["quality"]["unverifiedTradableMissingKeys"],
+                0,
+            )
+            self.assertTrue(result["quality"]["effectiveTradableFactorCoverage"])
+            self.assertFalse(result["quality"]["providerTradableFactorCoverage"])
+            self.assertEqual(
+                result["effectiveTradabilityRule"],
+                "price_available_and_trade_status",
+            )
+            self.assertEqual(len(result["assumptions"]), 1)
+            self.assertIn("1 identity-bound", result["assumptions"][0])
+
+            leaf = p1.BASE_BUILDER.FragmentRequest(
+                source="factor-close",
+                start_date=pd.Timestamp(absent_key[0]),
+                end_date=pd.Timestamp(absent_key[0]),
+                symbols=(absent_key[1],),
+                universe_hash=p1.BASE_BUILDER._universe_hash(symbols),
+                universe_size=len(symbols),
+            )
+            leaf_frame = p1.BASE_BUILDER._read_fragment(output, leaf)
+            self.assertTrue(leaf_frame.empty)
+            self.assertEqual(
+                p1._read_base_verified_source_absence(
+                    output=output,
+                    request=leaf,
+                    frame=leaf_frame,
+                ),
+                absent_key,
+            )
+
+            resumed, resumed_result = p1._prepare_base_cache(
+                config=config,
+                client=NoNetworkClient(),
+                budget=p1.StageBudget(
+                    stage="base",
+                    max_seconds=1_200,
+                    sleeper=lambda _: None,
+                ),
+            )
+            self.assertEqual(len(resumed), len(repaired))
+            self.assertEqual(
+                resumed_result["verifiedSourceAbsenceCount"],
+                1,
+            )
+
+    def test_empty_factor_fragment_without_leaf_proof_remains_fail_closed(
+        self,
+    ) -> None:
+        date = pd.Timestamp("2026-04-15")
+        symbol = "S00000"
+        request = p1._base_request(
+            source="factor-close",
+            start_date=date,
+            end_date=date,
+            symbols=[symbol],
+        )
+        status = pd.DataFrame(
+            [
+                {
+                    "date": "2026-04-15",
+                    "symbol": symbol,
+                    "tradeStatus": 0,
+                }
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "panel.csv"
+            p1.BASE_BUILDER._write_fragment(
+                output,
+                request,
+                pd.DataFrame(columns=["date", "symbol", "adjClose"]),
+            )
+            verified: set[tuple[str, str]] = set()
+
+            with self.assertRaisesRegex(
+                AssertionError,
+                "network method must not run",
+            ):
+                p1._repair_base_factor_fragment(
+                    output=output,
+                    request=request,
+                    status=status,
+                    client=NoNetworkClient(),
+                    budget=p1.StageBudget(
+                        stage="base",
+                        max_seconds=10,
+                        sleeper=lambda _: None,
+                    ),
+                    repaired=[],
+                    verified_source_absences=verified,
+                )
+
+            self.assertEqual(verified, set())
+            self.assertFalse(
+                p1._base_verified_source_absence_path(
+                    output,
+                    request,
+                ).exists()
+            )
+
+    def test_non_single_key_empty_response_splits_and_is_not_a_proof(
+        self,
+    ) -> None:
+        date = pd.Timestamp("2026-04-15")
+        symbols = ["S00000", "S00001"]
+        request = p1._base_request(
+            source="factor-close",
+            start_date=date,
+            end_date=date,
+            symbols=symbols,
+        )
+        status = pd.DataFrame(
+            [
+                {
+                    "date": "2026-04-15",
+                    "symbol": symbol,
+                    "tradeStatus": 0,
+                }
+                for symbol in symbols
+            ]
+        )
+
+        class EmptyParentOnly:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def get_factor(self, **_: object) -> pd.DataFrame:
+                self.calls += 1
+                if self.calls == 1:
+                    return pd.DataFrame()
+                raise ValueError("child verification required")
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "panel.csv"
+            client = EmptyParentOnly()
+            verified: set[tuple[str, str]] = set()
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "child verification required",
+            ):
+                p1._repair_base_factor_fragment(
+                    output=output,
+                    request=request,
+                    status=status,
+                    client=client,
+                    budget=p1.StageBudget(
+                        stage="base",
+                        max_seconds=10,
+                        sleeper=lambda _: None,
+                    ),
+                    repaired=[],
+                    verified_source_absences=verified,
+                )
+
+            self.assertGreater(client.calls, 1)
+            self.assertEqual(verified, set())
+            self.assertFalse(
+                p1._base_verified_source_absence_path(
+                    output,
+                    request,
+                ).exists()
+            )
 
     def test_fragment_split_resumes_only_the_interrupted_child(self) -> None:
         symbols = ("A", "B", "C", "D")
@@ -705,6 +937,110 @@ class PrepareV9P1CacheTest(unittest.TestCase):
 
         with self.assertRaises(p1.StageDeadlineExceeded):
             budget.ensure_available()
+
+    def test_stage_budget_recovers_after_multiple_transport_exhaustions(
+        self,
+    ) -> None:
+        for mode in ("call", "call_pretried_until_deadline"):
+            with self.subTest(mode=mode):
+                attempts = 0
+                delays: list[float] = []
+                budget = p1.StageBudget(
+                    stage="base",
+                    max_seconds=10,
+                    clock=lambda: 0.0,
+                    sleeper=delays.append,
+                    retry_policy=p1.RetryPolicy(
+                        max_attempts=1,
+                        initial_delay_seconds=0.1,
+                        max_delay_seconds=0.2,
+                    ),
+                    started_at=0.0,
+                )
+
+                def operation() -> str:
+                    nonlocal attempts
+                    attempts += 1
+                    if attempts < 3:
+                        if mode == "call":
+                            raise ConnectionResetError("fixture transport")
+                        raise p1.DataTransportError("fixture exhaustion")
+                    return "ok"
+
+                result = (
+                    budget.call("fixture", operation)
+                    if mode == "call"
+                    else budget.call_pretried_until_deadline(operation)
+                )
+
+                self.assertEqual(result, "ok")
+                self.assertEqual(attempts, 3)
+                self.assertEqual(delays, [0.1, 0.2])
+
+    def test_stage_budget_transport_retry_stops_at_hard_deadline(self) -> None:
+        for mode in ("call", "call_pretried_until_deadline"):
+            with self.subTest(mode=mode):
+                attempts = 0
+                delays: list[float] = []
+                budget = p1.StageBudget(
+                    stage="base",
+                    max_seconds=0.25,
+                    clock=lambda: 0.0,
+                    sleeper=delays.append,
+                    retry_policy=p1.RetryPolicy(
+                        max_attempts=1,
+                        initial_delay_seconds=0.1,
+                        max_delay_seconds=0.2,
+                    ),
+                    started_at=0.0,
+                )
+
+                def operation() -> None:
+                    nonlocal attempts
+                    attempts += 1
+                    if mode == "call":
+                        raise ConnectionResetError("fixture transport")
+                    raise p1.DataTransportError("fixture exhaustion")
+
+                with self.assertRaisesRegex(
+                    p1.StageDeadlineExceeded,
+                    "^base deadline exceeded$",
+                ):
+                    if mode == "call":
+                        budget.call("fixture", operation)
+                    else:
+                        budget.call_pretried_until_deadline(operation)
+
+                self.assertEqual(attempts, 2)
+                self.assertEqual(len(delays), 2)
+                self.assertAlmostEqual(sum(delays), 0.25)
+
+    def test_pretried_parent_exhaustion_returns_control_to_splitter(
+        self,
+    ) -> None:
+        attempts = 0
+        delays: list[float] = []
+        budget = p1.StageBudget(
+            stage="base",
+            max_seconds=10,
+            clock=lambda: 0.0,
+            sleeper=delays.append,
+            started_at=0.0,
+        )
+
+        def operation() -> None:
+            nonlocal attempts
+            attempts += 1
+            raise p1.DataTransportError("fixture exhaustion")
+
+        with self.assertRaisesRegex(
+            p1.RetryableFragmentFailure,
+            "^base fragment transport exhausted$",
+        ):
+            budget.call_pretried(operation)
+
+        self.assertEqual(attempts, 1)
+        self.assertEqual(delays, [])
 
 
 if __name__ == "__main__":

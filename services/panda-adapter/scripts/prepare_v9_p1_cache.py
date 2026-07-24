@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from hashlib import sha256
 import importlib.util
@@ -66,9 +66,11 @@ CACHE_VERSION: Final = "assay-v9-p1-v1"
 MANIFEST_SCHEMA_VERSION: Final = "assay-p1-cache-manifest-v1"
 FRAGMENT_SCHEMA_VERSION: Final = "assay-p1-fragment-v1"
 SPLIT_SCHEMA_VERSION: Final = "assay-p1-split-v1"
+VERIFIED_SOURCE_ABSENCE_SCHEMA_VERSION: Final = "assay-base-verified-source-absence-v1"
 EXPECTED_PIT_POINTS: Final = 37
 EXPECTED_INDEX_LOOKBACK_DAYS: Final = 200
 DEFAULT_STAGE_SECONDS: Final = 20 * 60
+MIN_STAGE_RETRY_DELAY_SECONDS: Final = 0.1
 INDEX_WINDOW_DAYS: Final = 31
 FACTOR_WINDOW_DAYS: Final = 7
 PIT_LOOKBACK_DAYS: Final = 7
@@ -157,6 +159,11 @@ class StageBudget:
     sleeper: Callable[[float], None] = sleep
     retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY
     started_at: float | None = None
+    _unobserved_sleep_seconds: float = field(
+        default=0,
+        init=False,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         if self.max_seconds <= 0:
@@ -166,28 +173,81 @@ class StageBudget:
 
     def ensure_available(self) -> None:
         assert self.started_at is not None
-        if self.clock() - self.started_at >= self.max_seconds:
+        if self._elapsed_seconds() >= self.max_seconds:
             raise StageDeadlineExceeded(f"{self.stage} deadline exceeded")
 
-    def call(self, label: str, operation: Callable[[], Any]) -> Any:
+    def _elapsed_seconds(self) -> float:
+        assert self.started_at is not None
+        observed = max(0.0, self.clock() - self.started_at)
+        return observed + self._unobserved_sleep_seconds
+
+    def _remaining_seconds(self) -> float:
+        return max(0.0, self.max_seconds - self._elapsed_seconds())
+
+    def _sleep_within_budget(self, requested_seconds: float) -> None:
+        remaining = self._remaining_seconds()
+        if remaining <= 0:
+            raise StageDeadlineExceeded(f"{self.stage} deadline exceeded")
+        delay = min(max(0.0, requested_seconds), remaining)
+        if delay <= 0:
+            raise StageDeadlineExceeded(f"{self.stage} deadline exceeded")
+
+        before = self.clock()
+        self.sleeper(delay)
+        after = self.clock()
+        observed_sleep = max(0.0, after - before)
+        self._unobserved_sleep_seconds += max(0.0, delay - observed_sleep)
         self.ensure_available()
-        try:
-            value = retry_transport(
+
+    def _chronic_retry_delay(self, exhaustion_round: int) -> float:
+        initial = max(
+            MIN_STAGE_RETRY_DELAY_SECONDS,
+            self.retry_policy.initial_delay_seconds,
+        )
+        maximum = max(
+            MIN_STAGE_RETRY_DELAY_SECONDS,
+            self.retry_policy.max_delay_seconds,
+        )
+        delay = initial
+        for _ in range(exhaustion_round):
+            delay = min(delay * 2, maximum)
+            if delay >= maximum:
+                break
+        return min(delay, maximum)
+
+    def _call_until_deadline(
+        self,
+        operation: Callable[[], Any],
+    ) -> Any:
+        exhaustion_round = 0
+        while True:
+            self.ensure_available()
+            try:
+                value = operation()
+            except DataTransportError as error:
+                try:
+                    self._sleep_within_budget(
+                        self._chronic_retry_delay(exhaustion_round)
+                    )
+                except StageDeadlineExceeded as deadline:
+                    raise deadline from error
+                exhaustion_round += 1
+                continue
+            self.ensure_available()
+            return value
+
+    def call(self, label: str, operation: Callable[[], Any]) -> Any:
+        return self._call_until_deadline(
+            lambda: retry_transport(
                 label,
                 operation,
                 policy=self.retry_policy,
-                sleeper=self.sleeper,
+                sleeper=self._sleep_within_budget,
             )
-        except DataTransportError as error:
-            self.ensure_available()
-            raise RetryableFragmentFailure(
-                f"{self.stage} fragment transport exhausted"
-            ) from error
-        self.ensure_available()
-        return value
+        )
 
     def call_pretried(self, operation: Callable[[], Any]) -> Any:
-        """Run an operation that already owns a bounded retry policy."""
+        """Run one pretried round so a splittable request can shrink."""
 
         self.ensure_available()
         try:
@@ -199,6 +259,14 @@ class StageBudget:
             ) from error
         self.ensure_available()
         return value
+
+    def call_pretried_until_deadline(
+        self,
+        operation: Callable[[], Any],
+    ) -> Any:
+        """Retry an already-pretried unsplittable leaf to the hard deadline."""
+
+        return self._call_until_deadline(operation)
 
 
 def _load_base_builder() -> Any:
@@ -699,6 +767,88 @@ def _base_request(
     )
 
 
+def _is_single_key_factor_request(request: Any) -> bool:
+    return (
+        request.source == "factor-close"
+        and request.start_date == request.end_date
+        and len(request.symbols) == 1
+    )
+
+
+def _base_verified_source_absence_path(
+    output: Path,
+    request: Any,
+) -> Path:
+    fragment = BASE_BUILDER._fragment_path(output, request)
+    return fragment.with_name(
+        fragment.name.removesuffix(".part.json") + ".verified-absence.json"
+    )
+
+
+def _base_verified_source_absence_payload(request: Any) -> dict[str, Any]:
+    return {
+        "schemaVersion": VERIFIED_SOURCE_ABSENCE_SCHEMA_VERSION,
+        "request": BASE_BUILDER._request_metadata(request),
+        "verification": {
+            "operation": "get_factor(close)",
+            "result": "empty",
+            "scope": "single-date-single-symbol",
+        },
+    }
+
+
+def _read_base_verified_source_absence(
+    *,
+    output: Path,
+    request: Any,
+    frame: pd.DataFrame,
+) -> tuple[str, str] | None:
+    if not _is_single_key_factor_request(request) or not frame.empty:
+        return None
+    path = _base_verified_source_absence_path(output, request)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    if payload != _base_verified_source_absence_payload(request):
+        return None
+    return (
+        request.start_date.strftime("%Y-%m-%d"),
+        str(request.symbols[0]),
+    )
+
+
+def _write_base_verified_source_absence(
+    *,
+    output: Path,
+    request: Any,
+    frame: pd.DataFrame,
+) -> tuple[str, str]:
+    if not _is_single_key_factor_request(request) or not frame.empty:
+        raise CacheQualityError(
+            "verified source absence requires an empty single-key factor leaf"
+        )
+    # The empty identity-bound fragment is written first.  A crash before the
+    # sidecar leaves an ordinary incomplete fragment, which remains fail closed.
+    BASE_BUILDER._write_fragment(output, request, frame)
+    _write_json_atomic(
+        _base_verified_source_absence_path(output, request),
+        _base_verified_source_absence_payload(request),
+    )
+    return (
+        request.start_date.strftime("%Y-%m-%d"),
+        str(request.symbols[0]),
+    )
+
+
+def _discard_base_verified_source_absence(
+    *,
+    output: Path,
+    request: Any,
+) -> None:
+    _base_verified_source_absence_path(output, request).unlink(missing_ok=True)
+
+
 def _read_base_status(
     *,
     output: Path,
@@ -729,6 +879,9 @@ def _base_fragment_complete(
     frame: pd.DataFrame,
     status: pd.DataFrame,
     request: Any,
+    verified_source_absences: (
+        set[tuple[str, str]] | frozenset[tuple[str, str]]
+    ) = frozenset(),
 ) -> bool:
     start = request.start_date.strftime("%Y-%m-%d")
     end = request.end_date.strftime("%Y-%m-%d")
@@ -741,7 +894,8 @@ def _base_fragment_complete(
         scoped_status.loc[scoped_status["tradeStatus"] == TRADABLE_TRADE_STATUS]
     )
     factor_keys = _frame_keys(frame)
-    return factor_keys <= status_keys and required <= factor_keys
+    missing_tradable = required - factor_keys
+    return factor_keys <= status_keys and missing_tradable <= verified_source_absences
 
 
 def _repair_base_factor_fragment(
@@ -752,13 +906,30 @@ def _repair_base_factor_fragment(
     client: Any,
     budget: StageBudget,
     repaired: list[str],
+    verified_source_absences: set[tuple[str, str]],
 ) -> pd.DataFrame:
     path = BASE_BUILDER._fragment_path(output, request)
     if path.is_file():
         cached = BASE_BUILDER._read_fragment(output, request)
-        if _base_fragment_complete(cached, status, request):
+        verified_absence = _read_base_verified_source_absence(
+            output=output,
+            request=request,
+            frame=cached,
+        )
+        if verified_absence is not None:
+            verified_source_absences.add(verified_absence)
+        if _base_fragment_complete(
+            cached,
+            status,
+            request,
+            verified_source_absences,
+        ):
             return cached
         path.unlink()
+        _discard_base_verified_source_absence(
+            output=output,
+            request=request,
+        )
         repaired.append(
             f"{request.start_date.strftime('%Y-%m-%d')}/"
             f"{request.end_date.strftime('%Y-%m-%d')}"
@@ -773,7 +944,12 @@ def _repair_base_factor_fragment(
         BASE_BUILDER._read_split_marker(output, request, axis, children)
     else:
         try:
-            downloaded = budget.call_pretried(
+            pretried_call = (
+                budget.call_pretried_until_deadline
+                if split_plan is None
+                else budget.call_pretried
+            )
+            downloaded = pretried_call(
                 lambda: BASE_BUILDER._download_fragment(client, request)
             )
         except RetryableFragmentFailure:
@@ -781,7 +957,20 @@ def _repair_base_factor_fragment(
                 raise
         else:
             if _base_fragment_complete(downloaded, status, request):
+                _discard_base_verified_source_absence(
+                    output=output,
+                    request=request,
+                )
                 BASE_BUILDER._write_fragment(output, request, downloaded)
+                return downloaded
+            if _is_single_key_factor_request(request) and downloaded.empty:
+                verified_source_absences.add(
+                    _write_base_verified_source_absence(
+                        output=output,
+                        request=request,
+                        frame=downloaded,
+                    )
+                )
                 return downloaded
             if split_plan is None:
                 raise CacheQualityError(
@@ -806,6 +995,7 @@ def _repair_base_factor_fragment(
             client=client,
             budget=budget,
             repaired=repaired,
+            verified_source_absences=verified_source_absences,
         )
         for child in children
     ]
@@ -814,15 +1004,22 @@ def _repair_base_factor_fragment(
         request,
         context=f"{axis}-split repaired factor-close fragments",
     )
-    if not _base_fragment_complete(combined, status, request):
+    if not _base_fragment_complete(
+        combined,
+        status,
+        request,
+        verified_source_absences,
+    ):
         raise CacheQualityError("repaired base factor coverage is incomplete")
-    BASE_BUILDER._write_fragment(output, request, combined)
+    if _base_fragment_complete(combined, status, request):
+        BASE_BUILDER._write_fragment(output, request, combined)
     return combined
 
 
 def _strict_base_merge(
     factor: pd.DataFrame,
     status: pd.DataFrame,
+    verified_source_absences: set[tuple[str, str]],
 ) -> pd.DataFrame:
     factor_keys = _frame_keys(factor)
     status_keys = _frame_keys(status)
@@ -831,7 +1028,12 @@ def _strict_base_merge(
     tradable_keys = _frame_keys(
         status.loc[status["tradeStatus"] == TRADABLE_TRADE_STATUS]
     )
-    if tradable_keys - factor_keys:
+    status_only_keys = status_keys - factor_keys
+    if verified_source_absences - status_only_keys:
+        raise CacheQualityError(
+            "verified source absence does not match a status-only key"
+        )
+    if (tradable_keys - factor_keys) - verified_source_absences:
         raise CacheQualityError("base cache lacks tradable factor-close rows")
     merged = factor.merge(
         status,
@@ -1054,6 +1256,7 @@ def _prepare_base_cache(
     )
     factor_frames: list[pd.DataFrame] = []
     repaired: list[str] = []
+    verified_source_absences: set[tuple[str, str]] = set()
     for start_date, end_date in BASE_BUILDER._factor_windows(
         factor_window_anchor,
         dates[-1],
@@ -1071,11 +1274,18 @@ def _prepare_base_cache(
                 client=client,
                 budget=budget,
                 repaired=repaired,
+                verified_source_absences=verified_source_absences,
             )
         )
     factor = pd.concat(factor_frames, ignore_index=True)
-    repaired_base = _strict_base_merge(factor, status)
-    if repaired:
+    repaired_base = _strict_base_merge(
+        factor,
+        status,
+        verified_source_absences,
+    )
+    materialized_base = base.copy()
+    materialized_base["date"] = materialized_base["date"].dt.strftime("%Y-%m-%d")
+    if repaired or _frame_keys(materialized_base) != _frame_keys(repaired_base):
         _write_frame_atomic(config.base_cache, repaired_base)
     spot = {"matched": True, "skipped": True}
     if config.perform_spot_checks:
@@ -1086,18 +1296,33 @@ def _prepare_base_cache(
             row=sample,
         )
     quality = _frame_quality(repaired_base)
-    quality["statusOnlyNonTradable"] = len(_frame_keys(status) - _frame_keys(factor))
+    status_only_keys = _frame_keys(status) - _frame_keys(factor)
+    quality["statusOnlyNonTradable"] = len(status_only_keys - verified_source_absences)
+    quality["verifiedSourceAbsenceCount"] = len(verified_source_absences)
     quality["repairedFragments"] = sorted(set(repaired))
+    assumptions: list[str] = []
+    if verified_source_absences:
+        assumptions.append(
+            f"{len(verified_source_absences)} identity-bound single-key "
+            "get_factor(close) requests returned verified empty responses; "
+            "those keys are non-tradable because effective tradability "
+            "requires both price availability and trade_status."
+        )
     return repaired_base, {
         "status": "ready",
         "path": _relative_cache_path(config.base_cache, config.cache_root),
         "columns": list(HISTORICAL_COLUMNS),
         "factorWindowAnchor": factor_window_anchor.strftime("%Y-%m-%d"),
         "factorWindowAnchorSource": factor_window_anchor_source,
+        "effectiveTradabilityRule": "price_available_and_trade_status",
+        "assumptions": assumptions,
         **quality,
         "quality": {
             "primaryKeysValid": True,
-            "tradableFactorCoverage": True,
+            "effectiveTradableFactorCoverage": True,
+            "providerTradableFactorCoverage": (len(verified_source_absences) == 0),
+            "verifiedSourceAbsenceCount": len(verified_source_absences),
+            "unverifiedTradableMissingKeys": 0,
         },
         "spotCheck": spot,
     }
@@ -1984,6 +2209,7 @@ def prepare_v9_p1_cache(
         return report
 
     datasets["basePanel"] = base_result
+    assumptions.extend(base_result.get("assumptions", []))
     base_dates = pd.DatetimeIndex(
         sorted(pd.Timestamp(value) for value in base["date"].unique())
     )
