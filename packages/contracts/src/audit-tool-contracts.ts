@@ -119,6 +119,7 @@ export interface HomogeneityAuditResult {
   readonly summary: {
     readonly nearestComparator: HomogeneityComparator | null;
     readonly maxAbsMeanSpearman: number | null;
+    /** Complete calendar anniversaries in the effective adjusted-close span. */
     readonly yearsCovered: number;
     readonly rankIcSlope: number | null;
   };
@@ -356,7 +357,12 @@ export const RUN_HOMOGENEITY_RESPONSE_SCHEMA = {
           anyOf: [{ type: "string", enum: HOMOGENEITY_COMPARATORS }, { type: "null" }],
         },
         maxAbsMeanSpearman: FINITE_NUMBER_OR_NULL_SCHEMA,
-        yearsCovered: { type: "integer", minimum: 0 },
+        yearsCovered: {
+          type: "integer",
+          minimum: 0,
+          description:
+            "Complete calendar anniversaries between the first and last adjusted-close observations; independent of annualIc calendar buckets.",
+        },
         rankIcSlope: FINITE_NUMBER_OR_NULL_SCHEMA,
       },
     },

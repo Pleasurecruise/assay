@@ -47,20 +47,21 @@ describe("run_homogeneity tool", () => {
     expect(result.summary).toEqual({
       nearestComparator: "momentum_20",
       maxAbsMeanSpearman: 1,
-      yearsCovered: 3,
+      yearsCovered: 2,
       rankIcSlope: -0.03,
     });
+    expect(result.annualIc).toHaveLength(3);
     expect(result.sourceRef).toBe(HOMOGENEITY_AUDIT_SOURCE_REF);
   });
 
-  test("rejects a summary whose year count does not match annual evidence", async () => {
+  test("rejects a non-integer effective observation span", async () => {
     await expect(
       runHomogeneitySubprocess(mockProcess, {
         kind: "homogeneity",
         spec: { ...spec, mockInvalidYears: true } as CanonicalStrategySpec,
         budget: { maxVariants: 1 },
       }),
-    ).rejects.toThrow("summary.yearsCovered must equal annualIc length");
+    ).rejects.toThrow("summary.yearsCovered must be a non-negative integer");
   });
 
   test("pins one fixed call and all frozen evaluation thresholds in the prompt", () => {

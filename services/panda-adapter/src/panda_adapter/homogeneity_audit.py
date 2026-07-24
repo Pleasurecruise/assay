@@ -103,6 +103,21 @@ def run_homogeneity(
     )
     if not annual_ic:
         raise RuntimeError("homogeneity audit has no valid annual IC evidence")
+    observation_start = pd.Timestamp(prices.index.min()).normalize()
+    observation_end = pd.Timestamp(prices.index.max()).normalize()
+    years_covered = _completed_observation_years(
+        observation_start,
+        observation_end,
+    )
+    assumptions.append(
+        (
+            f"yearsCovered={years_covered} counts complete calendar "
+            "anniversaries between the first adjusted-close observation "
+            f"({observation_start.date().isoformat()}) and the last "
+            f"({observation_end.date().isoformat()}); annualIc rows remain "
+            "calendar-year buckets and are not a duration measure."
+        )
+    )
 
     valid_comparisons = [
         row for row in comparisons if row["meanSpearman"] is not None
@@ -135,7 +150,7 @@ def run_homogeneity(
                 if nearest is not None
                 else None
             ),
-            "yearsCovered": len(annual_ic),
+            "yearsCovered": years_covered,
             "rankIcSlope": _finite(rank_ic_slope),
         },
         "sourceRef": HOMOGENEITY_AUDIT_SOURCE_REF,
@@ -394,6 +409,22 @@ def _completed_rebalance_dates(
         for position in range(len(dates) - 1)
         if periods[position] != periods[position + 1]
     ]
+
+
+def _completed_observation_years(
+    first_observation: pd.Timestamp,
+    last_observation: pd.Timestamp,
+) -> int:
+    """Count whole calendar anniversaries in the effective observation span."""
+
+    first = pd.Timestamp(first_observation).normalize()
+    last = pd.Timestamp(last_observation).normalize()
+    if last < first:
+        raise ValueError("homogeneity observation span must be chronological")
+    candidate = last.year - first.year
+    if last < first + pd.DateOffset(years=candidate):
+        candidate -= 1
+    return max(candidate, 0)
 
 
 def _finite_nanmean(values: np.ndarray) -> float | None:

@@ -66,14 +66,14 @@ if (
     summary: {
       nearestComparator: "momentum_20",
       maxAbsMeanSpearman: 1,
-      yearsCovered: 3,
+      yearsCovered: 2,
       rankIcSlope: -0.03,
     },
     sourceRef: "artifact:homogeneity-decay/spearman-ic",
     assumptions: [],
   };
   if (request.spec.mockInvalidYears === true) {
-    response.summary.yearsCovered = 4;
+    response.summary.yearsCovered = 2.5;
   }
   process.stdout.write(JSON.stringify(response));
 }

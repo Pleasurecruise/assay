@@ -221,9 +221,6 @@ function parseResult(stdout: string): HomogeneityAuditResult {
     throw new Error("run_homogeneity summary.maxAbsMeanSpearman must be non-negative");
   }
   const yearsCovered = nonNegativeInteger(summary.yearsCovered, "summary.yearsCovered");
-  if (yearsCovered !== annualIc.length) {
-    throw new Error("run_homogeneity summary.yearsCovered must equal annualIc length");
-  }
   if (parsed.sourceRef !== HOMOGENEITY_AUDIT_SOURCE_REF) {
     throw new Error(`run_homogeneity sourceRef must equal ${HOMOGENEITY_AUDIT_SOURCE_REF}`);
   }

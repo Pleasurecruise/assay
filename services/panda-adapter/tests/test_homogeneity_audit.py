@@ -172,6 +172,62 @@ class HomogeneityKnownAnswerTest(unittest.TestCase):
         self.assertEqual(full["sourceRef"], HOMOGENEITY_AUDIT_SOURCE_REF)
         self.assertTrue(full["annualIc"])
 
+    def test_years_covered_uses_effective_span_not_calendar_buckets(self) -> None:
+        dates = pd.bdate_range("2023-02-01", "2026-03-31")
+        positions = np.arange(len(dates), dtype=float)
+        growth = np.asarray([1.0005, 1.0008, 1.0011, 1.0014])
+        prices = pd.DataFrame(
+            {
+                symbol: 100.0 * np.power(rate, positions)
+                for symbol, rate in zip(
+                    ["A", "B", "C", "D"],
+                    growth,
+                    strict=True,
+                )
+            },
+            index=dates,
+        )
+        panel = MarketPanel(
+            adjusted_close=prices,
+            tradable=pd.DataFrame(True, index=dates, columns=prices.columns),
+        )
+        spec = {
+            "specVersion": "1",
+            "universe": {"index": "000300.SH"},
+            "signal": {
+                "kind": "template",
+                "template": "momentum",
+                "params": {"window": 20},
+            },
+            "selection": {"topN": 2, "weighting": "equal"},
+            "rebalance": {"frequency": "monthly", "at": "close"},
+            "window": {
+                "start": dates[0].strftime("%Y%m%d"),
+                "end": dates[-1].strftime("%Y%m%d"),
+            },
+            "costs": {"model": "none"},
+        }
+
+        result = run_homogeneity(
+            spec,
+            panel_loader=lambda _: panel,
+            factor_loader=lambda: None,
+        )
+
+        self.assertEqual(
+            [row["year"] for row in result["annualIc"]],
+            ["2023", "2024", "2025", "2026"],
+        )
+        self.assertEqual(result["summary"]["yearsCovered"], 3)
+        self.assertTrue(
+            any(
+                "2023-02-01" in assumption
+                and "2026-03-31" in assumption
+                and "calendar-year buckets" in assumption
+                for assumption in result["assumptions"]
+            )
+        )
+
     def test_protocol_dispatches_homogeneity_once(self) -> None:
         spec = {"frozen": True}
         expected = {"kind": "homogeneity"}
