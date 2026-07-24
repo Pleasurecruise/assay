@@ -31,7 +31,7 @@ interface AuditCheckResult {
 | `pass_with_reservations` | Usable only with explicit conditions                 |
 | `fail`                   | A reproducible material defect was found             |
 | `insufficient_evidence`  | Required evidence is unavailable or unresolved       |
-| `not_applicable`         | The active skill profile does not require this check |
+| `not_applicable`         | The active skill profile does not require this check, or the audit ended before execution (§4.1) |
 
 Executed checks use confidence in `[0, 1]`. `not_applicable` uses null
 confidence and empty evidence arrays.
@@ -237,8 +237,76 @@ Contract rules:
 - `comparison` is non-null only for `robustness_comparison` and contains a
   subject ranking plus evidence references.
 - Provenance participates in the idempotency and cache key.
+- A result with verdict `UNVERIFIABLE` and no executed checks must set
+  `reasonCode` (§4.1); `reasonCode` is absent otherwise.
 - Public JSON fields use camelCase, Agent IDs use kebab-case, enum values use
   snake_case, and verdicts use uppercase codes.
+
+### 4.1 Early-Exit UNVERIFIABLE Results
+
+Some audits terminate before any check executes: the input is outside the
+supported strategy family, clarification is exhausted or expires, or verified
+data coverage falls below the deterministic threshold
+(A2A_SERVER §9.1). These early exits reuse **the same Artifact schema** — there
+is no separate rejection document, and callers only ever parse one shape.
+
+Shape rules for an early-exit result:
+
+- `verdict` is `UNVERIFIABLE` and `confidence` is `null`;
+- `checks` still lists all five canonical IDs, each with conclusion
+  `not_applicable`, null confidence, and empty evidence arrays (exactly the
+  shape `parseAuditCheckResult` already enforces);
+- `reasonCode` is required and explains why nothing ran:
+
+```ts
+type EarlyExitReasonCode =
+  | "unsupported_input"        // outside the supported strategy family
+  | "insufficient_information" // caller declined or gave unusable answers
+  | "clarification_expired"    // INPUT_REQUIRED wait exceeded policy
+  | "coverage_too_narrow";     // effective window below the §9.1 threshold
+```
+
+- `missingInformation` (result-level, same `MissingEvidence` item shape)
+  lists every unresolved requirement — per-check `missingEvidence` stays
+  empty because `not_applicable` requires it;
+- `retryWith` (optional) carries a machine-readable resubmission suggestion,
+  e.g. the narrowed `StrategySpec` for `coverage_too_narrow`;
+- `moire` reports zero disputes; `recoveryConditions` may use the existing
+  `intake` scope; `riskDisclosure` remains mandatory.
+
+A per-check `not_applicable` only means "this slot has no data"; the
+result-level `reasonCode` is the single authoritative explanation. Compact
+example:
+
+```json
+{
+  "subjectId": "strategy_02",
+  "verdict": "UNVERIFIABLE",
+  "confidence": null,
+  "summary": "The strategy uses custom Python code, which is outside the supported strategy family.",
+  "reasonCode": "unsupported_input",
+  "missingInformation": [
+    {
+      "requirement": "signal expressed as a library factor, template, or panda_factor formula",
+      "reason": "arbitrary executable code cannot be audited",
+      "sourceRefs": ["doc:STRATEGY_SPEC#signal"]
+    }
+  ],
+  "checks": [
+    { "id": "param-robustness", "conclusion": "not_applicable", "confidence": null, "evidence": [], "missingEvidence": [] },
+    { "id": "data-availability", "conclusion": "not_applicable", "confidence": null, "evidence": [], "missingEvidence": [] },
+    { "id": "cost-stress", "conclusion": "not_applicable", "confidence": null, "evidence": [], "missingEvidence": [] },
+    { "id": "regime-dependency", "conclusion": "not_applicable", "confidence": null, "evidence": [], "missingEvidence": [] },
+    { "id": "homogeneity-decay", "conclusion": "not_applicable", "confidence": null, "evidence": [], "missingEvidence": [] }
+  ],
+  "moire": { "disputesOpened": 0, "resolved": [], "unresolved": [] },
+  "recoveryConditions": [
+    { "scope": "intake", "condition": "Resubmit the signal as a template or library factor." }
+  ],
+  "reviewTriggers": [],
+  "assumptionsAndLimits": []
+}
+```
 
 ## 5. A2A Delivery
 
@@ -254,7 +322,12 @@ marking the A2A Task completed.
 ## 6. Public Skills
 
 - `audit_strategy`: one strategy, all five checks, `kind=strategy_audit`.
-- `audit_factor`: one factor, profile-based checks,
-  `kind=factor_audit`.
+  **MVP — the only skill on the baseline Agent Card** (A2A_SERVER §22).
+- `audit_factor`: one factor, profile-based checks, `kind=factor_audit`.
+  **Post-MVP (stretch):** the check runner supports it, but the FactorSpec,
+  envelope, and Intake path are not yet designed; schema reserved.
 - `compare_robustness`: at least two same-kind subjects,
   `kind=robustness_comparison`; mixed kinds return `UNVERIFIABLE`.
+  **Post-baseline (Polish phase per DEMO.md):** excluded from the
+  implemented fan-out contract and from the 20-minute budget; schema
+  reserved. Callers can compare two audit Artifacts client-side meanwhile.
