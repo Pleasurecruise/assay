@@ -10,11 +10,14 @@ const mockProcess = {
   command: process.execPath,
   args: [fileURLToPath(new URL("./fixtures/mock-availability-runner.mjs", import.meta.url))],
 };
+const dataRef =
+  "assay-local-data-v1:audit_test:g01:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 describe("run_availability_audit tool", () => {
   test("accepts the bounded PIT correction response", async () => {
     const result = await runAvailabilityAuditSubprocess(mockProcess, {
       kind: "availability_audit",
+      dataRef,
       spec: { specVersion: "1" },
       budget: { maxVariants: 1 },
     });
@@ -42,6 +45,7 @@ describe("run_availability_audit tool", () => {
     await expect(
       runAvailabilityAuditSubprocess(mockProcess, {
         kind: "availability_audit",
+        dataRef,
         spec: { specVersion: "1", mockInvalidRate: true },
         budget: { maxVariants: 1 },
       }),
@@ -72,6 +76,9 @@ describe("run_availability_audit tool", () => {
         budget: { properties: { maxVariants: { enum: [1] } } },
       },
     });
+    expect(
+      (tool?.parameters as { properties?: Record<string, unknown> } | undefined)?.properties,
+    ).not.toHaveProperty("dataRef");
     const prompt = definition?.systemPrompt.join("\n") ?? "";
     expect(prompt).toContain('CHECKS_WIRING_POLICY_VERSION="1.0.0"');
     expect(prompt).toContain("|corrected.delta| < 0.02");

@@ -10,10 +10,12 @@ import {
   type RegimeSplitResult,
   type RunRegimeSplitRequest,
 } from "@assay/contracts";
+import { assertHostDataRef, type HostDataRefRequest } from "./data-ref";
 import type { ExperimentProcessConfig } from "./run-experiment-tool";
 
 export { REGIME_SPLIT_SOURCE_REF };
 export type { RegimeSplitResult, RunRegimeSplitRequest };
+export type HostRunRegimeSplitRequest = RunRegimeSplitRequest & HostDataRefRequest;
 
 type AgentTool = NonNullable<AgentDefinition["tools"]>[number];
 
@@ -192,7 +194,8 @@ function parseResult(stdout: string): RegimeSplitResult {
   };
 }
 
-function assertRequest(request: RunRegimeSplitRequest): void {
+function assertRequest(request: HostRunRegimeSplitRequest): void {
+  assertHostDataRef(request.dataRef, "run_experiment regime_split");
   if (
     request.kind !== "regime_split" ||
     !isRecord(request.spec) ||
@@ -285,7 +288,7 @@ export function regimeSplitAgentView(result: RegimeSplitResult): RegimeSplitAgen
 
 export async function runRegimeSplitSubprocess(
   config: ExperimentProcessConfig,
-  request: RunRegimeSplitRequest,
+  request: HostRunRegimeSplitRequest,
 ): Promise<RegimeSplitResult> {
   assertRequest(request);
   if (!config.command.trim()) {
@@ -377,7 +380,7 @@ export function createRunRegimeSplitTool(config: ExperimentProcessConfig): Agent
       },
     ],
     async execute(_toolCallId, params) {
-      const request = params as RunRegimeSplitRequest;
+      const request = params as HostRunRegimeSplitRequest;
       assertRequest(request);
       const result = await runRegimeSplitSubprocess(config, request);
       return {

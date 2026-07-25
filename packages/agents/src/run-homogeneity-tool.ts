@@ -10,10 +10,12 @@ import {
   type HomogeneityComparison,
   type RunHomogeneityRequest,
 } from "@assay/contracts";
+import { assertHostDataRef, type HostDataRefRequest } from "./data-ref";
 import type { ExperimentProcessConfig } from "./run-experiment-tool";
 
 export { HOMOGENEITY_AUDIT_SOURCE_REF };
 export type { HomogeneityAuditResult, RunHomogeneityRequest };
+export type HostRunHomogeneityRequest = RunHomogeneityRequest & HostDataRefRequest;
 
 type AgentTool = NonNullable<AgentDefinition["tools"]>[number];
 
@@ -242,7 +244,8 @@ function parseResult(stdout: string): HomogeneityAuditResult {
   };
 }
 
-function assertRequest(request: RunHomogeneityRequest): void {
+function assertRequest(request: HostRunHomogeneityRequest): void {
+  assertHostDataRef(request.dataRef, "run_homogeneity");
   if (
     request.kind !== "homogeneity" ||
     !isRecord(request.spec) ||
@@ -255,7 +258,7 @@ function assertRequest(request: RunHomogeneityRequest): void {
 
 export async function runHomogeneitySubprocess(
   config: ExperimentProcessConfig,
-  request: RunHomogeneityRequest,
+  request: HostRunHomogeneityRequest,
 ): Promise<HomogeneityAuditResult> {
   assertRequest(request);
   if (!config.command.trim()) {
@@ -347,7 +350,7 @@ export function createRunHomogeneityTool(config: ExperimentProcessConfig): Agent
       },
     ],
     async execute(_toolCallId, params) {
-      const request = params as RunHomogeneityRequest;
+      const request = params as HostRunHomogeneityRequest;
       assertRequest(request);
       const result = await runHomogeneitySubprocess(config, request);
       return {

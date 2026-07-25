@@ -35,6 +35,7 @@ export interface ParallelAuditRunner {
 export function projectFrozenAuditInput(
   frozen: FrozenAuditInput,
   identity: AuditExecutionIdentity,
+  dataRef: string,
 ): ParallelAuditChecksRequest {
   return {
     schemaVersion: AUDIT_CHECK_SCHEMA_VERSION,
@@ -50,6 +51,7 @@ export function projectFrozenAuditInput(
     budgets: frozen.checkPlan.budgets,
     metadata: {
       specHash: frozen.specHash,
+      dataRef,
       capabilitySnapshotId: frozen.capabilitySnapshotId,
       codeRevision: frozen.codeRevision,
       requestSchemaVersion: frozen.requestSchemaVersion,
@@ -171,9 +173,13 @@ function deriveRecoveryConditions(
 
 function collectDataSources(
   checks: readonly AuditCheckResult[],
+  acquisitionSources: readonly string[] = [],
 ): readonly { id: string; version: string }[] {
-  const sourceRefs = new Set(
-    checks.flatMap((check) =>
+  const sourceRefs = new Set([
+    ...acquisitionSources.filter(
+      (sourceRef) => sourceRef.startsWith("pandadata:") || sourceRef.startsWith("assay:backtest:"),
+    ),
+    ...checks.flatMap((check) =>
       check.evidence.flatMap((evidence) =>
         evidence.sourceRefs.filter(
           (sourceRef) =>
@@ -181,7 +187,7 @@ function collectDataSources(
         ),
       ),
     ),
-  );
+  ]);
   return [...sourceRefs].sort().map((id) => ({
     id,
     version: id.startsWith("pandadata:") ? "panda_data@0.0.12" : "assay-backtester@1",
@@ -214,6 +220,7 @@ export interface BuildExecutedArtifactOptions {
   result: ParallelAuditChecksResult;
   generatedAt: string;
   claimComparison?: ClaimComparison | null;
+  acquisitionSources?: readonly string[];
 }
 
 export function buildExecutedAuditArtifact(options: BuildExecutedArtifactOptions): AuditArtifact {
@@ -268,7 +275,7 @@ export function buildExecutedAuditArtifact(options: BuildExecutedArtifactOptions
     provenance: {
       inputHash: options.frozen.specHash,
       dataAsOf: options.frozen.dataAsOf,
-      dataSources: collectDataSources(checks),
+      dataSources: collectDataSources(checks, options.acquisitionSources),
       codeRevision: options.frozen.codeRevision,
     },
   } satisfies AuditArtifact;

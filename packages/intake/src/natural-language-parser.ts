@@ -47,6 +47,11 @@ const EXTRACTION_INSTRUCTIONS = `You extract a natural-language quantitative equ
 
 Return JSON only, with no Markdown and no explanation. Never invent required facts that the user did not provide.
 
+Separate the two meanings in the input:
+- universe, signal, selection, rebalance, window, and costs describe the strategy and alone determine what market data is required;
+- claims are performance numbers asserted by the user and are only targets for later audit comparison.
+Never use a claim to infer, alter, or fill a strategy field.
+
 The supported StrategySpec shape is:
 {
   "specVersion": "1",

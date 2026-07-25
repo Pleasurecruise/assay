@@ -11,6 +11,9 @@ import { MOIRE_EVIDENCE_METRICS } from "../src/moire";
 import type { AuditCheckTaskRunner, MoireExperimentExecutor } from "../src/parallel-check-runner";
 import { HARD_CHECK_DEADLINE_MS, ParallelAuditCheckRunner } from "../src/parallel-check-runner";
 
+const dataRef =
+  "assay-local-data-v1:audit_test:g01:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
 function checkResult(id: AuditCheckId): AuditCheckResult {
   return {
     id,
@@ -58,6 +61,7 @@ function strategyRequest(): ParallelAuditChecksRequest {
       kind: "strategy",
       input: "沪深 300 月频动量策略",
     },
+    metadata: { dataRef },
   };
 }
 
@@ -88,6 +92,8 @@ describe("ParallelAuditCheckRunner", () => {
     expect(result.checks.every((check) => check.conclusion === "pass")).toBe(true);
     for (const request of dispatched) {
       expect(request.metadata?.frozenStrategySpec).toBe("沪深 300 月频动量策略");
+      expect(request.metadata?.dataRef).toBe(dataRef);
+      expect(request.input).not.toContain(dataRef);
     }
   });
 
@@ -379,6 +385,7 @@ describe("ParallelAuditCheckRunner", () => {
       auditId: "audit-1",
       traceId: result.traceId,
       subjectId: "strategy-1",
+      dataRef,
       frozenStrategySpec: "沪深 300 月频动量策略",
     });
     expect(calls[0]?.[1]).not.toHaveProperty("checks");
@@ -591,6 +598,7 @@ describe("ParallelAuditCheckRunner", () => {
         kind: "factor",
         input: "20 日动量因子",
       },
+      metadata: { dataRef },
     };
 
     const result = await new ParallelAuditCheckRunner(taskRunner).run(request);
@@ -648,6 +656,25 @@ describe("ParallelAuditCheckRunner", () => {
     await expect(new ParallelAuditCheckRunner(taskRunner).run(invalid)).rejects.toThrow(
       "audit_strategy requires a strategy subject",
     );
+    expect(dispatched).toHaveLength(0);
+  });
+
+  test("rejects a missing host data reference before dispatch", async () => {
+    const dispatched: RuntimeTaskRequest[] = [];
+    const taskRunner: AuditCheckTaskRunner = {
+      async run(request) {
+        dispatched.push(request);
+        return runtimeResult(request, JSON.stringify(checkResult(request.agentId as AuditCheckId)));
+      },
+    };
+    const requestWithoutDataRef: ParallelAuditChecksRequest = {
+      ...strategyRequest(),
+      metadata: {},
+    };
+
+    await expect(
+      new ParallelAuditCheckRunner(taskRunner).run(requestWithoutDataRef),
+    ).rejects.toThrow("Parallel audit dataRef must be a non-empty string");
     expect(dispatched).toHaveLength(0);
   });
 });

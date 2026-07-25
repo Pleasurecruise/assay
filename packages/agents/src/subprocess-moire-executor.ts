@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { canonicalizeStrategySpec, hashStrategySpec, type StrategySpec } from "@assay/contracts";
+import { assertHostDataRef } from "./data-ref";
 import type {
   DiscriminativeMoireExperiment,
   DiscriminativeMoireOutcome,
@@ -195,6 +196,7 @@ export class SubprocessMoireExperimentExecutor implements MoireExperimentExecuto
     context: MoireExperimentExecutionContext,
   ): Promise<DiscriminativeMoireOutcome> {
     const spec = trustedSpec(context);
+    assertHostDataRef(context.dataRef, "Moiré subprocess");
     const config = this.#config;
     if (!config.command.trim()) {
       throw new Error("Moiré subprocess command cannot be empty");
@@ -249,7 +251,9 @@ export class SubprocessMoireExperimentExecutor implements MoireExperimentExecuto
         }
       });
       child.stdin.once("error", () => fail("Moiré subprocess input failed"));
-      child.stdin.end(`${JSON.stringify({ kind: experiment.kind, spec })}\n`);
+      child.stdin.end(
+        `${JSON.stringify({ kind: experiment.kind, spec, dataRef: context.dataRef })}\n`,
+      );
     });
   }
 }

@@ -4,6 +4,12 @@
 > lifecycle of the Assay A2A Server. It does not describe an implemented
 > gateway.
 >
+> Runtime data-plane update (2026-07-25): sections below that propose live
+> PandaData initialization, credentials, or online tools are superseded by
+> [LOCAL_DATA_PACKAGE_PIPELINE.md](LOCAL_DATA_PACKAGE_PIPELINE.md). Production
+> now resolves a request-scoped immutable local package before the existing
+> audit stages.
+>
 > Related contracts and evidence:
 > [STRATEGY_SPEC.md](STRATEGY_SPEC.md),
 > [DATA_NOTES.md](DATA_NOTES.md),

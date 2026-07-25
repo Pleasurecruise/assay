@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import type { AgentDefinition } from "@assay/agent-runtime";
 import { COST_STRESS_SOURCE_REF, PARAMETER_GRID_SOURCE_REF } from "@assay/contracts";
+import { assertHostDataRef, type HostDataRefRequest } from "./data-ref";
 
 export type ExperimentKind = "baseline" | "grid" | "cost_ladder";
 export type AgentExperimentKind = Exclude<ExperimentKind, "baseline">;
@@ -16,7 +17,7 @@ export interface ExperimentGrid {
   readonly topN: readonly number[];
 }
 
-export interface RunExperimentRequest {
+export interface RunExperimentRequest extends HostDataRefRequest {
   readonly kind: ExperimentKind;
   readonly spec: object;
   readonly grid?: ExperimentGrid;
@@ -98,6 +99,7 @@ function assertRequest(
   value: RunExperimentRequest,
   expectedKind?: ExperimentKind,
 ): asserts value is RunExperimentRequest {
+  assertHostDataRef(value.dataRef, "run_experiment");
   if (expectedKind !== undefined && value.kind !== expectedKind) {
     throw new Error(`run_experiment expected kind "${expectedKind}"`);
   }
@@ -445,7 +447,8 @@ export function createRunExperimentTool(
       },
     ],
     async execute(_toolCallId, params) {
-      // AgentRuntime injects the trusted frozen spec after schema validation.
+      // AgentRuntime injects the trusted frozen spec and task data reference
+      // after schema validation.
       const boundRequest = params as RunExperimentRequest;
       const request: RunExperimentRequest =
         kind === "grid"

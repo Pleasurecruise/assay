@@ -12,6 +12,8 @@ const mockProcess = {
   command: process.execPath,
   args: [fileURLToPath(new URL("./fixtures/mock-regime-runner.mjs", import.meta.url))],
 };
+const dataRef =
+  "assay-local-data-v1:audit_test:g01:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 const spec: CanonicalStrategySpec = {
   specVersion: "1",
@@ -31,6 +33,7 @@ describe("run_experiment regime_split tool", () => {
   test("accepts the bounded no-lookahead regime response", async () => {
     const result = await runRegimeSplitSubprocess(mockProcess, {
       kind: "regime_split",
+      dataRef,
       spec,
       budget: { maxVariants: 1 },
     });
@@ -50,6 +53,7 @@ describe("run_experiment regime_split tool", () => {
     await expect(
       runRegimeSplitSubprocess(mockProcess, {
         kind: "regime_split",
+        dataRef,
         spec: { ...spec, mockInvalidDominant: true } as CanonicalStrategySpec,
         budget: { maxVariants: 1 },
       }),
@@ -79,6 +83,9 @@ describe("run_experiment regime_split tool", () => {
         budget: { properties: { maxVariants: { enum: [1] } } },
       },
     });
+    expect(
+      (tool?.parameters as { properties?: Record<string, unknown> } | undefined)?.properties,
+    ).not.toHaveProperty("dataRef");
     const prompt = definition?.systemPrompt.join("\n") ?? "";
     expect(prompt).toContain("必须且只能调用一次 run_experiment");
     expect(prompt).toContain("t-1");
@@ -96,6 +103,7 @@ describe("run_experiment regime_split tool", () => {
       "call-regime",
       {
         kind: "regime_split",
+        dataRef,
         spec,
         budget: { maxVariants: 1 },
       },

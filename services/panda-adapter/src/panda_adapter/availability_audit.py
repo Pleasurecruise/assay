@@ -49,6 +49,7 @@ from .market_panel import (
     MarketPanel,
     load_cached_market_panel,
 )
+from .local_data import LocalAuditData
 from .source_normalization import (
     normalize_source_frame,
     symbols_from_weights,
@@ -141,6 +142,7 @@ def run_availability_audit(
     clock: Callable[[], float] = monotonic,
     sleeper: Callable[[float], None] = sleep,
     retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY,
+    local_data: LocalAuditData | None = None,
 ) -> dict[str, Any]:
     """Run the PIT correction and return one JSON-safe availability result."""
 
@@ -154,7 +156,12 @@ def run_availability_audit(
         raise ValueError("max_blocked_seconds must be positive")
 
     strategy = _parse_strategy(spec)
-    panel = panel_loader(spec)
+    using_scoped_data = local_data is not None
+    if local_data is not None:
+        local_data.require_spec_identity(spec)
+        panel = local_data.as_of_market_panel(spec)
+    else:
+        panel = panel_loader(spec)
     base_symbols = tuple(str(symbol) for symbol in panel.adjusted_close.columns)
     if not base_symbols:
         raise ValueError("availability audit requires a non-empty market panel")
@@ -162,89 +169,125 @@ def run_availability_audit(
     if not rebalance_pairs:
         raise ValueError("availability audit requires a completed monthly rebalance")
 
-    root = cache_root or Path(
-        os.environ.get("ASSAY_PIT_CACHE_ROOT", str(DEFAULT_PIT_CACHE_ROOT))
-    )
-    configured_v9_root = os.environ.get("ASSAY_V9_CACHE_ROOT")
-    # Promotion switches availability from the resumable preparation path to
-    # a fail-closed reader.  The no-manifest development path below retains
-    # incremental acquisition and its bounded remove-only degradation.
-    cache_only = bool(configured_v9_root)
     historical_policy: HistoricalMembersPolicy | None = None
-    if configured_v9_root:
-        historical_policy = load_historical_members_policy(
-            Path(configured_v9_root),
-            pit_cache_root=root,
-            base_symbols=base_symbols,
-            panel_dates=panel.adjusted_close.index,
-        )
-    acquisition_budget = _AcquisitionBudget(
-        max_blocked_seconds=float(max_blocked_seconds),
-        clock=clock,
-        sleeper=sleeper,
-        retry_policy=retry_policy,
-    )
-    lazy_client = _LazyClient(
-        factory=client_factory,
-        value=client,
-    )
-
     signal_dates = [signal_date for signal_date, _ in rebalance_pairs]
-    timeline, timeline_complete = _load_pit_timeline(
-        index_symbol=INDEX_SYMBOL,
-        requested_dates=signal_dates,
-        base_symbols=base_symbols,
-        cache_root=root,
-        client=lazy_client,
-        budget=acquisition_budget,
-        cache_only=cache_only,
-    )
-    if not timeline_complete:
-        # P1 makes the PIT membership timeline a hard requirement.  The only
-        # authorized degradation is remove-only when historical-member prices
-        # or statuses are unavailable after the timeline itself is complete.
-        raise AvailabilityBudgetExceeded(
-            "PIT constituent timeline acquisition is incomplete"
-        )
-
-    mode: AvailabilityMode = (
-        "degraded_remove_only"
-        if historical_policy is not None and historical_policy.mode == "remove_only"
-        else "full_pit"
-    )
-    historical_symbols = sorted(
-        set().union(*timeline.values()) - set(base_symbols) if timeline else set()
-    )
-    expanded_panel = panel
-    if mode == "full_pit" and historical_symbols:
-        mutable_required: dict[pd.Timestamp, set[str]] = {}
-        historical_symbol_set = set(historical_symbols)
-        for signal_date, execution_date in rebalance_pairs:
-            members = (
-                set(timeline.get(signal_date, frozenset())) & historical_symbol_set
+    acquisition_budget: _AcquisitionBudget | None = None
+    if local_data is not None:
+        root = local_data.derived_root
+        timeline_cache = local_data.pit_membership_cache()
+        missing_snapshots = [
+            date for date in signal_dates if date not in timeline_cache.snapshots
+        ]
+        if missing_snapshots:
+            raise RuntimeError(
+                "local data package omits a required PIT rebalance snapshot"
             )
-            for required_date in (signal_date, execution_date):
-                mutable_required.setdefault(required_date, set()).update(members)
-        required_status_symbols_by_date = {
-            date: frozenset(symbols) for date, symbols in mutable_required.items()
+        timeline = {
+            date: timeline_cache.snapshots[date]
+            for date in signal_dates
         }
-        try:
-            extra_rows = _load_or_fetch_extra_rows(
-                index_symbol=INDEX_SYMBOL,
-                symbols=historical_symbols,
-                start_date=panel.adjusted_close.index.min(),
-                end_date=panel.adjusted_close.index.max(),
-                trading_dates=panel.adjusted_close.index,
-                required_status_symbols_by_date=(required_status_symbols_by_date),
-                cache_root=root,
-                client=lazy_client,
-                budget=acquisition_budget,
-                cache_only=cache_only,
+        historical_policy = local_data.historical_members_policy(spec)
+        mode = (
+            "degraded_remove_only"
+            if historical_policy.mode == "remove_only"
+            else "full_pit"
+        )
+        expanded_panel = local_data.full_market_panel(spec)
+        missing_members = set().union(*timeline.values()) - set(
+            expanded_panel.adjusted_close.columns
+        )
+        if missing_members and mode == "full_pit":
+            raise RuntimeError(
+                "local data panel omits historical PIT constituents"
             )
-        except AvailabilityBudgetExceeded:
-            mode = "degraded_remove_only"
-        else:
-            expanded_panel = _merge_extra_panel(panel, extra_rows)
+    else:
+        root = cache_root or Path(
+            os.environ.get("ASSAY_PIT_CACHE_ROOT", str(DEFAULT_PIT_CACHE_ROOT))
+        )
+        configured_v9_root = os.environ.get("ASSAY_V9_CACHE_ROOT")
+        # Promotion switches availability from the resumable preparation path
+        # to a fail-closed reader. The no-manifest path retains incremental
+        # acquisition and its bounded remove-only degradation.
+        cache_only = bool(configured_v9_root)
+        if configured_v9_root:
+            historical_policy = load_historical_members_policy(
+                Path(configured_v9_root),
+                pit_cache_root=root,
+                base_symbols=base_symbols,
+                panel_dates=panel.adjusted_close.index,
+            )
+        acquisition_budget = _AcquisitionBudget(
+            max_blocked_seconds=float(max_blocked_seconds),
+            clock=clock,
+            sleeper=sleeper,
+            retry_policy=retry_policy,
+        )
+        lazy_client = _LazyClient(
+            factory=client_factory,
+            value=client,
+        )
+        timeline, timeline_complete = _load_pit_timeline(
+            index_symbol=INDEX_SYMBOL,
+            requested_dates=signal_dates,
+            base_symbols=base_symbols,
+            cache_root=root,
+            client=lazy_client,
+            budget=acquisition_budget,
+            cache_only=cache_only,
+        )
+        if not timeline_complete:
+            raise AvailabilityBudgetExceeded(
+                "PIT constituent timeline acquisition is incomplete"
+            )
+        mode = (
+            "degraded_remove_only"
+            if (
+                historical_policy is not None
+                and historical_policy.mode == "remove_only"
+            )
+            else "full_pit"
+        )
+        historical_symbols = sorted(
+            set().union(*timeline.values()) - set(base_symbols)
+            if timeline
+            else set()
+        )
+        expanded_panel = panel
+        if mode == "full_pit" and historical_symbols:
+            mutable_required: dict[pd.Timestamp, set[str]] = {}
+            historical_symbol_set = set(historical_symbols)
+            for signal_date, execution_date in rebalance_pairs:
+                members = (
+                    set(timeline.get(signal_date, frozenset()))
+                    & historical_symbol_set
+                )
+                for required_date in (signal_date, execution_date):
+                    mutable_required.setdefault(required_date, set()).update(
+                        members
+                    )
+            required_status_symbols_by_date = {
+                date: frozenset(symbols)
+                for date, symbols in mutable_required.items()
+            }
+            try:
+                extra_rows = _load_or_fetch_extra_rows(
+                    index_symbol=INDEX_SYMBOL,
+                    symbols=historical_symbols,
+                    start_date=panel.adjusted_close.index.min(),
+                    end_date=panel.adjusted_close.index.max(),
+                    trading_dates=panel.adjusted_close.index,
+                    required_status_symbols_by_date=(
+                        required_status_symbols_by_date
+                    ),
+                    cache_root=root,
+                    client=lazy_client,
+                    budget=acquisition_budget,
+                    cache_only=cache_only,
+                )
+            except AvailabilityBudgetExceeded:
+                mode = "degraded_remove_only"
+            else:
+                expanded_panel = _merge_extra_panel(panel, extra_rows)
 
     future_symbols_by_date = {
         date: set(base_symbols) - set(timeline.get(date, base_symbols))
@@ -294,32 +337,73 @@ def run_availability_audit(
             "present in the frozen market panel."
         ),
         (
-            "PIT constituent snapshots are cached incrementally at signal "
-            "rebalance dates; the existing market panel is never re-downloaded."
-        ),
-        (
             "Financial disclosure timing is not activated because this "
             "strategy uses only price momentum."
         ),
     ]
-    if mode == "full_pit":
+    if local_data is not None:
         assumptions.append(
             (
-                "Historical PIT constituents absent from the as-of panel were "
-                "fetched incrementally with get_factor(close) and trade_status."
+                "The as-of panel, PIT membership, adjusted close, and trade "
+                "status come from the same verified immutable local dataRef."
             )
         )
-    elif historical_policy is not None:
-        assumptions.append(_manifest_remove_only_assumption(historical_policy))
+        if historical_policy is not None and mode == "degraded_remove_only":
+            assumptions.append(_manifest_remove_only_assumption(historical_policy))
+        else:
+            assumptions.append(
+                (
+                    "Historical constituents are selected only from dated "
+                    "non-future index-weight snapshots."
+                )
+            )
+    elif using_scoped_data:
+        assumptions.extend(
+            [
+                (
+                    "The as-of panel, historical PIT membership, adjusted "
+                    "close, and trade status all come from the same "
+                    "authenticated task-scoped runtime dataRef."
+                ),
+                (
+                    "Historical constituents are selected only from dated "
+                    "non-future index-weight snapshots; no current-only "
+                    "constituent fallback is used."
+                ),
+            ]
+        )
     else:
         assumptions.append(
             (
-                "Live PIT acquisition exceeded the "
-                f"{acquisition_budget.max_blocked_seconds:g}-second cumulative "
-                "blocked-time budget; correction is remove-only and does not add "
-                "historical constituents absent from the existing panel."
+                "PIT constituent snapshots are cached incrementally at signal "
+                "rebalance dates; the existing market panel is never "
+                "re-downloaded."
             )
         )
+    if not using_scoped_data:
+        if mode == "full_pit":
+            assumptions.append(
+                (
+                    "Historical PIT constituents absent from the as-of panel "
+                    "were fetched incrementally with get_factor(close) and "
+                    "trade_status."
+                )
+            )
+        elif historical_policy is not None:
+            assumptions.append(
+                _manifest_remove_only_assumption(historical_policy)
+            )
+        else:
+            assert acquisition_budget is not None
+            assumptions.append(
+                (
+                    "Live PIT acquisition exceeded the "
+                    f"{acquisition_budget.max_blocked_seconds:g}-second "
+                    "cumulative blocked-time budget; correction is remove-only "
+                    "and does not add historical constituents absent from the "
+                    "existing panel."
+                )
+            )
 
     # Host-only Moiré M2 context. The corrected panel and membership mask are
     # persisted below the PIT cache boundary and never enter the model-visible
@@ -331,7 +415,11 @@ def run_availability_audit(
         panel=expanded_panel,
         eligible=eligibility,
         availability_mode=mode,
-        cache_version=V9_CACHE_VERSION,
+        cache_version=(
+            local_data.cache_version
+            if local_data is not None
+            else V9_CACHE_VERSION
+        ),
         pit_dataset_version=PIT_DATASET_VERSION,
         pit_cache_root=root,
     )

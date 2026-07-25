@@ -22,6 +22,8 @@ import { describe, expect, test } from "vitest";
 const GENERATED_AT = "2026-07-24T04:00:00.000Z";
 const DATA_AS_OF = "2026-07-24";
 const CORS_ORIGIN = "http://localhost:5173";
+const TEST_DATA_REF =
+  "assay-local-data-v1:audit_e2e:g01:sha256-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
 const COMPLETE_SPEC = {
   specVersion: "1",
@@ -138,6 +140,12 @@ async function withTestServer(
   const requests: ParallelAuditChecksRequest[] = [];
   const executor = new AssayAgentExecutor({
     intake,
+    dataResolver: {
+      resolve: async () => ({
+        dataRef: TEST_DATA_REF,
+        sources: ["local-data-package:test"],
+      }),
+    },
     runner: runnerFactory(requests),
     artifactStore: store,
     dataAsOf: DATA_AS_OF,
@@ -150,10 +158,10 @@ async function withTestServer(
     corsOrigins: [CORS_ORIGIN],
     capabilities: {
       skill: "audit_strategy",
-      dataProvider: "PandaData",
-      dataTools: ["panda_market_data", "assay_strategy_backtest"],
+      dataProvider: "LocalDataPackage",
+      dataTools: [],
       backtester: "assay-backtester@1",
-      dataCredentialsConfigured: true,
+      dataPackagesConfigured: true,
     },
   });
   const server = app.listen(0, "127.0.0.1");
@@ -278,10 +286,10 @@ describe("Assay A2A Skeleton over shared HTTP transports", () => {
       expect(capabilitiesResponse.ok).toBe(true);
       expect(await capabilitiesResponse.json()).toEqual({
         skill: "audit_strategy",
-        dataProvider: "PandaData",
-        dataTools: ["panda_market_data", "assay_strategy_backtest"],
+        dataProvider: "LocalDataPackage",
+        dataTools: [],
         backtester: "assay-backtester@1",
-        dataCredentialsConfigured: true,
+        dataPackagesConfigured: true,
       });
       const readinessResponse = await fetch(`${baseUrl}/readyz`);
       expect(readinessResponse.status).toBe(200);
@@ -290,7 +298,7 @@ describe("Assay A2A Skeleton over shared HTTP transports", () => {
         checks: {
           a2a: true,
           model: true,
-          pandaDataCredentials: true,
+          localDataPackages: true,
         },
       });
 
@@ -517,6 +525,7 @@ describe("Assay A2A Skeleton over shared HTTP transports", () => {
       expect(requests[0]?.metadata?.specHash).toBe(
         hashStrategySpec(requests[0]?.subject.input ?? ""),
       );
+      expect(requests[0]?.metadata?.dataRef).toBe(TEST_DATA_REF);
       expect(artifact.results[0]?.verdict).toBe("UNVERIFIABLE");
       expect(artifact.results[0]?.reasonCode).toBeUndefined();
       expect(artifact.results[0]?.checks.map((check) => check.conclusion)).toEqual(

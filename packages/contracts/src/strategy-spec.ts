@@ -119,6 +119,16 @@ export interface CanonicalStrategySpec {
   readonly claims?: StrategyClaims;
 }
 
+/**
+ * Canonical strategy fields that are allowed to influence data planning.
+ *
+ * `claims?: never` makes the boundary intentional: a claims-bearing
+ * CanonicalStrategySpec is not assignable to a StrategyDataPlanner input.
+ */
+export type CanonicalStrategyDefinition = Omit<CanonicalStrategySpec, "claims"> & {
+  readonly claims?: never;
+};
+
 export const STRATEGY_SPEC_ISSUE_CODES = [
   "missing_field",
   "invalid_type",
@@ -848,6 +858,23 @@ export function toCanonicalStrategySpec(value: StrategySpec): CanonicalStrategyS
       model: spec.costs?.model ?? "standard",
     },
     ...(spec.claims === undefined ? {} : { claims: canonicalizeClaims(spec.claims) }),
+  };
+}
+
+/**
+ * Projects the audited subject into the claims-free strategy definition used
+ * for deterministic data planning. The returned object truly omits `claims`;
+ * this is not a type assertion over the original object.
+ */
+export function strategyForData(spec: CanonicalStrategySpec): CanonicalStrategyDefinition {
+  return {
+    specVersion: spec.specVersion,
+    universe: spec.universe,
+    signal: spec.signal,
+    selection: spec.selection,
+    rebalance: spec.rebalance,
+    window: spec.window,
+    costs: spec.costs,
   };
 }
 

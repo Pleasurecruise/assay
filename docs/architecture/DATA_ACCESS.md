@@ -1,6 +1,12 @@
 # PandaData Access Architecture
 
-## Boundary
+> Runtime status (2026-07-25): this document now describes the offline,
+> pre-competition package-preparation boundary only. The production A2A
+> service does not initialize PandaData or read its credentials; it selects
+> immutable local packages as specified in
+> [LOCAL_DATA_PACKAGE_PIPELINE.md](../product/LOCAL_DATA_PACKAGE_PIPELINE.md).
+
+## Offline preparation boundary
 
 PandaData is a Python SDK and must not be imported by the TypeScript agent
 runtime. Data access crosses a narrow adapter boundary:

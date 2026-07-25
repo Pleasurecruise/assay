@@ -1,94 +1,88 @@
-# Parallel Check E2E Test
+# Local Golden Package E2E
 
-## 1. Scope
+## Scope
 
-The opt-in E2E test covers:
+`bun run e2e:checks` runs the golden input through the production A2A path:
 
 ```text
-real model provider
-  → AgentRuntime
-  → five fresh oh-my-pi Agents
-  → concurrent fan-out
-  → strict branch JSON validation
-  → ParallelAuditChecksResult
+natural-language strategy
+  → Ark StrategyIntake
+  → data-relevant DataPlan
+  → deterministic local package resolution
+  → one host-bound dataRef
+  → Claim Reproduction
+  → five checks
+  → Moiré
+  → deriveVerdict
+  → AuditArtifact
 ```
 
-It does not yet cover PandaData, the Backtester, Intake, Moiré, reporting, or
-the A2A gateway because those tool and orchestration layers are not
-implemented.
+The input is:
 
-With no data or backtest tools registered, an honest run returns
-`insufficient_evidence` from all five branches. A conclusive result would
-indicate unsupported model-generated evidence and fails the test.
-
-## 2. Environment
-
-Bun loads the root `.env` automatically. Copy the template:
-
-```bash
-cp .env.example .env
+```text
+沪深 300 每月底买过去 20 天涨幅最大的 50 只，等权持有，宣称年化 18% 夏普 1.9
 ```
 
-Minimum development configuration:
+The market, PIT, and V9 inputs are the prebuilt G01 golden package under
+`.cache/assay`. The E2E makes a real Ark model call but does not call PandaData
+at runtime. It is opt-in and is not part of the ordinary unit-test command.
+
+## Environment
+
+Load the root `.env` without printing it. The online test requires:
 
 ```dotenv
-ASSAY_MODEL_PROVIDER=deepseek
-ASSAY_MODEL_ID=deepseek-chat
-ASSAY_MODEL_API_KEY=replace_with_a_real_key
-
-ASSAY_E2E_TIMEOUT_MS=120000
-ASSAY_E2E_AUDIT_ID=e2e_parallel_checks
-ASSAY_E2E_SUBJECT_ID=e2e_strategy
-ASSAY_E2E_INPUT=CSI 300 monthly momentum: rank by trailing 20-day return, hold the top 50 equal-weighted names, and rebalance monthly.
+ARK_API_KEY=...
+ARK_MODEL_DEEPSEEK=...
+ASSAY_CODE_REVISION=...
+ASSAY_DATA_AS_OF=2026-07-23
+ASSAY_LOCAL_DATA_PACKAGE_ROOT=.cache/assay
+ASSAY_AUDIT_OUTPUT_ROOT=.cache/assay/audit-output
 ```
 
-`DEEPSEEK_API_KEY` may replace `ASSAY_MODEL_API_KEY` when the provider is
-`deepseek`.
+Before the A2A server starts, the E2E validates the existing V9 cache and writes
+only the small descriptor:
 
-`ARK_API_KEY`, `ARK_BASE_URL`, and `ARK_MODEL_DEEPSEEK` are reserved but not
-wired into the model adapter. They do not currently enable a competition Ark
-E2E run.
-
-## 3. Run
-
-Install workspace links once:
-
-```bash
-bun install
+```text
+.cache/assay/local-packages/g01-csi300-momentum.json
 ```
 
-Then run:
+The descriptor binds the existing market CSV, V9 manifest, and immutable CSI
+300 PIT snapshot tree by checksum. The E2E does not copy, download, or rewrite
+the market data. `ASSAY_AUDIT_OUTPUT_ROOT` is the separate writable location
+for task-scoped derived artifacts.
+
+The Python executable may be pinned with:
+
+```dotenv
+ASSAY_EXPERIMENT_PYTHON=services/panda-adapter/.venv/bin/python
+```
+
+## Run
 
 ```bash
 bun run e2e:checks
 ```
 
-This command makes five concurrent paid model requests. It is intentionally
-excluded from `bun run check`.
+On success, the sanitized result is written to:
 
-## 4. Pass Conditions
+```text
+artifacts/v9/assay-real-data-run.json
+```
 
-The command exits with zero only when:
+## Pass conditions
 
-- all five canonical Agent IDs start and complete;
-- every model response is valid contract JSON for its assigned Agent ID;
-- no branch is replaced by the host runtime-error fallback;
-- every branch honestly returns `insufficient_evidence`;
-- the batch contains the canonical five-result order.
+The command succeeds only when:
 
-The command prints branch lifecycle lines to stderr and the final structured
-result to stdout. `fanOutSpreadMs` is diagnostic only; deterministic unit tests
-prove concurrency with a barrier and do not rely on network timing.
+- the golden sentence is parsed into the expected strategy and claims;
+- the data-relevant strategy produces the registered G01 `strategyKey`;
+- local package resolution runs after Intake and before every audit stage;
+- all three descriptor checksums are verified before the package is bound;
+- the Artifact records the frozen package's original PandaData provenance;
+- Claim Reproduction receives `18%` and `1.9`;
+- all five checks execute against the same host-bound `dataRef`;
+- Moiré and the existing verdict path complete;
+- the A2A task reaches `COMPLETED` with a valid `AuditArtifact`.
 
-## 5. Failure Guide
-
-| Error                                 | Meaning                                                        |
-| ------------------------------------- | -------------------------------------------------------------- |
-| Missing API key                       | `.env` was not loaded or the key is empty                      |
-| Model not present in catalog          | Provider and model ID do not match the pinned oh-my-pi catalog |
-| Branch failed before valid JSON       | Provider error, timeout, malformed JSON, or wrong Agent ID     |
-| Unexpected conclusive result          | A tool-free Agent invented evidence or violated its guardrails |
-| Fewer than five starts or completions | Runtime fan-out or lifecycle event regression                  |
-
-Do not paste complete provider responses or `.env` contents into issues. Redact
-keys and potentially sensitive strategy input.
+No PandaData credentials are required. Do not paste `.env`, provider
+responses, local absolute paths, or Ark credentials into reports.

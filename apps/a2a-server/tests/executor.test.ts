@@ -21,6 +21,15 @@ import {
 } from "../src/executor";
 import type { ExecutionTimelineEvent, ExecutionTimelineStage } from "../src/execution-timeline";
 
+const TEST_DATA_REF =
+  "assay-local-data-v1:audit_test:g01:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const fakeDataResolver = {
+  resolve: async () => ({
+    dataRef: TEST_DATA_REF,
+    sources: ["pandadata:test"],
+  }),
+};
+
 const completeCandidate = {
   specVersion: "1",
   universe: { index: "000300.SH" },
@@ -93,6 +102,7 @@ async function runFailureCase(
   const logs: ExecutionErrorLogEntry[] = [];
   const executor = new AssayAgentExecutor({
     ...ports,
+    dataResolver: fakeDataResolver,
     dataAsOf: "2026-07-23",
     codeRevision: "test-revision",
     now,
@@ -190,6 +200,7 @@ describe("AssayAgentExecutor", () => {
           throw new Error("Runner must not be called");
         },
       },
+      dataResolver: fakeDataResolver,
       artifactStore: new InMemoryAuditArtifactStore(),
       dataAsOf: "2026-07-23",
       codeRevision: "test-revision",
@@ -242,9 +253,19 @@ describe("AssayAgentExecutor", () => {
     });
     const executor = new AssayAgentExecutor({
       intake,
+      dataResolver: {
+        resolve: async () => {
+          executionOrder.push("resolve");
+          return {
+            dataRef: TEST_DATA_REF,
+            sources: ["pandadata:test"],
+          };
+        },
+      },
       claimReproducer: {
-        reproduce: async (spec) => {
+        reproduce: async (spec, dataRef) => {
           executionOrder.push("claim");
+          expect(dataRef).toBe(TEST_DATA_REF);
           return {
             claimed: spec.claims ?? {},
             reproduced: {
@@ -263,6 +284,7 @@ describe("AssayAgentExecutor", () => {
       runner: {
         run: async (request) => {
           executionOrder.push("fan-out");
+          expect(request.metadata?.dataRef).toBe(TEST_DATA_REF);
           return {
             schemaVersion: AUDIT_CHECK_SCHEMA_VERSION,
             auditId: request.auditId,
@@ -304,7 +326,7 @@ describe("AssayAgentExecutor", () => {
       recordingEventBus([], []),
     );
 
-    expect(executionOrder).toEqual(["claim", "fan-out"]);
+    expect(executionOrder).toEqual(["resolve", "claim", "fan-out"]);
     expect(timeline.map((event) => `${event.stage}:${event.type}`)).toEqual([
       "a2a_acceptance:stage.started",
       "a2a_acceptance:stage.completed",
@@ -312,6 +334,10 @@ describe("AssayAgentExecutor", () => {
       "skeleton_decode:stage.completed",
       "strategy_intake:stage.started",
       "strategy_intake:stage.completed",
+      "data_plan:stage.started",
+      "data_plan:stage.completed",
+      "local_data_resolve:stage.started",
+      "local_data_resolve:stage.completed",
       "claim_reproduction:stage.started",
       "claim_reproduction:stage.completed",
       "parallel_audit_handoff:stage.started",
@@ -324,6 +350,10 @@ describe("AssayAgentExecutor", () => {
       "a2a_publish:stage.completed",
     ]);
     expect(storedArtifact?.claimComparison?.reproduced.sharpe).toBe(1);
+    expect(storedArtifact?.provenance.dataSources).toContainEqual({
+      id: "pandadata:test",
+      version: "panda_data@0.0.12",
+    });
     expect(storedArtifact?.results[0]?.verdict).toBe("WATCH");
     expect(storedArtifact?.results[0]?.recoveryConditions).toContainEqual({
       scope: "evidence",
@@ -347,6 +377,7 @@ describe("AssayAgentExecutor", () => {
     });
     const executor = new AssayAgentExecutor({
       intake,
+      dataResolver: fakeDataResolver,
       artifactStore: new InMemoryAuditArtifactStore(),
       dataAsOf: "2026-07-23",
       codeRevision: "test-revision",
@@ -403,6 +434,7 @@ describe("AssayAgentExecutor", () => {
     });
     const executor = new AssayAgentExecutor({
       intake,
+      dataResolver: fakeDataResolver,
       artifactStore,
       dataAsOf: "2026-07-23",
       codeRevision: "test-revision",
@@ -449,6 +481,7 @@ describe("AssayAgentExecutor", () => {
     );
     expect(projectedRequest.metadata).toEqual({
       specHash: hashStrategySpec(projectedRequest.subject.input),
+      dataRef: TEST_DATA_REF,
       capabilitySnapshotId: "skeleton:test",
       codeRevision: "test-revision",
       requestSchemaVersion: "1.0.0",
@@ -492,6 +525,7 @@ describe("AssayAgentExecutor", () => {
           throw new Error("Runner must not be called");
         },
       },
+      dataResolver: fakeDataResolver,
       artifactStore: {
         save: async (_taskId, artifact) => {
           storedArtifact = artifact;
@@ -590,6 +624,7 @@ describe("AssayAgentExecutor", () => {
             throw new Error("Runner must not be called");
           },
         },
+        dataResolver: fakeDataResolver,
         artifactStore: new InMemoryAuditArtifactStore(),
         dataAsOf: "2026-07-23",
         codeRevision: "test-revision",

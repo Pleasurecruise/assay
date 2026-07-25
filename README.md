@@ -14,8 +14,8 @@ UNVERIFIABLE`) with reproducible numeric evidence and recovery conditions.
 The current implementation includes the black-and-white web workbench, the A2A
 `audit_strategy` path, natural-language Intake through Volcano Ark,
 deterministic `StrategySpec` validation/freezing, five isolated checks,
-bounded Moiré follow-ups, task cancellation, a guarded PandaData JSON-lines
-adapter, ten read-tier data tools, an Assay-owned structured backtester, and
+bounded Moiré follow-ups, task cancellation, deterministic local-data package
+selection, one host-bound `dataRef`, an Assay-owned structured backtester, and
 versioned JSON/Markdown Artifacts with reproducible source references.
 Multi-turn clarification, durable task persistence, and the post-baseline
 factor/comparison skills remain documented later phases.
@@ -76,17 +76,19 @@ mise exec -- bun run check
 All npm registry dependencies are exact-pinned. Vite+ uses Bun as the package
 manager through the root `packageManager` declaration.
 
-Initialize PandaData before starting any service that uses market data:
+The competition runtime reads prebuilt immutable packages and does not
+initialize PandaData:
 
 ```bash
 cp .env.example .env
-# Load the .env values into the process environment without printing them.
-mise exec -- bun run sdk:init
+# Register the bundled G01 package and run the local-package E2E.
+mise exec -- bun run e2e:checks
 ```
 
-Initialization fails closed when the SDK, credentials, or token exchange is
-unavailable. See [PandaData Access Architecture](docs/architecture/DATA_ACCESS.md)
-for the lifecycle and security boundary.
+`sdk:init` and the PandaData preparation scripts are retained only for
+pre-competition package construction. See
+[Local Data Package Pipeline](docs/product/LOCAL_DATA_PACKAGE_PIPELINE.md) for
+the runtime boundary.
 
 Run a request against a real model:
 
@@ -97,14 +99,16 @@ mise exec -- bun run runtime -- "Audit this momentum strategy: CSI300 universe, 
 
 ## Run the demo locally
 
-Create a root `.env` from `.env.example`, then set the real Volcano Ark
-and PandaData credentials, and keep the browser origin explicit:
+Create a root `.env` from `.env.example`, set the real Volcano Ark credentials,
+point the server at the prebuilt package registry, and keep the browser origin
+explicit:
 
 ```dotenv
 ARK_API_KEY=...
 ARK_MODEL_DEEPSEEK=...
-PANDA_DATA_USERNAME=86+你的官网注册手机号
-PANDA_DATA_PASSWORD=你的官网密码
+ASSAY_DATA_AS_OF=2026-07-23
+ASSAY_LOCAL_DATA_PACKAGE_ROOT=.cache/assay
+ASSAY_AUDIT_OUTPUT_ROOT=.cache/assay/audit-output
 ASSAY_A2A_CORS_ORIGIN=http://localhost:5173,http://127.0.0.1:5173
 ASSAY_AUTH_BASE_URL=http://localhost:5173
 # Optional for non-browser clients such as the Agent Card self-test tool.
@@ -163,9 +167,9 @@ port, to the comma-separated `ASSAY_A2A_CORS_ORIGIN` allowlist.
 The workbench sends one text Part, displays Task status updates, supports
 protocol-level cancellation, and polls the A2A server until completion. It
 then renders the verdict, confidence, all five check cards, and the
-collapsible full report. Missing or rejected PandaData credentials degrade
-affected checks to `insufficient_evidence`; they never produce invented
-numbers. If required strategy details are absent, the result is presented as
+collapsible full report. A missing, unmatched, or checksum-invalid local
+package fails closed before any audit check; the server never falls back to
+online retrieval or invented numbers. If required strategy details are absent, the result is presented as
 a prominent early exit with its missing information and recovery conditions.
 
 The server listens on port `3001`; discovery and health endpoints are

@@ -14,6 +14,8 @@ const mockProcess: ExperimentProcessConfig = {
   command: process.execPath,
   args: [fileURLToPath(new URL("./fixtures/mock-experiment-runner.mjs", import.meta.url))],
 };
+const dataRef =
+  "assay-local-data-v1:audit_test:g01:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 function contentText(
   result: Awaited<ReturnType<NonNullable<ReturnType<typeof createRunExperimentTool>["execute"]>>>,
@@ -29,6 +31,7 @@ describe("run_experiment tool", () => {
   test("runs the host-only as-of, no-cost claim baseline without variants", async () => {
     const result = await runExperimentSubprocess(mockProcess, {
       kind: "baseline",
+      dataRef,
       spec: {
         specVersion: "1",
         costs: { model: "none" },
@@ -46,6 +49,7 @@ describe("run_experiment tool", () => {
     await expect(
       runExperimentSubprocess(mockProcess, {
         kind: "baseline",
+        dataRef,
         spec: { specVersion: "1", costs: { model: "none" } },
         budget: { maxVariants: 1 },
       }),
@@ -55,6 +59,7 @@ describe("run_experiment tool", () => {
   test("bridges one grid request over subprocess stdio", async () => {
     const request: RunExperimentRequest = {
       kind: "grid",
+      dataRef,
       spec: { specVersion: "1", signal: { kind: "template", template: "momentum" } },
       grid: {
         signalParams: { window: [14, 20] },
@@ -94,6 +99,7 @@ describe("run_experiment tool", () => {
     await expect(
       runExperimentSubprocess(mockProcess, {
         kind: "grid",
+        dataRef,
         spec: { specVersion: "1", mockFailure: true },
         grid: {
           signalParams: { window: [20] },
@@ -113,6 +119,7 @@ describe("run_experiment tool", () => {
     await expect(
       runExperimentSubprocess(mockProcess, {
         kind: "cost_ladder",
+        dataRef,
         spec: { specVersion: "1", mockResponseShape },
         budget: { maxVariants: 3 },
       }),
@@ -166,6 +173,7 @@ describe("run_experiment tool", () => {
         "call-1",
         {
           kind: "cost_ladder",
+          dataRef,
           spec: { specVersion: "1" },
           budget: { maxVariants: 3 },
         },
@@ -176,6 +184,7 @@ describe("run_experiment tool", () => {
     await expect(
       runExperimentSubprocess(mockProcess, {
         kind: "grid",
+        dataRef,
         spec: { specVersion: "1" },
         grid: {
           signalParams: { window: [14, 20] },
@@ -188,6 +197,7 @@ describe("run_experiment tool", () => {
     await expect(
       runExperimentSubprocess(mockProcess, {
         kind: "grid",
+        dataRef,
         spec: { specVersion: "1" },
         grid: {
           signalParams: { window: [20] },
@@ -202,6 +212,7 @@ describe("run_experiment tool", () => {
         "call-3",
         {
           kind: "cost_ladder",
+          dataRef,
           spec: { specVersion: "1" },
           grid: [{ variantId: "invented" }],
           budget: { maxVariants: 3 },
@@ -214,6 +225,7 @@ describe("run_experiment tool", () => {
       "call-grid",
       {
         kind: "grid",
+        dataRef,
         spec: {
           specVersion: "1",
           signal: { params: { window: 20 } },
@@ -269,6 +281,7 @@ describe("run_experiment tool", () => {
       "call-4",
       {
         kind: "cost_ladder",
+        dataRef,
         spec: { specVersion: "1" },
         budget: { maxVariants: 3 },
       },
@@ -340,6 +353,9 @@ describe("run_experiment tool", () => {
     expect(
       (parameterTool.parameters as { properties?: Record<string, unknown> }).properties,
     ).not.toHaveProperty("spec");
+    expect(
+      (parameterTool.parameters as { properties?: Record<string, unknown> }).properties,
+    ).not.toHaveProperty("dataRef");
     expect(costTool.parameters).toMatchObject({
       additionalProperties: false,
       properties: {
@@ -353,6 +369,9 @@ describe("run_experiment tool", () => {
     expect(
       (costTool.parameters as { properties?: Record<string, unknown> }).properties,
     ).not.toHaveProperty("spec");
+    expect(
+      (costTool.parameters as { properties?: Record<string, unknown> }).properties,
+    ).not.toHaveProperty("dataRef");
     expect(parameter.systemPrompt.join("\n")).toContain('D10_GUIDELINE_VERSION="1.0.0"');
     expect(parameter.systemPrompt.join("\n")).toContain(">=70%");
     expect(parameter.systemPrompt.join("\n")).toContain("<40%");

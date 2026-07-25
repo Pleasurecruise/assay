@@ -5,12 +5,13 @@ import {
   AVAILABILITY_AUDIT_SOURCE_REF,
   type AvailabilityAuditResult,
 } from "@assay/contracts";
+import { assertHostDataRef, type HostDataRefRequest } from "./data-ref";
 import type { ExperimentProcessConfig } from "./run-experiment-tool";
 
 export { AVAILABILITY_AUDIT_SOURCE_REF };
 export type { AvailabilityAuditResult };
 
-export interface RunAvailabilityAuditRequest {
+export interface RunAvailabilityAuditRequest extends HostDataRefRequest {
   readonly kind: "availability_audit";
   readonly spec: object;
   readonly budget: {
@@ -134,6 +135,7 @@ function parseResult(stdout: string): AvailabilityAuditResult {
 }
 
 function assertRequest(request: RunAvailabilityAuditRequest): void {
+  assertHostDataRef(request.dataRef, "run_availability_audit");
   if (
     request.kind !== "availability_audit" ||
     !isRecord(request.spec) ||

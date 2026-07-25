@@ -7,6 +7,7 @@ export * from "./audit-orchestrator";
 export * from "./database";
 export * from "./execution-timeline";
 export * from "./executor";
+export * from "./local-data-package";
 export * from "./production";
 export * from "./server";
 

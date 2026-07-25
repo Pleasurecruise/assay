@@ -17,6 +17,8 @@ const mockProcess = {
     ),
   ],
 };
+const DATA_REF =
+  "assay-local-data-v1:audit_test:g01:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 const spec = toCanonicalStrategySpec({
   specVersion: "1",
@@ -35,7 +37,7 @@ const spec = toCanonicalStrategySpec({
 
 describe("SubprocessClaimReproducer", () => {
   test("reproduces claims under the frozen as-of and no-cost convention", async () => {
-    const comparison = await new SubprocessClaimReproducer(mockProcess).reproduce(spec);
+    const comparison = await new SubprocessClaimReproducer(mockProcess).reproduce(spec, DATA_REF);
 
     expect(comparison).toEqual({
       claimed: { annualReturn: 0.18, sharpe: 2 },
@@ -60,7 +62,7 @@ describe("SubprocessClaimReproducer", () => {
     });
     const comparison = await new SubprocessClaimReproducer({
       command: "this-command-must-not-run",
-    }).reproduce(withoutClaims);
+    }).reproduce(withoutClaims, DATA_REF);
 
     expect(comparison).toBeNull();
   });

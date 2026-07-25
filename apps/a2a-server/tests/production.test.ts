@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 import { DEFAULT_ASSAY_A2A_CORS_ORIGINS, readProductionConfig } from "../src/configuration";
 
@@ -28,6 +29,19 @@ describe("readProductionConfig", () => {
     expect(config.authBaseUrl).toBe("http://localhost:5173");
     expect(config.databasePath).toBe("data/assay.sqlite");
     expect(config.googleClientId).toBe("google-test-client-id");
+    expect(config.localDataPackageRoot).toBe(resolve(".cache/assay"));
+    expect(config.auditOutputRoot).toBe(resolve(".cache/assay/audit-output"));
+  });
+
+  test("accepts explicit local package and derived runtime data roots", () => {
+    const config = readProductionConfig({
+      ...BASE_ENVIRONMENT,
+      ASSAY_LOCAL_DATA_PACKAGE_ROOT: "./tmp/local-packages",
+      ASSAY_AUDIT_OUTPUT_ROOT: "./tmp/audit-output",
+    });
+
+    expect(config.localDataPackageRoot).toBe(resolve("./tmp/local-packages"));
+    expect(config.auditOutputRoot).toBe(resolve("./tmp/audit-output"));
   });
 
   test("rejects a short Better Auth secret", () => {
@@ -68,16 +82,11 @@ describe("readProductionConfig", () => {
     expect(config.arkApiKeys).toEqual(["second-key", "third-key"]);
   });
 
-  test("reports PandaData readiness without retaining credential values", () => {
-    const config = readProductionConfig({
-      ...BASE_ENVIRONMENT,
-      PANDA_DATA_USERNAME: "86+13800000000",
-      PANDA_DATA_PASSWORD: "test-password",
-    });
+  test("requires a fixed data snapshot date", () => {
+    const environment = { ...BASE_ENVIRONMENT };
+    delete environment.ASSAY_DATA_AS_OF;
 
-    expect(config.pandaDataConfigured).toBe(true);
-    expect(config).not.toHaveProperty("pandaDataUsername");
-    expect(config).not.toHaveProperty("pandaDataPassword");
+    expect(() => readProductionConfig(environment)).toThrow("ASSAY_DATA_AS_OF is required");
   });
 
   test("defaults the browser origins and accepts a comma-separated allowlist", () => {

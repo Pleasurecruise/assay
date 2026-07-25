@@ -9,6 +9,11 @@ from typing import Any
 import pandas as pd
 
 from ..market_panel import MarketPanel
+from ..local_data import (
+    LOCAL_DATA_REF_VERSION,
+    LocalAuditData,
+    load_local_audit_data,
+)
 from .constants import COST_LADDER
 from .experiments import run_baseline, run_cost_ladder, run_grid
 from .strategy import parse_momentum_strategy
@@ -41,6 +46,7 @@ def run_request(
     spec = request.get("spec")
     if not isinstance(spec, Mapping):
         raise ValueError("request requires spec")
+    local_data = _local_data_for_request(request, spec)
     max_variants = _parse_budget(request.get("budget"))
     if kind == "availability_audit":
         if max_variants != 1:
@@ -49,6 +55,13 @@ def run_request(
             )
         if request.get("grid") is not None:
             raise ValueError("availability_audit does not accept grid")
+        if availability_runner is None and local_data is not None:
+            from ..availability_audit import run_availability_audit
+
+            return run_availability_audit(
+                spec,
+                local_data=local_data,
+            )
         if availability_runner is None:
             from ..availability_audit import run_availability_audit
 
@@ -60,6 +73,15 @@ def run_request(
             max_variants=max_variants,
             kind="regime_split",
         )
+        if regime_runner is None and local_data is not None:
+            from ..regime_audit import run_regime_split
+
+            return run_regime_split(
+                spec,
+                panel_loader=local_data.as_of_market_panel,
+                index_loader=local_data.index_daily_cache,
+                membership_loader=local_data.pit_membership_cache,
+            )
         if regime_runner is None:
             from ..regime_audit import run_regime_split
 
@@ -71,6 +93,14 @@ def run_request(
             max_variants=max_variants,
             kind="homogeneity",
         )
+        if homogeneity_runner is None and local_data is not None:
+            from ..homogeneity_audit import run_homogeneity
+
+            return run_homogeneity(
+                spec,
+                panel_loader=local_data.as_of_market_panel,
+                factor_loader=local_data.comparator_factor_cache,
+            )
         if homogeneity_runner is None:
             from ..homogeneity_audit import run_homogeneity
 
@@ -78,9 +108,13 @@ def run_request(
         return homogeneity_runner(spec)
 
     panel = (
-        panel_loader(spec)
-        if panel_loader is not None
-        else _parse_embedded_test_panel(spec)
+        local_data.as_of_market_panel(spec)
+        if local_data is not None
+        else (
+            panel_loader(spec)
+            if panel_loader is not None
+            else _parse_embedded_test_panel(spec)
+        )
     )
     baseline = _parse_strategy_spec(spec)
     if kind == "baseline":
@@ -119,6 +153,22 @@ def run_request(
         "kind must be baseline, grid, cost_ladder, availability_audit, "
         "regime_split, or homogeneity"
     )
+
+
+def _local_data_for_request(
+    request: Mapping[str, Any],
+    spec: Mapping[str, Any],
+) -> LocalAuditData | None:
+    data_ref = request.get("dataRef")
+    if data_ref is None:
+        return None
+    if not isinstance(data_ref, str) or not data_ref.strip():
+        raise ValueError("request dataRef must be a non-empty string")
+    if data_ref.startswith(f"{LOCAL_DATA_REF_VERSION}:"):
+        local = load_local_audit_data(data_ref)
+        local.require_spec_identity(spec)
+        return local
+    raise ValueError("request dataRef must be an Assay local-data reference")
 
 
 def _parse_embedded_test_panel(spec: Mapping[str, Any]) -> MarketPanel:

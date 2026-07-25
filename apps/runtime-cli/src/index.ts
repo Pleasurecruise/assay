@@ -81,10 +81,14 @@ const definitions =
         homogeneityProcess: fixtureProcess,
       });
 const frozenSpecInput = process.env.ASSAY_FROZEN_STRATEGY_SPEC_JSON?.trim();
+const dataRef = process.env.ASSAY_DATA_REF?.trim();
 const metadata =
   frozenSpecInput === undefined || frozenSpecInput.length === 0
     ? undefined
     : (() => {
+        if (dataRef === undefined || dataRef.length === 0) {
+          throw new Error("ASSAY_DATA_REF is required with ASSAY_FROZEN_STRATEGY_SPEC_JSON");
+        }
         let rawSpec: unknown;
         try {
           rawSpec = JSON.parse(frozenSpecInput);
@@ -96,6 +100,7 @@ const metadata =
         return {
           frozenStrategySpec,
           specHash: hashStrategySpec(frozenStrategySpec),
+          dataRef,
         };
       })();
 const runtime = new AgentRuntime({
