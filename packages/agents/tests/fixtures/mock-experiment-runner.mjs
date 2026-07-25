@@ -8,6 +8,8 @@ const request = JSON.parse(Buffer.concat(chunks).toString("utf8"));
 if (
   !request ||
   !["baseline", "grid", "cost_ladder"].includes(request.kind) ||
+  request.dataRef !==
+    "assay-local-data-v1:audit_test:g01:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" ||
   typeof request.spec !== "object" ||
   typeof request.budget?.maxVariants !== "number"
 ) {

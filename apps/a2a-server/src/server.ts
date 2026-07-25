@@ -33,10 +33,10 @@ export interface CreateAssayA2AAppOptions {
 
 export interface AssayServiceCapabilities {
   skill: "audit_strategy";
-  dataProvider: "PandaData";
+  dataProvider: "LocalDataPackage";
   dataTools: readonly string[];
   backtester: "assay-backtester@1";
-  dataCredentialsConfigured: boolean;
+  dataPackagesConfigured: boolean;
 }
 
 export interface AssayA2AApp {
@@ -164,21 +164,21 @@ export function createAssayA2AApp(options: CreateAssayA2AAppOptions): AssayA2AAp
     response.json(
       options.capabilities ?? {
         skill: "audit_strategy",
-        dataProvider: "PandaData",
+        dataProvider: "LocalDataPackage",
         dataTools: [],
         backtester: "assay-backtester@1",
-        dataCredentialsConfigured: false,
+        dataPackagesConfigured: false,
       },
     );
   });
   app.get("/readyz", (_request, response) => {
-    const dataCredentialsConfigured = options.capabilities?.dataCredentialsConfigured ?? false;
-    response.status(dataCredentialsConfigured ? 200 : 503).json({
-      status: dataCredentialsConfigured ? "ready" : "not_ready",
+    const dataPackagesConfigured = options.capabilities?.dataPackagesConfigured ?? false;
+    response.status(dataPackagesConfigured ? 200 : 503).json({
+      status: dataPackagesConfigured ? "ready" : "not_ready",
       checks: {
         a2a: true,
         model: true,
-        pandaDataCredentials: dataCredentialsConfigured,
+        localDataPackages: dataPackagesConfigured,
       },
     });
   });

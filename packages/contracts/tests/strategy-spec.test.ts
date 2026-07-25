@@ -4,6 +4,7 @@ import {
   hashStrategySpec,
   parseStrategyAuditRequest,
   parseStrategySpec,
+  strategyForData,
   toCanonicalStrategySpec,
   validateStrategySpec,
 } from "../src";
@@ -181,6 +182,27 @@ describe("StrategySpec contract", () => {
     expect(hashStrategySpec(secondBytes)).toBe(hashStrategySpec(firstBytes));
     expect(hashStrategySpec(`${firstBytes}\n`)).not.toBe(hashStrategySpec(firstBytes));
     expect(hashStrategySpec(firstBytes)).toMatch(/^sha256:[a-f0-9]{64}$/);
+  });
+
+  test("projects a canonical strategy by truly removing claims", () => {
+    const canonical = toCanonicalStrategySpec(parseStrategySpec(completeTemplateSpec()));
+    const strategy = strategyForData(canonical);
+
+    expect(Object.hasOwn(strategy, "claims")).toBe(false);
+    expect(strategy).toEqual({
+      specVersion: "1",
+      universe: { index: "000300.SH" },
+      signal: {
+        kind: "template",
+        template: "momentum",
+        params: { window: 20 },
+      },
+      selection: { topN: 50, weighting: "equal" },
+      rebalance: { frequency: "monthly", at: "close" },
+      window: { start: "20210101", end: "20251231" },
+      costs: { model: "standard" },
+    });
+    expect(canonical.claims).toEqual({ annualReturn: 0.18, sharpe: 1.9 });
   });
 
   test("parses the structured request with the existing skill and subject vocabulary", () => {

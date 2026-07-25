@@ -358,6 +358,7 @@ export class AgentRuntime {
           request.metadata?.specHash,
           request.metadata?.frozenStrategySpec,
           runExperimentCallCount,
+          request.metadata?.dataRef,
         );
         runExperimentCallCount = guard.runExperimentCallCount;
         if (guard.blockReason !== undefined) {

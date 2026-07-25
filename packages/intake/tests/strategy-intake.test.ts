@@ -111,6 +111,27 @@ describe("StrategyIntake", () => {
     }
     expect(result.frozen.spec.claims?.annualReturn).toBe(0.18);
     expect(result.frozen.spec.claims?.sharpe).toBe(1.9);
+    expect(result.frozen.claims).toEqual({ annualReturn: 0.18, sharpe: 1.9 });
+    expect(Object.hasOwn(result.frozen.strategy, "claims")).toBe(false);
+  });
+
+  test("keeps the claims-free strategy projection stable when only claims change", async () => {
+    const first = await createIntake({
+      parse: async () => completeCandidate,
+    }).intakeText("沪深 300 每月底买过去 20 天涨幅最大的 50 只，等权持有，宣称年化 18% 夏普 1.9");
+    const second = await createIntake({
+      parse: async () => completeCandidate,
+    }).intakeText("沪深 300 每月底买过去 20 天涨幅最大的 50 只，等权持有，宣称年化 30% 夏普 3.0");
+
+    expect(first.kind).toBe("ready");
+    expect(second.kind).toBe("ready");
+    if (first.kind !== "ready" || second.kind !== "ready") {
+      throw new Error("Expected ready intake results");
+    }
+    expect(first.frozen.strategy).toEqual(second.frozen.strategy);
+    expect(first.frozen.claims).toEqual({ annualReturn: 0.18, sharpe: 1.9 });
+    expect(second.frozen.claims).toEqual({ annualReturn: 0.3, sharpe: 3 });
+    expect(first.frozen.specHash).not.toBe(second.frozen.specHash);
   });
 
   test("returns every missing field as an insufficient-information early exit", async () => {

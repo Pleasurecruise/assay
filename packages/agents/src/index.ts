@@ -1,4 +1,5 @@
 export * from "./definitions";
+export * from "./data-ref";
 export * from "./moire";
 export * from "./parallel-check-runner";
 export * from "./run-availability-audit-tool";

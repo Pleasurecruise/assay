@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@assay/agent-runtime": "workspace:*",
+    "@assay/contracts": "workspace:*",
     "zod": "4.4.3"
   }
 }

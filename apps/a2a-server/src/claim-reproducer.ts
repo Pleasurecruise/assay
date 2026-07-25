@@ -13,7 +13,7 @@ import {
 } from "@assay/agents";
 
 export interface ClaimReproducer {
-  reproduce(spec: CanonicalStrategySpec): Promise<ClaimComparison | null>;
+  reproduce(spec: CanonicalStrategySpec, dataRef: string): Promise<ClaimComparison | null>;
 }
 
 function gap(claimed: ClaimMetrics, reproduced: ClaimComparison["reproduced"]): ClaimMetrics {
@@ -35,7 +35,7 @@ export class SubprocessClaimReproducer implements ClaimReproducer {
     this.#process = process;
   }
 
-  async reproduce(spec: CanonicalStrategySpec): Promise<ClaimComparison | null> {
+  async reproduce(spec: CanonicalStrategySpec, dataRef: string): Promise<ClaimComparison | null> {
     if (spec.claims === undefined) {
       return null;
     }
@@ -46,6 +46,7 @@ export class SubprocessClaimReproducer implements ClaimReproducer {
     const result = await runExperimentSubprocess(this.#process, {
       kind: "baseline",
       spec: reproductionSpec,
+      dataRef,
       universeMode: "asOf",
       budget: { maxVariants: 1 },
     });

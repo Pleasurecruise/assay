@@ -22,6 +22,7 @@ import {
 } from "@assay/contracts";
 import { createAssayA2AClient, extractAuditArtifact } from "../../../apps/web/src/lib/a2a-client";
 import { deriveVerdict } from "../../../apps/a2a-server/src/audit-orchestrator";
+import { prepareLocalGoldenPackage } from "./local-golden-package";
 import { assertOutputSafe } from "./sprint-acceptance";
 
 export const V9_REAL_BUNDLE_VERSION = "assay-v9-real-acceptance-v1";
@@ -166,6 +167,8 @@ const SAFE_V9_TASK_STAGES = new Set([
   "a2a_acceptance",
   "skeleton_decode",
   "strategy_intake",
+  "data_plan",
+  "local_data_resolve",
   "claim_reproduction",
   "parallel_audit_handoff",
   "artifact_finalize",
@@ -1477,9 +1480,12 @@ export async function runV9RealAcceptance(): Promise<string> {
   );
   const cacheInspection = await inspectV9Cache();
   const { snapshot: cacheSnapshot } = cacheInspection;
-  process.env.ASSAY_MARKET_DATA_CACHE = cacheInspection.basePanelPath;
-  process.env.ASSAY_PIT_CACHE_ROOT = cacheInspection.pitCacheRoot;
-  process.env.ASSAY_V9_CACHE_ROOT = resolve(V9_CACHE_ROOT);
+  const localPackage = await prepareLocalGoldenPackage({
+    root: ASSAY_CACHE_ROOT,
+    marketDataCache: cacheInspection.basePanelPath,
+    v9CacheRoot: V9_CACHE_ROOT,
+    pitCacheRoot: cacheInspection.pitCacheRoot,
+  });
   process.env.ASSAY_EXPERIMENT_PYTHON = resolve("services/panda-adapter/.venv/bin/python");
 
   const { createProductionA2AApp } = await import("../../../apps/a2a-server/src/production");
@@ -1489,12 +1495,14 @@ export async function runV9RealAcceptance(): Promise<string> {
     arkBaseUrl: process.env.ARK_BASE_URL?.trim() || "https://ark.cn-beijing.volces.com/api/v3",
     arkModel,
     dataAsOf: cacheSnapshot.dataAsOf,
-    capabilitySnapshotId: `pandadata:${cacheSnapshot.cacheVersion}:${cacheSnapshot.manifestSha256.slice(0, 12)}`,
+    capabilitySnapshotId:
+      `local-data-package:${localPackage.descriptor.packageId}:` +
+      localPackage.descriptorDigest.slice("sha256-".length, "sha256-".length + 12),
     codeRevision,
     publicUrl: "http://127.0.0.1",
     corsOrigins: ["http://localhost:5173"],
-    pandaDataConfigured:
-      Boolean(process.env.PANDA_DATA_USERNAME?.trim()) && Boolean(process.env.PANDA_DATA_PASSWORD),
+    localDataPackageRoot: localPackage.root,
+    auditOutputRoot: resolve(".cache/assay/audit-output"),
   });
   const server = app.listen(0, "127.0.0.1");
   try {

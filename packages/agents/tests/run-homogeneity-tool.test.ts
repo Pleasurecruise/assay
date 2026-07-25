@@ -11,6 +11,8 @@ const mockProcess = {
   command: process.execPath,
   args: [fileURLToPath(new URL("./fixtures/mock-homogeneity-runner.mjs", import.meta.url))],
 };
+const dataRef =
+  "assay-local-data-v1:audit_test:g01:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 const spec: CanonicalStrategySpec = {
   specVersion: "1",
@@ -30,6 +32,7 @@ describe("run_homogeneity tool", () => {
   test("accepts the bounded factor-correlation and annual IC response", async () => {
     const result = await runHomogeneitySubprocess(mockProcess, {
       kind: "homogeneity",
+      dataRef,
       spec,
       budget: { maxVariants: 1 },
     });
@@ -58,6 +61,7 @@ describe("run_homogeneity tool", () => {
     await expect(
       runHomogeneitySubprocess(mockProcess, {
         kind: "homogeneity",
+        dataRef,
         spec: { ...spec, mockInvalidYears: true } as CanonicalStrategySpec,
         budget: { maxVariants: 1 },
       }),
@@ -88,6 +92,9 @@ describe("run_homogeneity tool", () => {
         budget: { properties: { maxVariants: { enum: [1] } } },
       },
     });
+    expect(
+      (tool?.parameters as { properties?: Record<string, unknown> } | undefined)?.properties,
+    ).not.toHaveProperty("dataRef");
     const prompt = definition?.systemPrompt.join("\n") ?? "";
     expect(prompt).toContain("必须且只能调用一次 run_homogeneity");
     expect(prompt).toContain("|meanSpearman| >= 0.9");

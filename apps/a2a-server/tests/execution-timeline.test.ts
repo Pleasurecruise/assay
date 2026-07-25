@@ -5,6 +5,7 @@ import {
   createExecutionTimelineLogger,
   type ExecutionTimelineEvent,
 } from "../src/execution-timeline";
+import { LocalDataPackageError } from "../src/local-data-package";
 
 describe("createExecutionTimelineLogger", () => {
   test("emits ordered stage timings with only allowlisted failure details", () => {
@@ -76,6 +77,15 @@ describe("createExecutionTimelineLogger", () => {
     });
   });
 
+  test("classifies a local package resolution failure without leaking package details", () => {
+    expect(
+      classifyExecutionTimelineFailure(new LocalDataPackageError("package_integrity_failed")),
+    ).toEqual({
+      errorType: "LocalDataPackageError",
+      errorCode: "local_data_unavailable",
+    });
+  });
+
   test("revalidates a caller-supplied failure event before writing it", () => {
     const lines: string[] = [];
     const log = createExecutionTimelineLogger({
@@ -97,6 +107,7 @@ describe("createExecutionTimelineLogger", () => {
         errorType: "VendorSecretError",
         errorCode: "credential_body",
         statusClass: "secret",
+        componentStage: "Bearer secret component",
         details: "Bearer secret",
       },
     } as unknown as ExecutionTimelineEvent);

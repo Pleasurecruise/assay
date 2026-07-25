@@ -428,6 +428,7 @@ async function executeFixture(
     auditId: `audit-${definition.fixtureId}`,
     subjectId: `strategy-${definition.fixtureId}`,
     traceId: `trace-${definition.fixtureId}`,
+    dataRef: "legacy-cache:offline-moire-fixture",
     frozenStrategySpec: frozen.canonicalJson,
     specHash: frozen.specHash,
   });

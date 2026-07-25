@@ -1,10 +1,12 @@
 import { AgentRegistry, AgentRuntime, createRuntimeTimelineLogger } from "@assay/agent-runtime";
 import {
   createAuditCheckAgentDefinitions,
+  defaultExperimentProcessConfig,
+  defaultMoireProcessConfig,
   ParallelAuditCheckRunner,
   SubprocessMoireExperimentExecutor,
+  type ExperimentProcessConfig,
 } from "@assay/agents";
-import { createPandaDataTools, PandaDataProcessGateway } from "@assay/finance-tools";
 import { ArkResponsesStrategyParser, StrategyIntake } from "@assay/intake";
 import { buildModel } from "@oh-my-pi/pi-catalog/build";
 import type { ProductionA2AConfig } from "./configuration";
@@ -14,6 +16,7 @@ import { InMemoryAuditArtifactStore } from "./artifact-store";
 import { createAssayAuth } from "./auth";
 import { SubprocessClaimReproducer } from "./claim-reproducer";
 import { AssayDatabase } from "./database";
+import { LocalDataPackageResolver } from "./local-data-package";
 import { createAssayA2AApp, type AssayA2AApp } from "./server";
 
 export { readProductionConfig, type ProductionA2AConfig } from "./configuration";
@@ -34,6 +37,21 @@ function hasCompleteAuthConfig(config: ProductionA2AConfig): config is AuthEnabl
     config.googleClientId !== undefined &&
     config.googleClientSecret !== undefined
   );
+}
+
+function bindLocalDataRoots(
+  config: ExperimentProcessConfig,
+  auditOutputRoot: string,
+  localDataPackageRoot: string,
+): ExperimentProcessConfig {
+  return {
+    ...config,
+    env: {
+      ...config.env,
+      ASSAY_AUDIT_OUTPUT_ROOT: auditOutputRoot,
+      ASSAY_LOCAL_DATA_PACKAGE_ROOT: localDataPackageRoot,
+    },
+  };
 }
 
 export async function createProductionA2AApp(config: ProductionA2AConfig): Promise<AssayA2AApp> {
@@ -97,8 +115,16 @@ export async function createProductionA2AApp(config: ProductionA2AConfig): Promi
     contextWindow: 64_000,
     maxTokens: 8_192,
   });
-  const pandaDataGateway = new PandaDataProcessGateway();
-  const pandaDataTools = createPandaDataTools(pandaDataGateway);
+  const experimentProcess = bindLocalDataRoots(
+    defaultExperimentProcessConfig(),
+    config.auditOutputRoot,
+    config.localDataPackageRoot,
+  );
+  const moireProcess = bindLocalDataRoots(
+    defaultMoireProcessConfig(),
+    config.auditOutputRoot,
+    config.localDataPackageRoot,
+  );
   const auditApiKeys = [
     ...new Set(
       [config.arkApiKey, ...(config.arkApiKeys ?? [])]
@@ -110,23 +136,32 @@ export async function createProductionA2AApp(config: ProductionA2AConfig): Promi
     model,
     modelApiKeys: auditApiKeys,
     registry: new AgentRegistry(
-      createAuditCheckAgentDefinitions({ availableTools: pandaDataTools }),
+      createAuditCheckAgentDefinitions({
+        experimentProcess,
+        availabilityProcess: experimentProcess,
+        homogeneityProcess: experimentProcess,
+      }),
     ),
     onEvent: createRuntimeTimelineLogger(),
   });
   const runner = new ParallelAuditCheckRunner(runtime, {
     enableDiscriminativeMoire: true,
-    moireExecutor: new SubprocessMoireExperimentExecutor(),
+    moireExecutor: new SubprocessMoireExperimentExecutor(moireProcess),
     moirePlanningContext: {
       // The independent cost-stress tool runs on the frozen as-of panel.
       // M2 alone is authorized to rerun the ladder on the PIT-corrected panel.
       costBaselineMode: "uncorrected",
     },
   });
+  const dataResolver = new LocalDataPackageResolver({
+    root: config.localDataPackageRoot,
+  });
+  await dataResolver.validateRegistry();
   const executor = new AssayAgentExecutor({
     intake,
     runner,
-    claimReproducer: new SubprocessClaimReproducer(),
+    dataResolver,
+    claimReproducer: new SubprocessClaimReproducer(experimentProcess),
     artifactStore: new InMemoryAuditArtifactStore(),
     dataAsOf: config.dataAsOf,
     codeRevision: config.codeRevision,
@@ -141,10 +176,10 @@ export async function createProductionA2AApp(config: ProductionA2AConfig): Promi
     corsOrigins: config.corsOrigins,
     capabilities: {
       skill: "audit_strategy",
-      dataProvider: "PandaData",
-      dataTools: pandaDataTools.map((tool) => tool.name),
+      dataProvider: "LocalDataPackage",
+      dataTools: [],
       backtester: "assay-backtester@1",
-      dataCredentialsConfigured: config.pandaDataConfigured,
+      dataPackagesConfigured: true,
     },
   });
 }

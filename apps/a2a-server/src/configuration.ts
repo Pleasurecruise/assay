@@ -1,4 +1,8 @@
+import { resolve } from "node:path";
+
 const DEFAULT_ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
+const DEFAULT_LOCAL_DATA_PACKAGE_ROOT = ".cache/assay";
+const DEFAULT_AUDIT_OUTPUT_ROOT = ".cache/assay/audit-output";
 export const DEFAULT_ASSAY_A2A_CORS_ORIGINS = [
   "http://localhost:5173",
   "http://127.0.0.1:5173",
@@ -18,9 +22,10 @@ export interface ProductionA2AConfig {
   codeRevision: string;
   publicUrl: string;
   corsOrigins: readonly string[];
+  localDataPackageRoot: string;
+  auditOutputRoot: string;
   googleClientId?: string;
   googleClientSecret?: string;
-  pandaDataConfigured: boolean;
 }
 
 function optionalCredentialPool(value: string | undefined): readonly string[] {
@@ -62,10 +67,6 @@ function optionalBearerToken(value: string | undefined): string | undefined {
     throw new Error("ASSAY_A2A_BEARER_TOKEN must contain at least 32 characters");
   }
   return token;
-}
-
-function utcDate(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 function requireDate(value: string, name: string): string {
@@ -131,7 +132,7 @@ export function readProductionConfig(
   environment: NodeJS.ProcessEnv = process.env,
 ): ProductionA2AConfig {
   const arkBaseUrl = environment.ARK_BASE_URL?.trim() || DEFAULT_ARK_BASE_URL;
-  const dataAsOf = environment.ASSAY_DATA_AS_OF?.trim() || utcDate();
+  const dataAsOf = requireNonEmpty(environment.ASSAY_DATA_AS_OF, "ASSAY_DATA_AS_OF");
   const listenPort = environment.ASSAY_A2A_PORT?.trim() || "3001";
   const publicUrl = environment.ASSAY_A2A_PUBLIC_URL?.trim() || `http://127.0.0.1:${listenPort}`;
   const corsOrigins =
@@ -152,13 +153,17 @@ export function readProductionConfig(
     dataAsOf: requireDate(dataAsOf, "ASSAY_DATA_AS_OF"),
     databasePath: environment.ASSAY_DATABASE_PATH?.trim() || "data/assay.sqlite",
     capabilitySnapshotId:
-      environment.ASSAY_CAPABILITY_SNAPSHOT_ID?.trim() || "pandadata:toolset-v1",
+      environment.ASSAY_CAPABILITY_SNAPSHOT_ID?.trim() || "local-data-package:registry-v1",
     codeRevision: environment.ASSAY_CODE_REVISION?.trim() || "development",
     publicUrl: requireHttpUrl(publicUrl, "ASSAY_A2A_PUBLIC_URL"),
     corsOrigins: parsedCorsOrigins,
+    localDataPackageRoot: resolve(
+      environment.ASSAY_LOCAL_DATA_PACKAGE_ROOT?.trim() || DEFAULT_LOCAL_DATA_PACKAGE_ROOT,
+    ),
+    auditOutputRoot: resolve(
+      environment.ASSAY_AUDIT_OUTPUT_ROOT?.trim() || DEFAULT_AUDIT_OUTPUT_ROOT,
+    ),
     googleClientId: requireNonEmpty(environment.GOOGLE_CLIENT_ID, "GOOGLE_CLIENT_ID"),
     googleClientSecret: requireNonEmpty(environment.GOOGLE_CLIENT_SECRET, "GOOGLE_CLIENT_SECRET"),
-    pandaDataConfigured:
-      Boolean(environment.PANDA_DATA_USERNAME?.trim()) && Boolean(environment.PANDA_DATA_PASSWORD),
   };
 }

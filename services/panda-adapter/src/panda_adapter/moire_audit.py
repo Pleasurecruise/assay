@@ -96,6 +96,8 @@ def run_moire_request(
     backtest_artifact_root: Path | None = None,
     moire_artifact_root: Path | None = None,
     pit_cache_root: Path | None = None,
+    corrected_cache_version: str = V9_CACHE_VERSION,
+    corrected_pit_dataset_version: str = PIT_DATASET_VERSION,
 ) -> dict[str, Any]:
     """Execute one approved host-bound Moiré experiment."""
 
@@ -123,6 +125,8 @@ def run_moire_request(
             cost_ladder_runner=cost_ladder_runner,
             moire_artifact_root=moire_artifact_root,
             pit_cache_root=pit_cache_root,
+            expected_cache_version=corrected_cache_version,
+            expected_pit_dataset_version=corrected_pit_dataset_version,
         )
     raise ValueError("Moiré kind must be regime_slice_of_grid or corrected_cost_ladder")
 
@@ -376,6 +380,8 @@ def run_corrected_cost_ladder(
     cost_ladder_runner: CostLadderRunner = run_cost_ladder,
     moire_artifact_root: Path | None = None,
     pit_cache_root: Path | None = None,
+    expected_cache_version: str = V9_CACHE_VERSION,
+    expected_pit_dataset_version: str = PIT_DATASET_VERSION,
 ) -> dict[str, Any]:
     """Run the fixed ladder once on the host-only PIT-corrected context."""
 
@@ -383,6 +389,8 @@ def run_corrected_cost_ladder(
     context = load_corrected_backtest_context(
         spec,
         pit_cache_root=pit_cache_root,
+        expected_cache_version=expected_cache_version,
+        expected_pit_dataset_version=expected_pit_dataset_version,
     )
     ladder = cost_ladder_runner(
         context.panel.adjusted_close,
@@ -492,6 +500,8 @@ def load_corrected_backtest_context(
     spec: Mapping[str, Any],
     *,
     pit_cache_root: Path | None = None,
+    expected_cache_version: str = V9_CACHE_VERSION,
+    expected_pit_dataset_version: str = PIT_DATASET_VERSION,
 ) -> CorrectedBacktestContext:
     """Load and authenticate the corrected context for one frozen spec."""
 
@@ -533,10 +543,10 @@ def load_corrected_backtest_context(
     if mode not in {"full_pit", "degraded_remove_only"}:
         raise RuntimeError("M2 corrected host context mode is invalid")
     cache_version = payload.get("cacheVersion")
-    if cache_version != V9_CACHE_VERSION:
+    if cache_version != expected_cache_version:
         raise RuntimeError("M2 corrected host context cache version is invalid")
     pit_dataset_version = payload.get("pitDatasetVersion")
-    if pit_dataset_version != PIT_DATASET_VERSION:
+    if pit_dataset_version != expected_pit_dataset_version:
         raise RuntimeError("M2 corrected host context PIT dataset version is invalid")
     dates = _context_dates(payload.get("dates"))
     symbols = _context_symbols(payload.get("symbols"))

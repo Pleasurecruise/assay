@@ -17,6 +17,8 @@ const strategySpec = {
   rebalance: { frequency: "monthly" },
   window: { start: "20230101", end: "20251231" },
 } as const satisfies StrategySpec;
+const dataRef =
+  "assay-local-data-v1:audit_test:g01:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 function specHash(value: StrategySpec): string {
   return hashStrategySpec(canonicalizeStrategySpec(value));
@@ -35,9 +37,11 @@ describe("guardRuntimeToolCall", () => {
         specHash(strategySpec),
         canonicalizeStrategySpec(strategySpec),
         0,
+        dataRef,
       ),
     ).toEqual({ runExperimentCallCount: 1 });
     expect(args.spec).toEqual(JSON.parse(canonicalizeStrategySpec(strategySpec)));
+    expect(args.dataRef).toBe(dataRef);
   });
 
   test("applies the same one-call trusted-spec binding to the availability audit", () => {
@@ -52,9 +56,11 @@ describe("guardRuntimeToolCall", () => {
         specHash(strategySpec),
         canonicalizeStrategySpec(strategySpec),
         0,
+        dataRef,
       ),
     ).toEqual({ runExperimentCallCount: 1 });
     expect(args.spec).toEqual(JSON.parse(canonicalizeStrategySpec(strategySpec)));
+    expect(args.dataRef).toBe(dataRef);
 
     expect(
       guardRuntimeToolCall(
@@ -63,6 +69,7 @@ describe("guardRuntimeToolCall", () => {
         specHash(strategySpec),
         canonicalizeStrategySpec(strategySpec),
         1,
+        dataRef,
       ),
     ).toEqual({
       runExperimentCallCount: 2,
@@ -82,9 +89,11 @@ describe("guardRuntimeToolCall", () => {
         specHash(strategySpec),
         canonicalizeStrategySpec(strategySpec),
         0,
+        dataRef,
       ),
     ).toEqual({ runExperimentCallCount: 1 });
     expect(args.spec).toEqual(JSON.parse(canonicalizeStrategySpec(strategySpec)));
+    expect(args.dataRef).toBe(dataRef);
 
     expect(
       guardRuntimeToolCall(
@@ -93,6 +102,7 @@ describe("guardRuntimeToolCall", () => {
         specHash(strategySpec),
         canonicalizeStrategySpec(strategySpec),
         1,
+        dataRef,
       ),
     ).toEqual({
       runExperimentCallCount: 2,
@@ -110,6 +120,7 @@ describe("guardRuntimeToolCall", () => {
       expectedHash,
       canonicalizeStrategySpec(strategySpec),
       0,
+      dataRef,
     );
 
     expect(result).toEqual({
@@ -118,18 +129,23 @@ describe("guardRuntimeToolCall", () => {
     });
   });
 
-  test("overwrites model-controlled spec content without echoing it", () => {
+  test("overwrites model-controlled spec and dataRef content without echoing it", () => {
     const sensitiveValue = "Bearer secret at /Users/example/private.json";
-    const args: Record<string, unknown> = { spec: { sensitiveValue } };
+    const args: Record<string, unknown> = {
+      spec: { sensitiveValue },
+      dataRef: `model:${sensitiveValue}`,
+    };
     const result = guardRuntimeToolCall(
       "run_experiment",
       args,
       specHash(strategySpec),
       canonicalizeStrategySpec(strategySpec),
       0,
+      dataRef,
     );
 
     expect(result).toEqual({ runExperimentCallCount: 1 });
+    expect(args.dataRef).toBe(dataRef);
     expect(JSON.stringify(args)).not.toContain(sensitiveValue);
     expect(JSON.stringify(args)).not.toContain("/Users/");
     expect(JSON.stringify(args)).not.toContain("Bearer");
@@ -148,6 +164,7 @@ describe("guardRuntimeToolCall", () => {
       expectedHash,
       canonicalizeStrategySpec(changedSpec),
       0,
+      dataRef,
     );
 
     expect(result.blockReason).toBe("run_experiment is not authorized for this task");
@@ -161,7 +178,14 @@ describe("guardRuntimeToolCall", () => {
     ["noncanonical trusted JSON", JSON.stringify(strategySpec, null, 2)],
   ])("fails closed on %s", (_label, trustedCanonicalSpec) => {
     expect(
-      guardRuntimeToolCall("run_experiment", {}, specHash(strategySpec), trustedCanonicalSpec, 0),
+      guardRuntimeToolCall(
+        "run_experiment",
+        {},
+        specHash(strategySpec),
+        trustedCanonicalSpec,
+        0,
+        dataRef,
+      ),
     ).toEqual({
       runExperimentCallCount: 1,
       blockReason: "run_experiment is not authorized for this task",
@@ -175,6 +199,7 @@ describe("guardRuntimeToolCall", () => {
       specHash(strategySpec),
       canonicalizeStrategySpec(strategySpec),
       0,
+      dataRef,
     );
     const second = guardRuntimeToolCall(
       "run_experiment",
@@ -182,6 +207,7 @@ describe("guardRuntimeToolCall", () => {
       specHash(strategySpec),
       canonicalizeStrategySpec(strategySpec),
       first.runExperimentCallCount,
+      dataRef,
     );
 
     expect(second).toEqual({
@@ -191,8 +217,24 @@ describe("guardRuntimeToolCall", () => {
   });
 
   test("does not change the behavior or call count of other tools", () => {
-    expect(guardRuntimeToolCall("market_data", {}, undefined, undefined, 0)).toEqual({
+    expect(guardRuntimeToolCall("market_data", {}, undefined, undefined, 0, undefined)).toEqual({
       runExperimentCallCount: 0,
+    });
+  });
+
+  test.each([undefined, "", "   "])("fails closed when host dataRef is %j", (trustedDataRef) => {
+    expect(
+      guardRuntimeToolCall(
+        "run_experiment",
+        {},
+        specHash(strategySpec),
+        canonicalizeStrategySpec(strategySpec),
+        0,
+        trustedDataRef,
+      ),
+    ).toEqual({
+      runExperimentCallCount: 1,
+      blockReason: "run_experiment is not authorized for this task",
     });
   });
 });

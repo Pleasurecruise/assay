@@ -18,8 +18,9 @@ export interface RuntimeToolCallGuardResult {
 /**
  * Apply task-scoped invariants before a tool reaches execution.
  *
- * The expected hash comes from the host's frozen audit metadata, never from
- * model text. Other tools pass through unchanged.
+ * The expected hash, canonical spec, and evidence reference come from the
+ * host's frozen audit metadata, never from model text. Other tools pass through
+ * unchanged.
  */
 export function guardRuntimeToolCall(
   toolName: string,
@@ -27,6 +28,7 @@ export function guardRuntimeToolCall(
   expectedSpecHash: string | undefined,
   trustedCanonicalSpec: string | undefined,
   runExperimentCallCount: number,
+  trustedDataRef: string | undefined,
 ): RuntimeToolCallGuardResult {
   if (!isTrustedSpecTool(toolName)) {
     return { runExperimentCallCount };
@@ -42,7 +44,9 @@ export function guardRuntimeToolCall(
   if (
     expectedSpecHash === undefined ||
     !/^sha256:[a-f0-9]{64}$/i.test(expectedSpecHash) ||
-    trustedCanonicalSpec === undefined
+    trustedCanonicalSpec === undefined ||
+    trustedDataRef === undefined ||
+    trustedDataRef.trim().length === 0
   ) {
     return {
       runExperimentCallCount: nextCallCount,
@@ -63,8 +67,10 @@ export function guardRuntimeToolCall(
       };
     }
     // Schema validation has already run. Bind the host-frozen object after
-    // validation so the model neither copies nor controls StrategySpec.
+    // validation so the model neither copies nor controls StrategySpec or the
+    // task-scoped evidence identity.
     args.spec = trustedSpec;
+    args.dataRef = trustedDataRef;
   } catch {
     return {
       runExperimentCallCount: nextCallCount,

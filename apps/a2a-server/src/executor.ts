@@ -14,6 +14,7 @@ import {
   type AuditArtifact,
   type MissingEvidence,
 } from "@assay/contracts";
+import { DeterministicStrategyDataPlanner, type StrategyDataPlanner } from "@assay/finance-tools";
 import { type StrategyIntakeResult } from "@assay/intake";
 import {
   buildExecutedAuditArtifact,
@@ -34,9 +35,23 @@ export interface StrategyIntakePort {
   intakeText(input: string, signal?: AbortSignal): Promise<StrategyIntakeResult>;
 }
 
+export interface LocalDataResolverPort {
+  resolve(
+    plan: ReturnType<StrategyDataPlanner["plan"]>,
+    auditId: string,
+    signal?: AbortSignal,
+  ): Promise<{
+    readonly dataRef: string;
+    readonly sources: readonly string[];
+    readonly packageId?: string;
+  }>;
+}
+
 export interface AssayAgentExecutorOptions {
   intake: StrategyIntakePort;
   runner: ParallelAuditRunner;
+  dataResolver: LocalDataResolverPort;
+  dataPlanner?: StrategyDataPlanner;
   claimReproducer?: ClaimReproducer;
   artifactStore: AuditArtifactStore;
   dataAsOf: string;
@@ -316,6 +331,8 @@ function initialTask(
 export class AssayAgentExecutor implements AgentExecutor {
   readonly #intake: StrategyIntakePort;
   readonly #runner: ParallelAuditRunner;
+  readonly #dataResolver: LocalDataResolverPort;
+  readonly #dataPlanner: StrategyDataPlanner;
   readonly #claimReproducer: ClaimReproducer | undefined;
   readonly #artifactStore: AuditArtifactStore;
   readonly #dataAsOf: string;
@@ -334,6 +351,8 @@ export class AssayAgentExecutor implements AgentExecutor {
   constructor(options: AssayAgentExecutorOptions) {
     this.#intake = options.intake;
     this.#runner = options.runner;
+    this.#dataResolver = options.dataResolver;
+    this.#dataPlanner = options.dataPlanner ?? new DeterministicStrategyDataPlanner();
     this.#claimReproducer = options.claimReproducer;
     this.#artifactStore = options.artifactStore;
     this.#dataAsOf = options.dataAsOf;
@@ -493,11 +512,20 @@ export class AssayAgentExecutor implements AgentExecutor {
             ),
           );
         } else {
+          const dataPlan = await runStage("data_plan", () =>
+            this.#dataPlanner.plan(intakeResult.frozen.strategy),
+          );
+          const preparedData = await runStage("local_data_resolve", () =>
+            this.#dataResolver.resolve(dataPlan, identity.auditId, controller.signal),
+          );
           const claimComparison = await runStage("claim_reproduction", async () => {
             const comparison =
               this.#claimReproducer === undefined
                 ? null
-                : await this.#claimReproducer.reproduce(intakeResult.frozen.spec);
+                : await this.#claimReproducer.reproduce(
+                    intakeResult.frozen.spec,
+                    preparedData.dataRef,
+                  );
             controller.signal.throwIfAborted();
             if (intakeResult.frozen.spec.claims !== undefined && comparison === null) {
               throw new Error("Claim reproduction is required when the StrategySpec has claims");
@@ -523,7 +551,11 @@ export class AssayAgentExecutor implements AgentExecutor {
                 },
               }),
             );
-            const request = projectFrozenAuditInput(intakeResult.frozen, identity);
+            const request = projectFrozenAuditInput(
+              intakeResult.frozen,
+              identity,
+              preparedData.dataRef,
+            );
             return await this.#runner.run(request, {
               signal: controller.signal,
             });
@@ -536,6 +568,7 @@ export class AssayAgentExecutor implements AgentExecutor {
                 result,
                 generatedAt: this.#now().toISOString(),
                 claimComparison,
+                acquisitionSources: preparedData.sources,
               }),
             ),
           );

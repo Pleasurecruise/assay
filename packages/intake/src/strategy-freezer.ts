@@ -3,13 +3,16 @@ import {
   AUDIT_CHECK_HARD_DEADLINE_MS,
   AUDIT_CHECK_IDS,
   type AuditCheckId,
+  type CanonicalStrategyDefinition,
   type CanonicalStrategySpec,
   type CheckBudget,
   AUDIT_REQUEST_SCHEMA_VERSION,
   STRATEGY_SPEC_VERSION,
   canonicalizeStrategySpec,
   hashStrategySpec,
+  strategyForData,
   toCanonicalStrategySpec,
+  type StrategyClaims,
   type StrategySpec,
 } from "@assay/contracts";
 
@@ -23,6 +26,12 @@ export interface FrozenAuditInput {
   artifactSchemaVersion: string;
   skill: "audit_strategy";
   spec: CanonicalStrategySpec;
+  /**
+   * Claims-free canonical view. Data planning must consume this field instead
+   * of `spec`, while the existing audit path keeps the complete frozen spec.
+   */
+  strategy: CanonicalStrategyDefinition;
+  readonly claims?: StrategyClaims;
   canonicalJson: string;
   specHash: string;
   defaultsApplied: readonly string[];
@@ -108,6 +117,7 @@ export function freezeStrategySpec(
   options: FreezeStrategyOptions,
 ): FrozenAuditInput {
   const spec = deepFreeze(toCanonicalStrategySpec(strategySpec));
+  const strategy = deepFreeze(strategyForData(spec));
   const canonicalJson = canonicalizeStrategySpec(spec);
   const specHash = hashStrategySpec(canonicalJson);
   const defaultsApplied = collectAppliedDefaults(strategySpec, spec);
@@ -118,6 +128,8 @@ export function freezeStrategySpec(
     artifactSchemaVersion: AUDIT_ARTIFACT_SCHEMA_VERSION,
     skill: "audit_strategy" as const,
     spec,
+    strategy,
+    ...(spec.claims === undefined ? {} : { claims: spec.claims }),
     canonicalJson,
     specHash,
     defaultsApplied,

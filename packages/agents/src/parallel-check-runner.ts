@@ -13,6 +13,7 @@ import {
   AUDIT_CHECK_SCHEMA_VERSION,
   parseAuditCheckResult,
 } from "@assay/contracts";
+import { assertHostDataRef } from "./data-ref";
 import {
   planDiscriminativeMoireExperiments,
   planReviewMoireExperiments,
@@ -55,6 +56,7 @@ export interface MoireExperimentExecutionContext {
   readonly auditId: string;
   readonly traceId: string;
   readonly subjectId: string;
+  readonly dataRef: string;
   readonly frozenStrategySpec?: string;
   readonly specHash?: string;
 }
@@ -66,7 +68,15 @@ export interface MoireExperimentExecutor {
   ): Promise<DiscriminativeMoireOutcome>;
 }
 
-function validateRequest(request: ParallelAuditChecksRequest): void {
+type DataBoundParallelAuditChecksRequest = ParallelAuditChecksRequest & {
+  readonly metadata: Readonly<Record<string, string>> & {
+    readonly dataRef: string;
+  };
+};
+
+function validateRequest(
+  request: ParallelAuditChecksRequest,
+): asserts request is DataBoundParallelAuditChecksRequest {
   if (request.schemaVersion !== AUDIT_CHECK_SCHEMA_VERSION) {
     throw new Error("Unsupported check schema version");
   }
@@ -79,6 +89,7 @@ function validateRequest(request: ParallelAuditChecksRequest): void {
   if (!request.subject.input.trim()) {
     throw new Error("subject.input cannot be empty");
   }
+  assertHostDataRef(request.metadata?.dataRef, "Parallel audit");
   if (request.skill === "audit_strategy" && request.subject.kind !== "strategy") {
     throw new Error("audit_strategy requires a strategy subject");
   }
@@ -234,7 +245,7 @@ export class ParallelAuditCheckRunner {
   }
 
   async #runReviewMoire(
-    request: ParallelAuditChecksRequest,
+    request: DataBoundParallelAuditChecksRequest,
     traceId: string,
     independentChecks: readonly AuditCheckResult[],
     signal?: AbortSignal,
@@ -261,7 +272,7 @@ export class ParallelAuditCheckRunner {
   }
 
   async #runDiscriminativeMoire(
-    request: ParallelAuditChecksRequest,
+    request: DataBoundParallelAuditChecksRequest,
     traceId: string,
     independentChecks: readonly AuditCheckResult[],
   ): Promise<readonly AuditCheckResult[]> {
@@ -277,6 +288,7 @@ export class ParallelAuditCheckRunner {
       auditId: request.auditId,
       traceId,
       subjectId: request.subject.id,
+      dataRef: request.metadata.dataRef,
       ...(request.skill === "audit_strategy" ? { frozenStrategySpec: request.subject.input } : {}),
       ...(request.metadata?.specHash === undefined ? {} : { specHash: request.metadata.specHash }),
     };
@@ -308,7 +320,7 @@ export class ParallelAuditCheckRunner {
   }
 
   async #runOne(
-    request: ParallelAuditChecksRequest,
+    request: DataBoundParallelAuditChecksRequest,
     checkId: AuditCheckId,
     traceId: string,
     signal?: AbortSignal,
@@ -340,6 +352,7 @@ export class ParallelAuditCheckRunner {
           timeoutMs,
           metadata: {
             ...request.metadata,
+            dataRef: request.metadata.dataRef,
             auditId: request.auditId,
             subjectId: request.subject.id,
             checkId,

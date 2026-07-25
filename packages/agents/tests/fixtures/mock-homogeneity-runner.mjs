@@ -6,6 +6,8 @@ for await (const chunk of process.stdin) {
 const request = JSON.parse(Buffer.concat(chunks).toString("utf8"));
 if (
   request?.kind !== "homogeneity" ||
+  request.dataRef !==
+    "assay-local-data-v1:audit_test:g01:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" ||
   typeof request.spec !== "object" ||
   request.budget?.maxVariants !== 1
 ) {

@@ -1,9 +1,12 @@
 import { ArkParserError } from "@assay/intake";
+import { LocalDataPackageError } from "./local-data-package";
 
 export const EXECUTION_TIMELINE_STAGES = [
   "a2a_acceptance",
   "skeleton_decode",
   "strategy_intake",
+  "data_plan",
+  "local_data_resolve",
   "claim_reproduction",
   "parallel_audit_handoff",
   "artifact_finalize",
@@ -17,6 +20,7 @@ export type ExecutionTimelineErrorType =
   | "AbortError"
   | "ArkParserError"
   | "Error"
+  | "LocalDataPackageError"
   | "TimeoutError"
   | "TypeError"
   | "UnknownError";
@@ -25,6 +29,7 @@ export type ExecutionTimelineErrorCode =
   | "aborted"
   | "configuration_error"
   | "internal_error"
+  | "local_data_unavailable"
   | "request_failed"
   | "response_invalid"
   | "response_unparseable"
@@ -64,6 +69,7 @@ const ERROR_TYPES = new Set<ExecutionTimelineErrorType>([
   "AbortError",
   "ArkParserError",
   "Error",
+  "LocalDataPackageError",
   "TimeoutError",
   "TypeError",
 ]);
@@ -71,6 +77,7 @@ const ERROR_CODES = new Set<ExecutionTimelineErrorCode>([
   "aborted",
   "configuration_error",
   "internal_error",
+  "local_data_unavailable",
   "request_failed",
   "response_invalid",
   "response_unparseable",
@@ -107,9 +114,12 @@ export function classifyExecutionTimelineFailure(error: unknown): ExecutionTimel
   try {
     if (error instanceof ArkParserError) {
       errorType = "ArkParserError";
+    } else if (error instanceof LocalDataPackageError) {
+      errorType = "LocalDataPackageError";
     } else if (
       error instanceof Error &&
       error.name !== "ArkParserError" &&
+      error.name !== "LocalDataPackageError" &&
       ERROR_TYPES.has(error.name as ExecutionTimelineErrorType)
     ) {
       errorType = error.name as ExecutionTimelineErrorType;
@@ -118,6 +128,8 @@ export function classifyExecutionTimelineFailure(error: unknown): ExecutionTimel
       errorCode = "aborted";
     } else if (errorType === "TimeoutError") {
       errorCode = "timeout";
+    } else if (errorType === "LocalDataPackageError") {
+      errorCode = "local_data_unavailable";
     } else if (errorType === "ArkParserError" && typeof error === "object" && error !== null) {
       const record = error as Record<string, unknown>;
       if (PARSER_ERROR_CODES.has(record.code as ExecutionTimelineErrorCode)) {

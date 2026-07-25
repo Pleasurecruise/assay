@@ -26,6 +26,8 @@ const context = {
   auditId: "audit-moire-subprocess",
   traceId: "trace-moire-subprocess",
   subjectId: "strategy-moire-subprocess",
+  dataRef:
+    "assay-local-data-v1:audit_test:g01:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   frozenStrategySpec,
   specHash: hashStrategySpec(frozenStrategySpec),
 };
@@ -84,7 +86,7 @@ describe("SubprocessMoireExperimentExecutor", () => {
     });
   });
 
-  test("rejects a non-artifact source and a mismatched frozen hash", async () => {
+  test("rejects a non-artifact source, missing data ref, and mismatched frozen hash", async () => {
     const invalidSource = new SubprocessMoireExperimentExecutor({
       command: process.execPath,
       args: [fixturePath],
@@ -93,6 +95,12 @@ describe("SubprocessMoireExperimentExecutor", () => {
     await expect(invalidSource.execute(m1, context)).rejects.toThrow(
       "content-addressed artifact:moire/M1 reference",
     );
+    await expect(
+      invalidSource.execute(m1, {
+        ...context,
+        dataRef: " ",
+      }),
+    ).rejects.toThrow("Moiré subprocess dataRef must be a non-empty string");
     await expect(
       invalidSource.execute(m1, {
         ...context,

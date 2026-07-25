@@ -4,7 +4,11 @@ for await (const chunk of process.stdin) {
 }
 
 const request = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-if (typeof request?.spec !== "object") {
+if (
+  typeof request?.spec !== "object" ||
+  request.dataRef !==
+    "assay-local-data-v1:audit_test:g01:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+) {
   process.exitCode = 2;
 } else if (request.kind === "regime_slice_of_grid") {
   process.stdout.write(
