@@ -1,17 +1,20 @@
 # Demo and Delivery Plan
 
+> Status: the `audit_strategy` application path is implemented. A complete
+> demonstration still requires provisioning the real G01 local package.
+> Factor and comparison examples remain future work.
+>
 > See [PROPOSAL.md](PROPOSAL.md) for delivery constraints,
 > [CHECKS.md](CHECKS.md) for expected check behavior, and
 > [VERDICT_SPEC.md](VERDICT_SPEC.md) for output shape.
 
 ## 1. Example Tasks
 
-1. Audit a normal momentum strategy and show both supporting and opposing
-   evidence.
-2. Audit a deliberately overfit factor and expose it with reproducible
-   evidence.
-3. Compare two same-kind subjects, rank robustness, and trigger either a Moiré
-   follow-up or an `UNVERIFIABLE` result.
+1. Current: audit the registered G01 momentum strategy and show claim
+   reproduction, five checks, Moiré, and the final Artifact.
+2. Future: audit a registered deliberately fragile strategy.
+3. Future: compare two same-kind subjects after the comparison skill is
+   implemented.
 
 ## 2. Demo Requirements
 
@@ -34,21 +37,22 @@ Do not show:
 - automatic trading;
 - return promises.
 
-## 3. Delivery Milestones
+## 3. Delivery Status
 
-1. **Runtime milestone:** five isolated check agents, parallel runner, typed
-   contracts, and tests. Data and backtest tools may still be absent, so honest
-   runs return `insufficient_evidence`.
-2. **Submission baseline:** A2A gateway, Intake, Backtester, all data tools,
-   five checks, Moiré follow-ups, verdict aggregation, and final Artifacts.
-3. **Polish:** visual evidence pages, a controlled overfit target, comparison
-   audit, and resilient deployment.
+1. **Implemented:** A2A gateway, Intake, local data resolver, deterministic
+   backtester, five checks, Moiré M1/M2, verdict aggregation, final Artifacts,
+   cancellation, authentication, and web history.
+2. **Deployment requirement:** provision and register the real G01 package;
+   verify `/readyz`; run the complete G01 acceptance.
+3. **Future:** G02/G03, factor and comparison skills, durable A2A Task
+   recovery, and streaming.
 
 ## 4. Submission Checklist
 
 - [ ] Public Agent Card and supported A2A interface URL
 - [ ] Service remains reachable during review
-- [ ] At least three tested example tasks
+- [ ] Real G01 package provisioned and `/readyz` returns `200`
+- [ ] G01 completes through the public A2A interface
 - [ ] Usage, architecture, skill, and output documentation
 - [ ] Demo video showing the complete flow
 - [ ] Data and research skill inventory

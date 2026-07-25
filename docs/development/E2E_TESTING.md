@@ -17,10 +17,12 @@ natural-language strategy
   → AuditArtifact
 ```
 
-The input is:
+The test submits the equivalent of:
 
 ```text
-沪深 300 每月底买过去 20 天涨幅最大的 50 只，等权持有，宣称年化 18% 夏普 1.9
+For the CSI 300, buy the 50 stocks with the highest trailing 20-day return at
+each month end, weight them equally, and audit the claimed 18% annual return
+and 1.9 Sharpe.
 ```
 
 The market, PIT, and V9 inputs are the prebuilt G01 golden package under
@@ -52,10 +54,14 @@ The descriptor binds the existing market CSV, V9 manifest, and immutable CSI
 the market data. `ASSAY_AUDIT_OUTPUT_ROOT` is the separate writable location
 for task-scoped derived artifacts.
 
-The Python executable may be pinned with:
+Python subprocesses use `uv run --project services/panda-adapter` by default on
+every platform. A specific interpreter may still be pinned when needed:
 
 ```dotenv
-ASSAY_EXPERIMENT_PYTHON=services/panda-adapter/.venv/bin/python
+# Windows
+ASSAY_EXPERIMENT_PYTHON=services/panda-adapter/.venv/Scripts/python.exe
+# Linux/macOS
+# ASSAY_EXPERIMENT_PYTHON=services/panda-adapter/.venv/bin/python
 ```
 
 ## Run

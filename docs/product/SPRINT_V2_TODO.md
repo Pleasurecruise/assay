@@ -1,4 +1,9 @@
-# Sprint v2 vertical-slice TODO
+# Archived Sprint v2 Vertical-Slice Notes
+
+> Status: superseded by [CURRENT_STATE.md](../CURRENT_STATE.md),
+> [LOCAL_DATA_PACKAGE_PIPELINE.md](LOCAL_DATA_PACKAGE_PIPELINE.md), and the V9
+> acceptance artifacts. This file is retained only as historical decision
+> context and is not an active task list.
 
 This list records the deliberate shortcuts in the local 8-hour vertical slice.
 It is not a D8/D9 contract or a claim that the shortcuts are production-safe.

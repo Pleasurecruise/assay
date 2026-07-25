@@ -1,161 +1,117 @@
 # Agent Runtime Architecture
 
-> Status: the generic runtime and five-check fan-out are implemented. Data
-> tools, Backtester tools, Intake, Moiré, reporting, and the A2A gateway remain
-> roadmap work.
+> Status: implemented for `audit_strategy`.
+>
+> See [CURRENT_STATE.md](../CURRENT_STATE.md) for deployment readiness and
+> remaining work.
 
-## 1. Layering
+## Layering
 
 ```text
-A2A gateway (planned)
-  └─ Main Agent / audit orchestrator
-       └─ ParallelAuditCheckRunner
-            ├─ AgentRuntime.run(param-robustness)
-            ├─ AgentRuntime.run(data-availability)
-            ├─ AgentRuntime.run(cost-stress)
-            ├─ AgentRuntime.run(regime-dependency)
-            └─ AgentRuntime.run(homogeneity-decay)
-                 └─ fresh @oh-my-pi/pi-agent-core Agent per call
+A2A gateway
+  -> AssayAgentExecutor
+     -> Ark natural-language intake
+     -> deterministic StrategySpec freeze
+     -> deterministic local data resolution
+     -> claim reproduction
+     -> ParallelAuditCheckRunner
+        -> AgentRuntime.run(param-robustness)
+        -> AgentRuntime.run(data-availability)
+        -> AgentRuntime.run(cost-stress)
+        -> AgentRuntime.run(regime-dependency)
+        -> AgentRuntime.run(homogeneity-decay)
+     -> bounded Moiré M1/M2 experiments
+     -> deterministic verdict and Artifact
 ```
 
-The A2A gateway owns remote task lifecycle. `AgentRuntime` owns one isolated
+The A2A gateway owns remote Task lifecycle. `AssayAgentExecutor` owns stage
+ordering and host-only data binding. `AgentRuntime` owns one isolated
 oh-my-pi invocation. `ParallelAuditCheckRunner` owns internal fan-out and
-result validation. These responsibilities must not be collapsed into a single
-stateful Agent.
+result validation.
 
-## 2. oh-my-pi Composition
+## Isolation
 
-The repository pins `@oh-my-pi/pi-agent-core` and uses its public runtime
-surface:
+Every check creates a fresh `@oh-my-pi/pi-agent-core` Agent. Checks may share
+only immutable host data:
 
-- construct a fresh `Agent` with model, prompt, tools, and empty messages;
-- subscribe to agent, message, and tool lifecycle events;
-- invoke one self-contained `prompt`;
-- enforce host policy through `beforeToolCall`;
-- propagate timeout or caller cancellation through `agent.abort`;
-- unsubscribe and abort during cleanup.
+- frozen strategy bytes and hash;
+- audit, subject, and trace identifiers;
+- one task-bound `dataRef`;
+- model configuration and fixed tool definitions.
 
-This follows the library's evented Agent design while keeping product policy
-and multi-agent orchestration outside the dependency.
+They never share conversation history, partial conclusions, pending tool
+calls, or mutable Agent state. Sibling results become visible only after the
+independent phase completes.
 
-## 3. Isolation Model
+## Host-Controlled Tools
 
-Every `AgentRuntime.run` call creates a new Agent. No messages, pending tool
-calls, steering queues, or mutable Agent state cross request boundaries.
+Runtime tools are coarse deterministic operations:
 
-All five checks may share:
+- `run_experiment`;
+- `run_availability_audit`;
+- `run_homogeneity`;
+- structured result submission.
 
-- the immutable normalized subject;
-- an audit and trace identifier;
-- immutable cached data query results;
-- model configuration and tool definitions.
+The host overwrites model-controlled strategy and `dataRef` arguments with the
+trusted frozen values. Each check may call only its assigned experiment once.
+Tool arguments and results are omitted from lifecycle telemetry.
 
-They may not share:
+Tools declare `read`, `write`, or `exec`. Undeclared tools are treated as
+`exec`; `write` and `exec` require explicit host approval.
 
-- conversation history;
-- conclusions or partial conclusions;
-- mutable tool state that is not scoped by audit and branch;
-- sibling events as prompt input.
+## Fan-Out, Failure, and Cancellation
 
-## 4. Main-Agent Interface
+Applicable checks start concurrently. A branch runtime error, invalid result,
+or deadline becomes `insufficient_evidence` for that branch without discarding
+successful siblings.
 
-The public internal boundary is:
+Caller cancellation is different: the same `AbortSignal` reaches every live
+Agent and Python subprocess. The A2A Task becomes `CANCELED`; cancellation is
+never converted into missing evidence.
 
-- `ParallelAuditChecksRequest`: audit ID, skill profile, subject, optional
-  data date, per-check budgets, and trace metadata;
-- `AuditCheckAgentRequest`: the subset visible to one branch;
-- `ParallelAuditChecksResult`: one canonical ordered list containing all five
-  check IDs;
-- `AuditCheckResult`: validated branch output.
+A missing or invalid local package fails before fan-out. It is an
+infrastructure failure, so the A2A Task becomes `FAILED` and no audit Artifact
+is published.
 
-The interfaces live in `packages/contracts/src/audit-checks.ts`. The runner
-lives in `packages/agents/src/parallel-check-runner.ts`.
+## Moiré and Verdict
 
-Applicable branches start concurrently with `Promise.all`. This is host-level
-parallelism, not model-directed subagent spawning. It provides a typed result
-to the parent and avoids free-form sibling communication.
+The runner plans only the implemented discriminating experiments:
 
-## 5. Branch Failure and Cancellation
+- M1 for parameter robustness versus regime concentration;
+- M2 for point-in-time availability correction versus cost sensitivity.
 
-Branch failure is contained:
+The host validates experiment identity and synthesizes refinements without
+allowing one check Agent to rewrite another check's output. Final verdict
+selection is deterministic.
 
-- runtime error;
-- branch deadline;
-- invalid JSON;
-- invalid result fields;
-- a returned ID different from the expected Agent ID.
+## Events and Sensitive Data
 
-Each becomes `insufficient_evidence` for only that check. Successful siblings
-remain available.
+Runtime events include stage, Agent, and tool timings. Prompts, tool arguments,
+tool results, provider credentials, and raw exceptions are not persisted by
+default. Public failures contain a correlation ID and safe stage name while
+internal logs retain only the error type and redacted details.
 
-Caller cancellation is not contained. The same `AbortSignal` reaches every
-runtime call, each live Agent is aborted, and the batch rejects. This allows a
-future A2A `cancelTask` implementation to stop real work instead of returning a
-misleading evidence result.
+## Deadlines
 
-## 6. Tool Policy
+One audit is capped below the competition's 20-minute limit. Per-check
+deadlines are capped at 360 seconds and run concurrently. Intake, Moiré,
+Artifact persistence, and publication share the remaining budget.
 
-Tools declare a `read`, `write`, or `exec` tier. Undeclared tools are treated
-as `exec`.
+## A2A Boundary
 
-- `read` is allowed by default.
-- `write` and `exec` require explicit host approval.
-- Planned PandaData query tools are `read`.
-- The planned Backtester is compute-only and side-effect free, but its final
-  tier must be declared explicitly when registered.
+The official A2A JavaScript SDK provides:
 
-Tool arguments and results are omitted from lifecycle audit events. This
-reduces exposure but does not make all runtime events metadata-only.
+- Agent Card discovery;
+- HTTP+JSON and JSON-RPC 1.0 transports;
+- Task submission, lookup, and cancellation;
+- status and Artifact updates.
 
-## 7. Events and Sensitive Data
+One external Task represents one complete audit. Internal checks are not
+separate A2A agents. Streaming and push notifications are not advertised.
 
-Runtime events include:
+## Remaining Work
 
-- agent start, streamed text, completion, and failure;
-- tool start and completion;
-- policy denial.
-
-Agent text and failure messages may contain sensitive user or model-generated
-content. Hosts must not persist them by default. Credential redaction,
-retention policy, and safe aggregate telemetry remain hardening work.
-
-## 8. Deadlines
-
-One runtime call is capped at 19 minutes. The parallel check phase normally
-uses a 9-10 minute per-branch budget because branches run concurrently. Intake,
-Moiré, reporting, and return reserve share the remaining operating budget.
-
-The runner accepts a per-check `timeoutMs`, which is still capped by
-`AgentRuntime`.
-
-## 9. A2A Boundary
-
-The Skeleton server uses the official A2A JavaScript SDK to:
-
-- implement one `AgentExecutor` for the complete Assay audit;
-- map one inbound natural-language audit to one A2A Task;
-- publish working status while internal stages run;
-- publish structured and text output as Artifact Parts;
-- persist the Artifact before marking the Task completed.
-
-Baseline extends this boundary with structured input, multi-turn
-`INPUT_REQUIRED` clarification on the same Task, durable Task state, restart
-recovery, and cancellation propagation to the batch `AbortSignal`. A frozen
-Task never re-enters `INPUT_REQUIRED`.
-
-Internal checks are not separate A2A agents. This keeps protocol lifecycle out
-of numerical check logic and avoids five independently persisted remote tasks
-for one audit.
-
-The authoritative gateway design, including input forms, clarification,
-early-exit Artifacts, and implementation phasing, is
-`docs/product/A2A_SERVER.md`.
-
-## 10. Open Work
-
-- PandaData and Backtester tool registration per check.
-- Capability probes and the fixed budget-plan builder.
-- Moiré follow-up dispatch.
-- Deterministic verdict aggregation over real numerical evidence.
-- Structured A2A input, multi-turn clarification, durable Task persistence,
-  restart recovery, streaming, and cancellation.
+- provision the real G01 local package in each deployment;
+- register G02 and G03 only after their strategies and datasets are frozen;
+- implement public factor and comparison skills;
+- add multi-turn clarification and durable remote Task recovery.

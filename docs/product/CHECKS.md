@@ -1,5 +1,8 @@
 # Audit Check Specification
 
+> Status: all five `audit_strategy` checks are implemented. Numerical
+> execution requires a verified immutable local package.
+
 > This document defines the five independent checks and Moiré
 > cross-validation. See [VERDICT_SPEC.md](VERDICT_SPEC.md) for result fields,
 > [DATA_NOTES.md](DATA_NOTES.md) for verified data capabilities, and

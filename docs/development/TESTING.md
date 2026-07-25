@@ -48,7 +48,7 @@ oh-my-pi boundary when practical.
 Integration tests may cover:
 
 - one `AgentRuntime` invocation with a deterministic fake model;
-- registered PandaData and Backtester tools against fixtures;
+- local package loaders and deterministic Backtester tools against fixtures;
 - complete check fan-out with fixture data;
 - the A2A `AgentExecutor`, event bus, Artifact publication, and cancellation.
 

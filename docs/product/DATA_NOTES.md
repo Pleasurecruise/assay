@@ -3,6 +3,8 @@
 > This document separates verified PandaAI/PandaData capabilities from
 > assumptions and open questions. See [CHECKS.md](CHECKS.md) for consumers and
 > [DATA_ACCESS.md](../architecture/DATA_ACCESS.md) for adapter requirements.
+> These provider facts apply to offline package preparation; production does
+> not call PandaData at runtime.
 
 ## 1. Verification Scope
 

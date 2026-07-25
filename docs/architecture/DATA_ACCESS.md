@@ -1,140 +1,91 @@
-# PandaData Access Architecture
+# Data Access Architecture
 
-> Runtime status (2026-07-25): this document now describes the offline,
-> pre-competition package-preparation boundary only. The production A2A
-> service does not initialize PandaData or read its credentials; it selects
-> immutable local packages as specified in
+> Status: implemented local-package runtime boundary.
+>
+> See [CURRENT_STATE.md](../CURRENT_STATE.md) and
 > [LOCAL_DATA_PACKAGE_PIPELINE.md](../product/LOCAL_DATA_PACKAGE_PIPELINE.md).
 
-## Offline preparation boundary
+## Runtime Boundary
 
-PandaData is a Python SDK and must not be imported by the TypeScript agent
-runtime. Data access crosses a narrow adapter boundary:
+The production A2A service never initializes PandaData, reads PandaData
+credentials, or registers online `panda_*` tools.
 
 ```text
-Data Agent
-  -> TypeScript AgentTool (`market_data`)
-  -> PandaData adapter transport
-  -> initialized Python process
-  -> `panda_data.get_market_data`
+Frozen StrategySpec
+  -> deterministic LocalDataPlan
+  -> LocalDataPackageResolver
+  -> immutable package descriptor and checksums
+  -> host-owned dataRef
+  -> Python audit subprocesses
 ```
 
-The Python adapter lives in `services/panda-adapter`. TypeScript tools that
-call it will live in `packages/finance-tools`. This keeps vendor credentials,
-SDK-specific types, DataFrames, and retry behavior outside prompts and agent
-state.
+The resolver selects exactly one package by canonical strategy identity,
+coverage, universe, and declared capabilities. It verifies the market-data
+file, V9 manifest, and point-in-time membership tree before returning a
+`dataRef`.
 
-## Installation
+No absolute package path enters a model prompt. Claim reproduction, all five
+checks, and Moiré receive the same task-bound `dataRef`.
 
-Python and `uv` are managed by mise. Install the adapter and its pinned
-PandaData dependency from the repository root:
+## Service Availability
+
+Package readiness is not process liveness:
+
+- the server starts even when the registry is absent or invalid;
+- `/healthz` remains available;
+- `/readyz` returns `503` with `localDataPackages: false`;
+- a request that reaches data resolution without a valid package ends as a
+  `FAILED` A2A Task;
+- no audit Artifact is emitted for this infrastructure failure;
+- the runtime never falls back to an online provider.
+
+## Python Adapter Responsibilities
+
+`services/panda-adapter` owns two explicit roles:
+
+1. offline PandaData package preparation and compatibility tests;
+2. runtime deterministic calculations over a resolved local package.
+
+The runtime role includes backtests, availability correction, regime splits,
+homogeneity checks, and Moiré experiments. Runtime subprocesses read immutable
+input through `ASSAY_LOCAL_DATA_PACKAGE_ROOT` and write task-scoped derived
+output through `ASSAY_AUDIT_OUTPUT_ROOT`.
+
+Python subprocesses use:
+
+```text
+uv run --project services/panda-adapter python -m <module>
+```
+
+`ASSAY_EXPERIMENT_PYTHON` may override the interpreter when a host has already
+provisioned one.
+
+## Offline Preparation
+
+The adapter pins `panda_data==0.0.12` and Python `>=3.12,<3.13`. Provider
+credentials are required only when an operator explicitly runs preparation:
 
 ```bash
-mise install
-mise exec -- bun run sdk:sync
+bun run sdk:sync
+bun run sdk:doctor
+bun run sdk:init
 ```
 
-The adapter currently pins `panda_data==0.0.12`. Updating the SDK is an explicit
-dependency change and must be followed by adapter tests and a data-contract
-review.
+Preparation code may call PandaData, but it must write a bounded, immutable
+package and descriptor before production use. Credentials, tokens, DataFrames,
+and raw provider errors must not cross into A2A messages, Agent tools, or
+Artifacts.
 
-The package metadata for PandaData 0.0.12 declares Python 3.10 or newer, while
-the SDK's own package documentation requires Python 3.12 or newer. It also pins
-`numpy<2`; the NumPy 1.26 line supports Python only through 3.12. Assay
-therefore uses the latest Python 3.12 patch through mise and constrains this
-adapter to `>=3.12,<3.13`. This follows the intersection of the vendor's
-documented and transitive runtime constraints without overriding dependency
-metadata.
+## Storage Separation
 
-A successful dependency resolution is not sufficient: `sdk:doctor` must import
-the real SDK before the adapter is considered installable.
+```text
+ASSAY_LOCAL_DATA_PACKAGE_ROOT/
+  local-packages/*.json
+  immutable market and PIT data
 
-## Initialization Contract
-
-The SDK has a strict lifecycle:
-
-1. The package must be installed before the adapter process starts.
-2. `PANDA_DATA_USERNAME` and `PANDA_DATA_PASSWORD` must be present in the
-   process environment.
-3. The adapter calls `panda_data.init_token` exactly once during process
-   startup.
-4. The process becomes ready only after initialization succeeds.
-5. Every data method rejects calls made before successful initialization.
-
-Initialize the installed SDK:
-
-```bash
-copy .env.example .env
-# Load the variables into the process environment without printing them.
-mise exec -- bun run sdk:init
+ASSAY_AUDIT_OUTPUT_ROOT/
+  task-scoped derived artifacts
 ```
 
-`sdk:init` performs a real credential exchange. It intentionally fails when
-credentials are absent or rejected. A future HTTP or RPC server must construct
-its client through `create_initialized_client`; it must never expose a route
-before that factory returns.
-
-## Credential Rules
-
-- Credentials enter only through process environment variables or a future
-  secret manager.
-- Credentials are never accepted in agent tasks, tool arguments, A2A messages,
-  audit events, or ordinary logs.
-- The adapter never returns a token to TypeScript.
-- Initialization errors may report an error category but must not include
-  usernames, passwords, tokens, or raw vendor responses that contain secrets.
-
-## Tool Contract
-
-The first TypeScript integration will expose a read-tier tool named
-`market_data`. Its input contract will use protocol-facing `camelCase` fields
-and convert them to the PandaData SDK's `snake_case` parameters inside the
-adapter.
-
-The adapter will enforce symbol formats, date ranges, field allowlists, row
-limits, deadlines, and structured error codes. Raw DataFrames will be converted
-to a versioned JSON or Arrow contract before crossing the process boundary.
-
-## Current Scope
-
-The adapter exposes a private JSON-lines worker consumed by
-`packages/finance-tools`. It initializes the SDK once, serializes provider
-DataFrames into capped JSON records, maps camelCase tool arguments to
-snake_case SDK parameters, caches identical immutable reads, retries bounded
-rate-limit/timeout failures, and returns structured redacted errors. It does
-not open a network port or accept credentials through requests.
-
-The same worker hosts the deterministic strategy backtester. It uses
-`close/pre_close` total-return proxies, point-in-time index weights, close-time
-signals, explicit turnover costs, and bounded parameter/cost grids. Every
-result carries immutable source references and stated assumptions.
-
-## Tool Roadmap (product-driven)
-
-The five audit checks (see `docs/product/ARCHITECTURE.md`) require these
-read-tier tools beyond `market_data`, all verified available in the
-PandaData SDK / competition skill layer:
-
-| Tool ID                 | SDK method                                   | Consumed by                             |
-| ----------------------- | -------------------------------------------- | --------------------------------------- |
-| `market_data`           | `get_market_data`                            | all backtest-based checks               |
-| `adj_factor`            | `get_adj_factor`                             | backtester (price adjustment)           |
-| `index_weights`         | `get_index_weights`                          | data-availability (survivorship bias)   |
-| `trade_list`            | `get_trade_list`                             | data-availability (tradability)         |
-| `stock_status_change`   | `get_stock_status_change`                    | data-availability (ST states)           |
-| `factor_library`        | `get_factor`                                 | homogeneity-decay (correlation, IC)     |
-| `trade_calendar`        | `get_trade_cal` / `get_prev_trade_date`      | intake, all checks                      |
-| `financial_disclosures` | `get_fina_forecast` / `get_fina_performance` | data-availability (real `info_date`)    |
-| `fina_reports`          | `get_fina_reports` (`is_latest=False`)       | data-availability (disclosure versions) |
-
-Adapter-level requirements carried over from the product design:
-
-- **Shared query cache**: identical queries across concurrent checks must hit
-  the adapter cache, not the vendor API.
-- **Bounded concurrency + backoff**: rate limits exist but are unpublished;
-  the adapter owns bounded parallelism and finite exponential backoff on 429.
-- **Known data gaps** (design around, do not work around): the current
-  `get_fina_reports` tool contract has report-period semantics and exposes no
-  announcement-date parameter; forecast and performance interfaces do expose
-  `info_date`. Industry constituents carry inclusion dates but no exclusion
-  dates.
+Input packages are read-only during audits. Derived output is never included
+in package checksums and cannot replace package source data.
