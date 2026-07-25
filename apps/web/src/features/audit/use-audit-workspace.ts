@@ -1,12 +1,16 @@
 import { TaskState, type Task } from "@a2a-js/sdk";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type SetStateAction } from "react";
 
 import type { AuditArtifact } from "@assay/contracts/audit-artifact";
 
 import type { WorkspacePanel } from "@/components/audit/audit-library-panel";
 import { useI18n } from "@/i18n";
 import { createAssayA2AClient, extractAuditArtifact, type AssayA2AClient } from "@/lib/a2a-client";
-import { applyThemePreference } from "@/lib/preferences";
+import {
+  applyThemePreference,
+  initialSidebarPreference,
+  persistSidebarPreference,
+} from "@/lib/preferences";
 
 import {
   deleteAudit as deleteAuditRequest,
@@ -36,7 +40,8 @@ export function useAuditWorkspace() {
   const [auditArtifact, setAuditArtifact] = useState<AuditArtifact>();
   const [markdownReport, setMarkdownReport] = useState("");
   const [failureMessage, setFailureMessage] = useState("");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpenState] = useState(initialSidebarPreference);
+  const sidebarOpenRef = useRef(sidebarOpen);
   const [workspacePanel, setWorkspacePanel] = useState<WorkspacePanel | null>(null);
   const [historyQuery, setHistoryQuery] = useState("");
   const [auditHistory, setAuditHistory] = useState<StoredAudit[]>([]);
@@ -214,6 +219,20 @@ export function useAuditWorkspace() {
 
   const isActive = isSubmitting || isActiveTaskState(taskState);
 
+  const setSidebarOpen = useCallback((nextValue: SetStateAction<boolean>) => {
+    const resolvedValue =
+      typeof nextValue === "function" ? nextValue(sidebarOpenRef.current) : nextValue;
+    sidebarOpenRef.current = resolvedValue;
+    persistSidebarPreference(resolvedValue);
+    setSidebarOpenState(resolvedValue);
+  }, []);
+
+  const collapseSidebarOnCompactViewport = useCallback(() => {
+    if (window.matchMedia("(max-width: 820px)").matches) {
+      setSidebarOpen(false);
+    }
+  }, [setSidebarOpen]);
+
   const startAudit = async (retryInput?: string) => {
     if (isActive) {
       return;
@@ -314,7 +333,7 @@ export function useAuditWorkspace() {
     setFailureMessage("");
     setWorkspacePanel(null);
     setHistoryQuery("");
-    setSidebarOpen(false);
+    collapseSidebarOnCompactViewport();
   };
 
   const toggleTheme = () => {
@@ -331,11 +350,16 @@ export function useAuditWorkspace() {
   const openWorkspacePanel = (panel: WorkspacePanel) => {
     setWorkspacePanel(panel);
     setHistoryQuery("");
-    setSidebarOpen(false);
+    collapseSidebarOnCompactViewport();
   };
 
   const closeWorkspacePanel = () => {
     setWorkspacePanel(null);
+  };
+
+  const showCurrentSession = () => {
+    setWorkspacePanel(null);
+    collapseSidebarOnCompactViewport();
   };
 
   const openStoredAudit = (audit: StoredAudit) => {
@@ -380,6 +404,7 @@ export function useAuditWorkspace() {
     serviceState,
     setSidebarOpen,
     setHistoryQuery,
+    showCurrentSession,
     sidebarOpen,
     startAudit,
     statusMessage,

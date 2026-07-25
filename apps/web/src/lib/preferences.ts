@@ -3,6 +3,7 @@ export type ThemePreference = "dark" | "light";
 export const PREFERENCE_STORAGE_KEYS = {
   language: "assay.language:v1",
   legacyLanguage: "assay.language",
+  sidebar: "assay.sidebar:v1",
   theme: "assay.theme:v1",
 } as const;
 
@@ -46,4 +47,12 @@ export function applyThemePreference(theme: ThemePreference, persist = false): b
   document.documentElement.classList.toggle("dark", theme === "dark");
   document.documentElement.style.colorScheme = theme;
   return !persist || writeLocalPreference(PREFERENCE_STORAGE_KEYS.theme, theme);
+}
+
+export function initialSidebarPreference(): boolean {
+  return readLocalPreference(PREFERENCE_STORAGE_KEYS.sidebar) === "open";
+}
+
+export function persistSidebarPreference(isOpen: boolean): boolean {
+  return writeLocalPreference(PREFERENCE_STORAGE_KEYS.sidebar, isOpen ? "open" : "closed");
 }

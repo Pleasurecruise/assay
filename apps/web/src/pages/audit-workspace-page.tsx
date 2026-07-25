@@ -22,14 +22,12 @@ export function AuditWorkspacePage() {
       className={cn("assay-workspace", workspace.sidebarOpen && "assay-workspace--sidebar-open")}
     >
       <AuditSidebar
+        activePanel={workspace.workspacePanel}
         artifact={workspace.auditArtifact}
         isActive={workspace.isActive}
         isDark={workspace.isDark}
         isOpen={workspace.sidebarOpen}
-        onCurrentSession={() => {
-          workspace.closeWorkspacePanel();
-          workspace.setSidebarOpen(false);
-        }}
+        onCurrentSession={workspace.showCurrentSession}
         onNewAudit={workspace.resetWorkspace}
         onOpenPanel={workspace.openWorkspacePanel}
         onToggle={() => workspace.setSidebarOpen((open) => !open)}

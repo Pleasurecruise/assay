@@ -41,6 +41,7 @@ function serviceStateLabel(
 }
 
 interface AuditSidebarProps {
+  activePanel: WorkspacePanel | null;
   artifact: AuditArtifact | undefined;
   isActive: boolean;
   isDark: boolean;
@@ -55,6 +56,7 @@ interface AuditSidebarProps {
 }
 
 export function AuditSidebar({
+  activePanel,
   artifact,
   isActive,
   isDark,
@@ -89,6 +91,7 @@ export function AuditSidebar({
         <div aria-hidden={!isOpen} className="sidebar-expanded">
           <nav aria-label={t("sidebar.workspace")}>
             <SidebarButton
+              active={activePanel === "search"}
               icon={<Search />}
               label={t("sidebar.search")}
               onClick={() => onOpenPanel("search")}
@@ -100,11 +103,13 @@ export function AuditSidebar({
               onClick={onNewAudit}
             />
             <SidebarButton
+              active={activePanel === "archive"}
               icon={<Archive />}
               label={t("sidebar.archived")}
               onClick={() => onOpenPanel("archive")}
             />
             <SidebarButton
+              active={activePanel === "methodology"}
               icon={<BookOpen />}
               label={t("sidebar.methodology")}
               onClick={() => onOpenPanel("methodology")}
@@ -165,6 +170,7 @@ export function AuditSidebar({
 
         <div aria-hidden={isOpen} className="sidebar-rail">
           <RailButton
+            active={activePanel === "search"}
             icon={<Search />}
             label={t("sidebar.search")}
             onClick={() => onOpenPanel("search")}
@@ -176,11 +182,13 @@ export function AuditSidebar({
             onClick={onNewAudit}
           />
           <RailButton
+            active={activePanel === "archive"}
             icon={<Archive />}
             label={t("sidebar.archived")}
             onClick={() => onOpenPanel("archive")}
           />
           <RailButton
+            active={activePanel === "methodology"}
             icon={<BookOpen />}
             label={t("sidebar.methodology")}
             onClick={() => onOpenPanel("methodology")}
@@ -202,18 +210,26 @@ export function AuditSidebar({
 }
 
 function SidebarButton({
+  active = false,
   disabled = false,
   icon,
   label,
   onClick,
 }: {
+  active?: boolean;
   disabled?: boolean;
   icon: ReactNode;
   label: string;
   onClick?: () => void;
 }) {
   return (
-    <button className="sidebar-button" disabled={disabled} onClick={onClick} type="button">
+    <button
+      aria-current={active ? "page" : undefined}
+      className={cn("sidebar-button", active && "sidebar-button--active")}
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
       {icon}
       <span>{label}</span>
     </button>
@@ -221,11 +237,13 @@ function SidebarButton({
 }
 
 function RailButton({
+  active = false,
   icon,
   label,
   onClick,
   disabled = false,
 }: {
+  active?: boolean;
   disabled?: boolean;
   icon: ReactNode;
   label: string;
@@ -234,7 +252,8 @@ function RailButton({
   return (
     <button
       aria-label={label}
-      className="icon-button rail-button"
+      aria-current={active ? "page" : undefined}
+      className={cn("icon-button rail-button", active && "rail-button--active")}
       disabled={disabled}
       onClick={onClick}
       title={label}
