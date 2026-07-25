@@ -592,7 +592,10 @@ export async function validateCaseDataRegistry(
   for (const entry of await readdir(registry, { withFileTypes: true })) {
     requireValue(!entry.isSymbolicLink(), "case package registry cannot contain symlinks");
     if (entry.isDirectory()) {
-      requireValue(sourceIds.has(entry.name), "case package registry contains an unreferenced source");
+      requireValue(
+        sourceIds.has(entry.name),
+        "case package registry contains an unreferenced source",
+      );
     } else {
       requireValue(
         entry.isFile() &&

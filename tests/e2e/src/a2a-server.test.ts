@@ -162,18 +162,14 @@ async function withTestServer(
   const requests: ParallelAuditChecksRequest[] = [];
   const executor = new AssayAgentExecutor({
     intake,
-    dataResolver:
-      options.dataResolver ??
-      {
-        resolve: async () => ({
-          dataRef: TEST_DATA_REF,
-          sources: ["local-data-package:test"],
-        }),
-      },
+    dataResolver: options.dataResolver ?? {
+      resolve: async () => ({
+        dataRef: TEST_DATA_REF,
+        sources: ["local-data-package:test"],
+      }),
+    },
     runner: runnerFactory(requests),
-    ...(options.claimReproducer === undefined
-      ? {}
-      : { claimReproducer: options.claimReproducer }),
+    ...(options.claimReproducer === undefined ? {} : { claimReproducer: options.claimReproducer }),
     artifactStore: store,
     dataAsOf: DATA_AS_OF,
     codeRevision: "e2e-fixture",
@@ -295,14 +291,10 @@ function artifactFrom(task: WireTask) {
 describe("Assay A2A Skeleton over shared HTTP transports", () => {
   test("routes all frozen golden strategies through one label-free A2A lifecycle", async () => {
     const parserCalls: string[] = [];
-    const specByInput = new Map<
-      string,
-      ReturnType<typeof canonicalSpecForGoldenCase>
-    >(
-      GOLDEN_STRATEGY_CASES.map((goldenCase) => [
-        goldenCase.input,
-        canonicalSpecForGoldenCase(goldenCase),
-      ] as const),
+    const specByInput = new Map<string, ReturnType<typeof canonicalSpecForGoldenCase>>(
+      GOLDEN_STRATEGY_CASES.map(
+        (goldenCase) => [goldenCase.input, canonicalSpecForGoldenCase(goldenCase)] as const,
+      ),
     );
     const intake = new StrategyIntake({
       parser: {
@@ -319,14 +311,8 @@ describe("Assay A2A Skeleton over shared HTTP transports", () => {
       capabilitySnapshotId: "local-data-registry:golden-fixture",
       codeRevision: "e2e-fixture",
     });
-    const caseByStrategyKey = new Map<
-      string,
-      (typeof GOLDEN_STRATEGY_CASES)[number]
-    >(
-      GOLDEN_STRATEGY_CASES.map((goldenCase) => [
-        goldenCase.strategyKey,
-        goldenCase,
-      ] as const),
+    const caseByStrategyKey = new Map<string, (typeof GOLDEN_STRATEGY_CASES)[number]>(
+      GOLDEN_STRATEGY_CASES.map((goldenCase) => [goldenCase.strategyKey, goldenCase] as const),
     );
     const resolutions: Array<{
       plan: ReturnType<typeof dataPlanForGoldenCase>;
@@ -342,8 +328,7 @@ describe("Assay A2A Skeleton over shared HTTP transports", () => {
         expect(plan).toEqual(dataPlanForGoldenCase(goldenCase));
         const manifestDigest = fixtureManifestDigest(goldenCase.packageId);
         expect(manifestDigest).not.toBe(goldenCase.strategyKey);
-        const dataRef =
-          `assay-local-data-v1:${auditId}:${goldenCase.packageId}:${manifestDigest}`;
+        const dataRef = `assay-local-data-v1:${auditId}:${goldenCase.packageId}:${manifestDigest}`;
         resolutions.push({
           plan: structuredClone(plan),
           packageId: goldenCase.packageId,
@@ -396,18 +381,14 @@ describe("Assay A2A Skeleton over shared HTTP transports", () => {
           const artifact = artifactFrom(task);
           artifacts.push(artifact);
 
-          expect(artifact.results[0]?.strategySpec).toEqual(
-            canonicalSpecForGoldenCase(goldenCase),
-          );
+          expect(artifact.results[0]?.strategySpec).toEqual(canonicalSpecForGoldenCase(goldenCase));
           expect(artifact.results[0]?.strategySpec?.claims).toEqual(goldenCase.claims);
           expect(artifact.claimComparison?.claimed).toEqual(goldenCase.claims);
           expect(artifact.provenance.inputHash).toBe(goldenCase.specHash);
           expect(await store.load(task.id)).toEqual(artifact);
         }
 
-        expect(parserCalls).toEqual(
-          GOLDEN_STRATEGY_CASES.map((goldenCase) => goldenCase.input),
-        );
+        expect(parserCalls).toEqual(GOLDEN_STRATEGY_CASES.map((goldenCase) => goldenCase.input));
         expect(requests).toHaveLength(GOLDEN_STRATEGY_CASES.length);
         expect(resolutions).toHaveLength(GOLDEN_STRATEGY_CASES.length);
         expect(new Set(resolutions.map(({ plan }) => plan.strategyKey)).size).toBe(3);
@@ -431,8 +412,7 @@ describe("Assay A2A Skeleton over shared HTTP transports", () => {
           );
           expect(request.metadata?.dataRef).toBe(resolution.dataRef);
 
-          const localPackageSource =
-            `assay:local-data-package:${goldenCase.packageId}:${fixtureManifestDigest(goldenCase.packageId)}`;
+          const localPackageSource = `assay:local-data-package:${goldenCase.packageId}:${fixtureManifestDigest(goldenCase.packageId)}`;
           expect(artifact.provenance.dataSources).toEqual([
             {
               id: localPackageSource,
@@ -453,9 +433,7 @@ describe("Assay A2A Skeleton over shared HTTP transports", () => {
           ]);
           commonChecksumSourceSets.push(
             JSON.stringify(
-              artifact.provenance.dataSources.filter(({ id }) =>
-                id.startsWith("pandadata:"),
-              ),
+              artifact.provenance.dataSources.filter(({ id }) => id.startsWith("pandadata:")),
             ),
           );
         }

@@ -2,10 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import {
-  LocalDataPackageResolver,
-  type LocalDataPackageManifest,
-} from "@assay/a2a-server";
+import { LocalDataPackageResolver, type LocalDataPackageManifest } from "@assay/a2a-server";
 import { afterEach, describe, expect, test } from "vitest";
 import {
   CASE_DATA_PACKAGE_ROOT,
@@ -209,16 +206,11 @@ describe("complete case data package", () => {
       schemaVersion: "assay-case-data-registry-v1",
       bindings: [...registryValue.bindings, registryValue.bindings[0]],
     });
-    await expect(validateCaseDataRegistry(destinationRoot)).rejects.toThrow(
-      "duplicate packageId",
-    );
+    await expect(validateCaseDataRegistry(destinationRoot)).rejects.toThrow("duplicate packageId");
     const duplicateKey = structuredClone(registryValue);
-    const firstKey = (
-      duplicateKey.bindings[0]?.dataPlan as { strategyKey?: unknown } | undefined
-    )?.strategyKey;
-    const secondPlan = duplicateKey.bindings[1]?.dataPlan as
-      | { strategyKey?: unknown }
-      | undefined;
+    const firstKey = (duplicateKey.bindings[0]?.dataPlan as { strategyKey?: unknown } | undefined)
+      ?.strategyKey;
+    const secondPlan = duplicateKey.bindings[1]?.dataPlan as { strategyKey?: unknown } | undefined;
     if (secondPlan !== undefined) {
       secondPlan.strategyKey = firstKey;
     }
@@ -253,13 +245,10 @@ describe("complete case data package", () => {
       "manifest.json",
     );
     const installedManifest = await readFile(installedManifestPath);
-    await writeFile(
-      join(exported.packageRoot, "datasets", "equity-daily.csv"),
-      "tampered\n",
+    await writeFile(join(exported.packageRoot, "datasets", "equity-daily.csv"), "tampered\n");
+    await expect(installLocalData({ sourceRoot: destinationRoot, runtimeRoot })).rejects.toThrow(
+      "checksum failed",
     );
-    await expect(
-      installLocalData({ sourceRoot: destinationRoot, runtimeRoot }),
-    ).rejects.toThrow("checksum failed");
     expect(await readFile(installedManifestPath)).toEqual(installedManifest);
   });
 
@@ -348,11 +337,7 @@ describe("complete case data package", () => {
     const runtime = runtimeByPackageId.get(CSI300_MOMENTUM_20D_TOP50_PACKAGE_ID);
     expect(runtime).toBeDefined();
     const runtimePackageRoot = join(runtimeRoot, CSI300_MOMENTUM_20D_TOP50_PACKAGE_ID);
-    const runtimeAuditManifestPath = join(
-      runtimePackageRoot,
-      "audit-support",
-      "manifest.json",
-    );
+    const runtimeAuditManifestPath = join(runtimePackageRoot, "audit-support", "manifest.json");
     const runtimeAuditManifest = JSON.parse(
       await readFile(runtimeAuditManifestPath, "utf8"),
     ) as Record<string, unknown>;
@@ -383,16 +368,15 @@ describe("complete case data package", () => {
       resolver.resolve(
         {
           ...CSI300_MOMENTUM_CASE_BINDINGS[0].dataPlan,
-          strategyKey:
-            "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          strategyKey: "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         },
         "runtime_unregistered",
       ),
     ).rejects.toMatchObject({ code: "unsupported_strategy" });
     expect(runtimeAuditManifest).toHaveProperty("generatedAt");
-    expect(
-      existsSync(join(runtimePackageRoot, "audit-support", "preparation-report.json")),
-    ).toBe(false);
+    expect(existsSync(join(runtimePackageRoot, "audit-support", "preparation-report.json"))).toBe(
+      false,
+    );
     expect(existsSync(join(runtimePackageRoot, "provenance", "incomplete-attempts"))).toBe(false);
 
     const originalRuntimeAuditManifest = await readFile(runtimeAuditManifestPath);

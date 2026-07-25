@@ -3,6 +3,7 @@ data/packages/**
 
 # Online acceptance output is refreshed by the E2E writer, not by source formatting.
 artifacts/v9/assay-real-data-run.json
+artifacts/v9/assay-golden-cases-run.json
 
 # Local discard area; it is not part of the repository submission.
 _to_delete/**

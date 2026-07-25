@@ -44,11 +44,11 @@ All three cases use the same evaluation window, CSI 300 point-in-time
 membership, equal weighting, monthly close rebalancing, and the standard cost
 model. Their data-relevant strategies and claims are frozen as follows:
 
-| Label | Natural-language strategy | Claims | Runtime packageId |
-| --- | --- | --- | --- |
-| G01 | CSI 300; trailing 20-trading-day momentum; Top 50 | annual return `0.18`, Sharpe `1.9` | `csi300-momentum-20d-monthly-top50-equal` |
-| G02 | CSI 300; trailing 14-trading-day momentum; Top 30 | annual return `0.60`, Sharpe `2.3` | `csi300-momentum-14d-monthly-top30-equal` |
-| G03 | CSI 300; trailing 26-trading-day momentum; Top 70 | annual return `0.20`, Sharpe `0.9` | `csi300-momentum-26d-monthly-top70-equal` |
+| Label | Natural-language strategy                         | Claims                             | Runtime packageId                         |
+| ----- | ------------------------------------------------- | ---------------------------------- | ----------------------------------------- |
+| G01   | CSI 300; trailing 20-trading-day momentum; Top 50 | annual return `0.18`, Sharpe `1.9` | `csi300-momentum-20d-monthly-top50-equal` |
+| G02   | CSI 300; trailing 14-trading-day momentum; Top 30 | annual return `0.60`, Sharpe `2.3` | `csi300-momentum-14d-monthly-top30-equal` |
+| G03   | CSI 300; trailing 26-trading-day momentum; Top 70 | annual return `0.20`, Sharpe `0.9` | `csi300-momentum-26d-monthly-top70-equal` |
 
 The exact natural-language inputs, also frozen in
 `tests/e2e/src/golden-cases.ts`, are:
@@ -63,11 +63,11 @@ G03: 请独立复核：2023-07-23 至 2026-07-23，在沪深 300 成分股中，
 
 The corresponding strategy keys are:
 
-| Label | strategyKey |
-| --- | --- |
-| G01 | `sha256-a9d796047db6ccb208f3d82df70287afbb50ddca1fd544f67718155a4dc1bddb` |
-| G02 | `sha256-9242fb1add11336293dd23983415e1493e25bdf924c06d04159b645b7f1c8195` |
-| G03 | `sha256-15a2f8c08d6a7f1e2f8013d1c663c325cf9666b30a06a5d8382aefcfc99f21f9` |
+| Label | strategyKey                                                               |
+| ----- | ------------------------------------------------------------------------- |
+| G01   | `sha256-a9d796047db6ccb208f3d82df70287afbb50ddca1fd544f67718155a4dc1bddb` |
+| G02   | `sha256-9242fb1add11336293dd23983415e1493e25bdf924c06d04159b645b7f1c8195` |
+| G03   | `sha256-15a2f8c08d6a7f1e2f8013d1c663c325cf9666b30a06a5d8382aefcfc99f21f9` |
 
 Claims remain part of the audited `StrategySpec`, but are removed before the
 `DataPlan` and `strategyKey` are produced. Changing claims alone must not
@@ -131,10 +131,10 @@ Each runtime directory contains its own `manifest.json`, `market-data.csv`,
 The three runtime manifests have different `packageId`, `strategyKey`, and
 manifest digest. Their underlying immutable boundaries must be identical:
 
-| Boundary | Shared checksum |
-| --- | --- |
-| marketData | `sha256-27779f08aac594467eb16be723a2ac0e743042fddb078e4ca704ea6484dd9382` |
-| auditSupport | `sha256-d8018da42a6e8e4ddf074741b3ab55cda9e3e6040f6a448ac13903d7b9563886` |
+| Boundary      | Shared checksum                                                           |
+| ------------- | ------------------------------------------------------------------------- |
+| marketData    | `sha256-27779f08aac594467eb16be723a2ac0e743042fddb078e4ca704ea6484dd9382` |
+| auditSupport  | `sha256-d8018da42a6e8e4ddf074741b3ab55cda9e3e6040f6a448ac13903d7b9563886` |
 | pitMembership | `sha256-8a5b143d9faeb18d49f73564a1ab5e84a628e1da975b83f57376b3bc1a27dc4a` |
 
 Both the TypeScript resolver and Python audit loader read only the installed

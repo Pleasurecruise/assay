@@ -353,7 +353,7 @@
         {
           "kind": "test",
           "path": "tests/e2e/src/v9-real-data.test.ts",
-          "case": "runs the one terminal real-data five-check acceptance"
+          "case": "runs the sequential G01, G02, G03 real-data five-check suite"
         },
         {
           "kind": "source",

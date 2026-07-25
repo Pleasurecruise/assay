@@ -20,3 +20,7 @@ services/panda-adapter/user.json
 
 # Local-only competition reference material (contains plaintext event tokens) — never commit
 reference/
+
+# Local-only review and probe output
+_to_delete/
+scripts/probe_results.*

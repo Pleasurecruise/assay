@@ -459,11 +459,11 @@ strategy_intake
 
 三个测试 fixture 已冻结：
 
-| Case | 策略 | Claims | packageId |
-| ---- | ---- | ------ | --------- |
-| G01 | 沪深 300；20 日动量；月末 Top 50；等权 | 年化 18%、夏普 1.9 | `csi300-momentum-20d-monthly-top50-equal` |
-| G02 | 沪深 300；14 日动量；月末 Top 30；等权 | 年化 60%、夏普 2.3 | `csi300-momentum-14d-monthly-top30-equal` |
-| G03 | 沪深 300；26 日动量；月末 Top 70；等权 | 年化 20%、夏普 0.9 | `csi300-momentum-26d-monthly-top70-equal` |
+| Case | 策略                                   | Claims             | packageId                                 |
+| ---- | -------------------------------------- | ------------------ | ----------------------------------------- |
+| G01  | 沪深 300；20 日动量；月末 Top 50；等权 | 年化 18%、夏普 1.9 | `csi300-momentum-20d-monthly-top50-equal` |
+| G02  | 沪深 300；14 日动量；月末 Top 30；等权 | 年化 60%、夏普 2.3 | `csi300-momentum-14d-monthly-top30-equal` |
+| G03  | 沪深 300；26 日动量；月末 Top 70；等权 | 年化 20%、夏普 0.9 | `csi300-momentum-26d-monthly-top70-equal` |
 
 三者的回测窗口都是 `20230723..20260723`，rebalance 为
 `monthly / close`，costs 为 `standard`。对应 strategyKey 分别为：
@@ -494,9 +494,9 @@ claims 的变化不创建新数据包。
 | ---------- | ---------------------------- | --------------------------------------------------------- |
 | Intake     | 无法解析或缺少策略字段       | 沿用现有 `insufficient_information` / `unsupported_input` |
 | Planning   | 策略不在三个案例支持范围     | `UNVERIFIABLE`，明确支持条件                              |
-| Resolution | 无匹配包                     | Task `FAILED`，不运行后段、不生成 Artifact                 |
-| Resolution | 多匹配                       | Task `FAILED`，配置错误，不任意选包                        |
-| Loading    | manifest、文件或摘要损坏     | Task `FAILED`，fail closed，不在线抓取                     |
+| Resolution | 无匹配包                     | Task `FAILED`，不运行后段、不生成 Artifact                |
+| Resolution | 多匹配                       | Task `FAILED`，配置错误，不任意选包                       |
+| Loading    | manifest、文件或摘要损坏     | Task `FAILED`，fail closed，不在线抓取                    |
 | Audit      | 有效数据仍不足以支持某项结论 | 沿用既有 `insufficient_evidence`                          |
 
 对外错误不得暴露凭证、绝对路径或原始异常。

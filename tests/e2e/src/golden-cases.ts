@@ -7,10 +7,7 @@ import {
   type CanonicalStrategySpec,
   type StrategyClaims,
 } from "@assay/contracts";
-import {
-  DeterministicStrategyDataPlanner,
-  type DataPlan,
-} from "@assay/finance-tools";
+import { DeterministicStrategyDataPlanner, type DataPlan } from "@assay/finance-tools";
 
 export const GOLDEN_STRATEGY_CASES_VERSION = "assay-golden-strategy-cases-v1" as const;
 
@@ -106,9 +103,7 @@ function requireValue(condition: unknown, message: string): asserts condition {
   }
 }
 
-export function canonicalSpecForGoldenCase(
-  goldenCase: GoldenStrategyCase,
-): CanonicalStrategySpec {
+export function canonicalSpecForGoldenCase(goldenCase: GoldenStrategyCase): CanonicalStrategySpec {
   return toCanonicalStrategySpec({
     ...goldenCase.strategy,
     claims: goldenCase.claims,
@@ -131,10 +126,11 @@ for (const goldenCase of GOLDEN_STRATEGY_CASES) {
   );
   const canonicalSpec = canonicalSpecForGoldenCase(goldenCase);
   requireValue(
-    canonicalizeStrategySpec(canonicalSpec) === canonicalizeStrategySpec({
-      ...goldenCase.strategy,
-      claims: goldenCase.claims,
-    }),
+    canonicalizeStrategySpec(canonicalSpec) ===
+      canonicalizeStrategySpec({
+        ...goldenCase.strategy,
+        claims: goldenCase.claims,
+      }),
     `${goldenCase.label} canonical StrategySpec drifted`,
   );
   requireValue(
