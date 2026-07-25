@@ -9,7 +9,9 @@ import {
   ShieldAlert,
   Target,
 } from "lucide-react";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
+
+import "./audit-report.css";
 
 import type {
   AuditArtifact,
@@ -42,6 +44,8 @@ import {
   useI18n,
 } from "@/i18n";
 import { cn } from "@/lib/utils";
+
+const AuditMarkdown = lazy(() => import("./audit-markdown"));
 
 export function AuditReport({ artifact, markdown }: { artifact: AuditArtifact; markdown: string }) {
   const { language, t } = useI18n();
@@ -218,20 +222,41 @@ export function AuditReport({ artifact, markdown }: { artifact: AuditArtifact; m
         <p className="report-raw-summary">{result.summary}</p>
       </details>
 
-      {markdown ? (
-        <details className="full-report">
-          <summary>
-            <span>{t("report.full")}</span>
-            <ChevronRight />
-          </summary>
-          <pre>{markdown}</pre>
-        </details>
-      ) : null}
+      {markdown ? <FullReport markdown={markdown} /> : null}
 
       <div className="message-actions">
         <CopyReportButton value={markdown || JSON.stringify(artifact, null, 2)} />
       </div>
     </article>
+  );
+}
+
+function FullReport({ markdown }: { markdown: string }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+
+  return (
+    <details
+      className="full-report"
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+      open={open}
+    >
+      <summary>
+        <span>{t("report.full")}</span>
+        <ChevronRight />
+      </summary>
+      {open ? (
+        <Suspense
+          fallback={
+            <div aria-busy="true" className="markdown-report markdown-report--loading">
+              …
+            </div>
+          }
+        >
+          <AuditMarkdown value={markdown} />
+        </Suspense>
+      ) : null}
+    </details>
   );
 }
 
@@ -313,23 +338,31 @@ function ClaimComparisonSection({
         <span>{t("report.claims")}</span>
         <b id="claim-comparison-title">{t("report.claimsIntro")}</b>
       </div>
-      <div className="claim-table">
-        <div className="claim-table__header">
-          <span>{t("report.metric")}</span>
-          <span>{t("report.claimed")}</span>
-          <span>{t("report.reproduced")}</span>
-          <span>{t("report.gap")}</span>
-        </div>
-        {rows.map((row) => (
-          <div className="claim-row" key={row.id}>
-            <b>{claimMetricLabel(t, row.id)}</b>
-            <span>{formatClaimValue(row.claimed, row.percent, language)}</span>
-            <span>{formatClaimValue(row.reproduced, row.percent, language)}</span>
-            <span className={cn("claim-gap", row.gap > 0 && "claim-gap--overstated")}>
-              {claimGapLabel(t, row.gap, row.percent, language)}
-            </span>
-          </div>
-        ))}
+      <div className="claim-table-scroll">
+        <table className="claim-table">
+          <thead>
+            <tr>
+              <th scope="col">{t("report.metric")}</th>
+              <th scope="col">{t("report.claimed")}</th>
+              <th scope="col">{t("report.reproduced")}</th>
+              <th scope="col">{t("report.gap")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id}>
+                <th scope="row">{claimMetricLabel(t, row.id)}</th>
+                <td>{formatClaimValue(row.claimed, row.percent, language)}</td>
+                <td>{formatClaimValue(row.reproduced, row.percent, language)}</td>
+                <td>
+                  <span className={cn("claim-gap", row.gap > 0 && "claim-gap--overstated")}>
+                    {claimGapLabel(t, row.gap, row.percent, language)}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
       {comparison.knownConventionDiffs.length > 0 ? (
         <p className="claim-comparison__note">{comparison.knownConventionDiffs.join(" · ")}</p>
