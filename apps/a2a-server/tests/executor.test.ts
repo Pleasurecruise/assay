@@ -23,7 +23,7 @@ import type { ExecutionTimelineEvent, ExecutionTimelineStage } from "../src/exec
 import { LocalDataPackageError } from "../src/local-data-package";
 
 const TEST_DATA_REF =
-  "assay-local-data-v1:audit_test:g01:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  "assay-local-data-v1:audit_test:test-package:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const fakeDataResolver = {
   resolve: async () => ({
     dataRef: TEST_DATA_REF,
@@ -322,9 +322,10 @@ describe("AssayAgentExecutor", () => {
       executionTimelineLogger: (event) => timeline.push(event),
     });
 
+    const events: AgentExecutionEvent[] = [];
     await executor.execute(
       requestContext(userMessage("Audit a strategy with submitted performance claims")),
-      recordingEventBus([], []),
+      recordingEventBus(events, []),
     );
 
     expect(executionOrder).toEqual(["resolve", "claim", "fan-out"]);
@@ -360,6 +361,33 @@ describe("AssayAgentExecutor", () => {
       scope: "evidence",
       condition: "提交原回测口径（ClaimProfile）后复审",
     });
+
+    const artifactEvent = events.find(
+      (event): event is Extract<AgentExecutionEvent, { kind: "artifactUpdate" }> =>
+        event.kind === "artifactUpdate",
+    );
+    expect(artifactEvent).toBeDefined();
+    const parts = artifactEvent?.data.artifact?.parts ?? [];
+    expect(parts).toHaveLength(2);
+    expect(parts[0]?.mediaType).toBe("application/json");
+    expect(parts[0]?.content?.$case).toBe("data");
+    expect(parts[1]?.mediaType).toBe("text/markdown");
+    const markdown = parts[1]?.content?.$case === "text" ? parts[1].content.value : "";
+    // Bilingual headings and verdict labelling.
+    expect(markdown).toContain("# Assay 策略审计报告 | Strategy Audit Report");
+    expect(markdown).toContain("**判定 Verdict: WATCH（观察）**");
+    expect(markdown).toContain("### 参数稳健性 param-robustness");
+    expect(markdown).toContain("（通过）");
+    // Claim numbers are quoted verbatim from the Artifact JSON.
+    expect(markdown).toContain("| 夏普 Sharpe | 1.9 | 1 | 0.8999999999999999 |");
+    expect(markdown).toContain("| 年化收益 Annual return | 0.18 | 0.1 | 0.08 |");
+    // maxDrawdown was not claimed, so it must not appear as a comparison row.
+    expect(markdown).not.toContain("| 最大回撤 Max drawdown |");
+    expect(markdown).toContain(
+      `- 输入哈希 Input hash: \`${storedArtifact?.provenance.inputHash}\``,
+    );
+    expect(markdown).toContain("## 数据来源 Data Sources");
+    expect(markdown).toContain("`pandadata:test` @ panda_data@0.0.12");
   });
 
   test("aborts the running checks and publishes CANCELED without a FAILED race", async () => {
