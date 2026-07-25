@@ -2,7 +2,11 @@ import { fileURLToPath } from "node:url";
 import type { CanonicalStrategySpec } from "@assay/contracts";
 import { describe, expect, test } from "vitest";
 import { createAuditCheckAgentDefinitions } from "../src/definitions";
-import { REGIME_SPLIT_SOURCE_REF, runRegimeSplitSubprocess } from "../src/run-regime-split-tool";
+import {
+  createRunRegimeSplitTool,
+  REGIME_SPLIT_SOURCE_REF,
+  runRegimeSplitSubprocess,
+} from "../src/run-regime-split-tool";
 
 const mockProcess = {
   command: process.execPath,
@@ -82,5 +86,74 @@ describe("run_experiment regime_split tool", () => {
     expect(prompt).toContain("0.95");
     expect(prompt).toContain("days < 60");
     expect(prompt).toContain(REGIME_SPLIT_SOURCE_REF);
+    expect(prompt).toContain("requiredEvidence");
+    expect(prompt).toContain("逐项原样复制");
+  });
+
+  test("gives the model only scalar schema-ready evidence while retaining full details", async () => {
+    const tool = createRunRegimeSplitTool(mockProcess);
+    const output = await tool.execute(
+      "call-regime",
+      {
+        kind: "regime_split",
+        spec,
+        budget: { maxVariants: 1 },
+      },
+      undefined,
+    );
+    const first = output.content[0];
+    if (first?.type !== "text") {
+      throw new Error("expected text tool result");
+    }
+    const agentView = JSON.parse(first.text) as {
+      classificationInputs: {
+        dominantEnvironmentId: string;
+        dominantPnlShare: number;
+        thinSliceIds: readonly string[];
+      };
+      requiredEvidence: readonly {
+        metric: string;
+        value: unknown;
+        unit: string;
+        sourceRefs: readonly string[];
+      }[];
+      requiredMissingEvidence: readonly {
+        requirement: string;
+        reason: string;
+        sourceRefs: readonly string[];
+      }[];
+      sourceRef: string;
+    };
+
+    expect(agentView.classificationInputs).toMatchObject({
+      dominantEnvironmentId: "up-high",
+      dominantPnlShare: 0.82,
+      thinSliceIds: [],
+    });
+    expect(agentView.requiredEvidence).toHaveLength(17);
+    expect(
+      agentView.requiredEvidence.every(
+        (item) =>
+          typeof item.value === "number" &&
+          Number.isFinite(item.value) &&
+          item.unit.length > 0 &&
+          item.sourceRefs.includes(REGIME_SPLIT_SOURCE_REF),
+      ),
+    ).toBe(true);
+    expect(agentView.requiredEvidence).toContainEqual({
+      metric: "dominantEnvironment.pnlShare",
+      value: 0.82,
+      unit: "fraction_of_total_pnl",
+      sourceRefs: [REGIME_SPLIT_SOURCE_REF],
+    });
+    expect(agentView.requiredMissingEvidence).toEqual([]);
+    expect(agentView.sourceRef).toBe(REGIME_SPLIT_SOURCE_REF);
+    expect(first.text).not.toContain('"environments"');
+    expect(output.details).toMatchObject({
+      environments: expect.arrayContaining([
+        expect.objectContaining({ id: "up-high", pnlShare: 0.82 }),
+      ]),
+      assumptions: [],
+    });
   });
 });

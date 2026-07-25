@@ -2,7 +2,10 @@ import { spawn } from "node:child_process";
 import type { AgentDefinition } from "@assay/agent-runtime";
 import {
   AUDIT_TOOL_CONTRACT_VERSION,
+  REGIME_MINIMUM_SLICE_DAYS,
   REGIME_SPLIT_SOURCE_REF,
+  type CheckEvidence,
+  type MissingEvidence,
   type RegimeEnvironmentResult,
   type RegimeSplitResult,
   type RunRegimeSplitRequest,
@@ -34,6 +37,21 @@ const ENVIRONMENT_KEYS = [
   "sharpe",
   "pnlShare",
 ] as const;
+interface RegimeSplitAgentView {
+  readonly engineVersion: string;
+  readonly mode: RegimeSplitResult["mode"];
+  readonly classificationInputs: {
+    readonly dominantEnvironmentId: string;
+    readonly dominantPnlShare: number;
+    readonly nonDominantEnvironmentCount: number;
+    readonly allNonDominantAnnualReturnsNegative: boolean;
+    readonly thinSliceIds: readonly string[];
+    readonly sufficientSliceCount: number;
+  };
+  readonly requiredEvidence: readonly CheckEvidence[];
+  readonly requiredMissingEvidence: readonly MissingEvidence[];
+  readonly sourceRef: typeof REGIME_SPLIT_SOURCE_REF;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -185,6 +203,87 @@ function assertRequest(request: RunRegimeSplitRequest): void {
   }
 }
 
+function environmentEvidence(environment: RegimeEnvironmentResult): readonly CheckEvidence[] {
+  const sourceRefs = [REGIME_SPLIT_SOURCE_REF] as const;
+  return [
+    {
+      metric: `${environment.id}.days`,
+      value: environment.days,
+      unit: "trading_days",
+      sourceRefs,
+    },
+    {
+      metric: `${environment.id}.annualReturn`,
+      value: environment.annualReturn,
+      unit: "annualized_decimal",
+      sourceRefs,
+    },
+    ...(environment.sharpe === null
+      ? []
+      : [
+          {
+            metric: `${environment.id}.sharpe`,
+            value: environment.sharpe,
+            unit: "ratio",
+            sourceRefs,
+          },
+        ]),
+    {
+      metric: `${environment.id}.pnlShare`,
+      value: environment.pnlShare,
+      unit: "fraction_of_total_pnl",
+      sourceRefs,
+    },
+  ];
+}
+
+export function regimeSplitAgentView(result: RegimeSplitResult): RegimeSplitAgentView {
+  const thinSlices = result.environments.filter(
+    (environment) => environment.days < REGIME_MINIMUM_SLICE_DAYS,
+  );
+  const nonDominant = result.environments.filter(
+    (environment) => environment.id !== result.dominantEnvironment.id,
+  );
+  const requiredMissingEvidence: MissingEvidence[] = thinSlices.map((environment) => ({
+    requirement: `${environment.id} must have at least ${String(REGIME_MINIMUM_SLICE_DAYS)} trading days`,
+    reason: `${environment.id} has ${String(environment.days)} trading days and cannot support a strong regime conclusion.`,
+    sourceRefs: [REGIME_SPLIT_SOURCE_REF],
+  }));
+  if (result.assumptions.length > 0) {
+    requiredMissingEvidence.push({
+      requirement: `disclose ${result.mode} regime-split assumptions`,
+      reason: result.assumptions.join(" "),
+      sourceRefs: [REGIME_SPLIT_SOURCE_REF],
+    });
+  }
+
+  return {
+    engineVersion: result.engineVersion,
+    mode: result.mode,
+    classificationInputs: {
+      dominantEnvironmentId: result.dominantEnvironment.id,
+      dominantPnlShare: result.dominantEnvironment.pnlShare,
+      nonDominantEnvironmentCount: nonDominant.length,
+      allNonDominantAnnualReturnsNegative:
+        nonDominant.length > 0 &&
+        nonDominant.every((environment) => environment.annualReturn < 0),
+      thinSliceIds: thinSlices.map((environment) => environment.id),
+      sufficientSliceCount: result.environments.length - thinSlices.length,
+    },
+    requiredEvidence: [
+      ...result.environments.flatMap(environmentEvidence),
+      {
+        metric: "dominantEnvironment.pnlShare",
+        value: result.dominantEnvironment.pnlShare,
+        unit: "fraction_of_total_pnl",
+        sourceRefs: [REGIME_SPLIT_SOURCE_REF],
+      },
+    ],
+    requiredMissingEvidence,
+    sourceRef: REGIME_SPLIT_SOURCE_REF,
+  };
+}
+
 export async function runRegimeSplitSubprocess(
   config: ExperimentProcessConfig,
   request: RunRegimeSplitRequest,
@@ -283,7 +382,7 @@ export function createRunRegimeSplitTool(config: ExperimentProcessConfig): Agent
       assertRequest(request);
       const result = await runRegimeSplitSubprocess(config, request);
       return {
-        content: [{ type: "text", text: JSON.stringify(result) }],
+        content: [{ type: "text", text: JSON.stringify(regimeSplitAgentView(result)) }],
         details: result,
       };
     },

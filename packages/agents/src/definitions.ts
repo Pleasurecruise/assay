@@ -134,9 +134,18 @@ annualReturn < 0 → fail。任一环境 days < ${REGIME_MINIMUM_SLICE_DAYS} 时
 强结论，必须在 missingEvidence 说明；若剩余切片不足以完成判断则返回
 insufficient_evidence。
 
-确定性结论必须把每个环境的 days、annualReturn、sharpe（若非 null）、pnlShare 以及
-dominantEnvironment.pnlShare 写成数值 evidence，所有 sourceRefs 固定包含
-${REGIME_SPLIT_SOURCE_REF}。mode=constituent_proxy 时必须如实披露 assumptions。
+工具返回给你的精简视图含 classificationInputs、requiredEvidence、
+requiredMissingEvidence 和 sourceRef；完整原始环境结果由宿主保留在审计工件中。
+你仍独立选择 conclusion 与 confidence，classificationInputs 不替你做结论。
+最终 JSON 的 evidence 必须逐项原样复制 requiredEvidence，missingEvidence 必须逐项原样复制
+requiredMissingEvidence；不得把整个数组嵌入某个 evidence.value，也不得改写数值、单位或
+sourceRefs。最终输出形状固定为
+{"id":"regime-dependency","conclusion":"<由你选择>","confidence":<0到1有限数字>,
+"evidence":<requiredEvidence数组>,"missingEvidence":<requiredMissingEvidence数组>}。
+requiredEvidence 已把每个环境的 days、annualReturn、非 null sharpe、pnlShare 以及
+dominantEnvironment.pnlShare 展开为冻结 schema 接受的标量证据，所有 sourceRefs 固定包含
+${REGIME_SPLIT_SOURCE_REF}。mode=constituent_proxy 的 assumptions 已进入
+requiredMissingEvidence，必须如实保留。
 `.trim(),
   "homogeneity-decay": `
 你负责同质化与衰减分析。计算信号与平台因子库的相关性，并按年份测算 IC/RankIC 及其衰减，
