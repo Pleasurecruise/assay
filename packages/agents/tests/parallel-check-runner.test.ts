@@ -196,6 +196,87 @@ describe("ParallelAuditCheckRunner", () => {
     ).toBe(true);
   });
 
+  test("extracts one valid result after a separate calculation object", async () => {
+    const taskRunner: AuditCheckTaskRunner = {
+      async run(request) {
+        const calculation = JSON.stringify({
+          medianVariantSharpe: 1.0763,
+          neighborhoodSharpeRetention: 1.0304,
+        });
+        const finalResult = JSON.stringify(checkResult(request.agentId as AuditCheckId));
+        return runtimeResult(request, `calculation=${calculation}\nfinal=${finalResult}`);
+      },
+    };
+
+    const result = await new ParallelAuditCheckRunner(taskRunner).run(strategyRequest());
+
+    expect(result.checks.every((check) => check.conclusion === "pass")).toBe(true);
+  });
+
+  test("classifies composite evidence values as a safe frozen-schema failure", async () => {
+    const taskRunner: AuditCheckTaskRunner = {
+      async run(request) {
+        const check = {
+          ...checkResult(request.agentId as AuditCheckId),
+          evidence: [
+            {
+              metric: "nonBaselineSharpeRange",
+              value: [0.9995, 1.2617],
+              unit: "sharpe",
+              sourceRefs: ["artifact:backtest/parameter-grid"],
+            },
+          ],
+        };
+        return runtimeResult(request, JSON.stringify(check));
+      },
+    };
+
+    const result = await new ParallelAuditCheckRunner(taskRunner).run(strategyRequest());
+
+    expect(
+      result.checks.every(
+        (check) =>
+          check.missingEvidence[0]?.reason ===
+          "Check agent completed but its JSON did not satisfy the frozen check-result schema.",
+      ),
+    ).toBe(true);
+  });
+
+  test("distinguishes invalid JSON and ambiguous valid results without retaining raw output", async () => {
+    const invalidJsonRunner: AuditCheckTaskRunner = {
+      async run(request) {
+        return runtimeResult(request, "not-json Bearer sensitive-token /Users/private/output");
+      },
+    };
+    const invalidJson = await new ParallelAuditCheckRunner(invalidJsonRunner).run(
+      strategyRequest(),
+    );
+    expect(
+      invalidJson.checks.every(
+        (check) =>
+          check.missingEvidence[0]?.reason ===
+          "Check agent completed but did not return one parseable JSON object.",
+      ),
+    ).toBe(true);
+    expect(JSON.stringify(invalidJson)).not.toMatch(/sensitive-token|\/Users\/private/u);
+
+    const ambiguousRunner: AuditCheckTaskRunner = {
+      async run(request) {
+        const first = JSON.stringify(checkResult(request.agentId as AuditCheckId));
+        const second = JSON.stringify(checkResult(request.agentId as AuditCheckId));
+        return runtimeResult(request, `${first}\n${second}`);
+      },
+    };
+    const ambiguous = await new ParallelAuditCheckRunner(ambiguousRunner).run(strategyRequest());
+    expect(
+      ambiguous.checks.every(
+        (check) =>
+          check.missingEvidence[0]?.reason ===
+          "Check agent completed but returned multiple valid check-result objects.",
+      ),
+    ).toBe(true);
+  });
+
   test("keeps Moiré follow-ups disabled by default", async () => {
     const costInputs: string[] = [];
     const taskRunner: AuditCheckTaskRunner = {
@@ -494,6 +575,13 @@ describe("ParallelAuditCheckRunner", () => {
 
     expect(result.checks.every((check) => check.conclusion === "insufficient_evidence")).toBe(true);
     expect(result.checks.every((check) => check.refinedByMoire === undefined)).toBe(true);
+    expect(
+      result.checks.every(
+        (check) =>
+          check.missingEvidence[0]?.reason ===
+          "Check agent completed but attempted to write a host-only result field.",
+      ),
+    ).toBe(true);
   });
 
   test("retains the numeric timeout constructor form", async () => {
@@ -528,7 +616,7 @@ describe("ParallelAuditCheckRunner", () => {
     expect(rejected?.id).toBe("param-robustness");
     expect(rejected?.conclusion).toBe("insufficient_evidence");
     expect(rejected?.missingEvidence[0]?.reason).toBe(
-      "Check execution failed before a valid result was produced.",
+      "Check agent completed but its JSON did not satisfy the frozen check-result schema.",
     );
   });
 

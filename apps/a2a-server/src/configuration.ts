@@ -6,6 +6,7 @@ export const DEFAULT_ASSAY_A2A_CORS_ORIGINS = [
 
 export interface ProductionA2AConfig {
   arkApiKey: string;
+  arkApiKeys?: readonly string[];
   arkBaseUrl: string;
   arkModel: string;
   dataAsOf: string;
@@ -14,6 +15,20 @@ export interface ProductionA2AConfig {
   publicUrl: string;
   corsOrigins: readonly string[];
   pandaDataConfigured: boolean;
+}
+
+function optionalCredentialPool(value: string | undefined): readonly string[] {
+  if (value === undefined) {
+    return [];
+  }
+  return [
+    ...new Set(
+      value
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0),
+    ),
+  ];
 }
 
 function requireNonEmpty(value: string | undefined, name: string): string {
@@ -98,6 +113,7 @@ export function readProductionConfig(
     environment.ASSAY_A2A_CORS_ORIGIN?.trim() || DEFAULT_ASSAY_A2A_CORS_ORIGINS.join(",");
   return {
     arkApiKey: requireNonEmpty(environment.ARK_API_KEY, "ARK_API_KEY"),
+    arkApiKeys: optionalCredentialPool(environment.ARK_API_KEYS),
     arkBaseUrl: requireHttpUrl(arkBaseUrl, "ARK_BASE_URL"),
     arkModel: requireNonEmpty(environment.ARK_MODEL_DEEPSEEK, "ARK_MODEL_DEEPSEEK"),
     dataAsOf: requireDate(dataAsOf, "ASSAY_DATA_AS_OF"),

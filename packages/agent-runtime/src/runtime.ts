@@ -10,8 +10,13 @@ import {
   TERMINAL_TOOL_RESULT_ABORT_REASON,
   type AgentMessage,
   type AgentOptions,
+  type StreamFn,
 } from "@oh-my-pi/pi-agent-core";
-import type { Model } from "@oh-my-pi/pi-ai";
+import {
+  createAssistantMessageEventStream,
+  streamSimple,
+  type Model,
+} from "@oh-my-pi/pi-ai";
 import { AgentRegistry } from "./registry";
 import { ToolPolicy } from "./policy";
 import {
@@ -24,8 +29,10 @@ import {
   MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS,
   parseAuditCheckSubmission,
 } from "./final-result";
+import { ModelCallGate } from "./model-call-gate";
 
 const DEFAULT_MAX_RUN_MS = 19 * 60 * 1_000;
+const DEFAULT_MAX_CONCURRENT_MODEL_CALLS = 3;
 
 export interface AgentRuntimeOptions {
   model: Model;
@@ -33,6 +40,7 @@ export interface AgentRuntimeOptions {
   getApiKey?: AgentOptions["getApiKey"];
   toolPolicy?: ToolPolicy;
   maxRunMs?: number;
+  maxConcurrentModelCalls?: number;
   onEvent?: (event: RuntimeEvent) => void | Promise<void>;
 }
 
@@ -117,12 +125,41 @@ function safeSubmissionDiagnostic(value: unknown, depth = 0): unknown {
   return `[${typeof value}]`;
 }
 
+function createGatedStream(gate: ModelCallGate): StreamFn {
+  return async (...arguments_) => {
+    const release = await gate.acquire();
+    const outer = createAssistantMessageEventStream();
+    try {
+      const inner = streamSimple(...arguments_);
+      void (async () => {
+        try {
+          for await (const event of inner) {
+            outer.push(event);
+          }
+          if (!outer.done) {
+            outer.end(await inner.result());
+          }
+        } catch (error) {
+          outer.fail(error);
+        } finally {
+          release();
+        }
+      })();
+      return outer;
+    } catch (error) {
+      release();
+      throw error;
+    }
+  };
+}
+
 export class AgentRuntime {
   readonly #model: Model;
   readonly #registry: AgentRegistry;
   readonly #getApiKey?: AgentOptions["getApiKey"];
   readonly #toolPolicy: ToolPolicy;
   readonly #maxRunMs: number;
+  readonly #modelCallGate: ModelCallGate;
   readonly #onEvent?: AgentRuntimeOptions["onEvent"];
 
   constructor(options: AgentRuntimeOptions) {
@@ -131,6 +168,9 @@ export class AgentRuntime {
     this.#getApiKey = options.getApiKey;
     this.#toolPolicy = options.toolPolicy ?? new ToolPolicy();
     this.#maxRunMs = options.maxRunMs ?? DEFAULT_MAX_RUN_MS;
+    this.#modelCallGate = new ModelCallGate(
+      options.maxConcurrentModelCalls ?? DEFAULT_MAX_CONCURRENT_MODEL_CALLS,
+    );
     this.#onEvent = options.onEvent;
 
     if (this.#maxRunMs <= 0) {
@@ -194,6 +234,7 @@ export class AgentRuntime {
       // OpenAI's optional reasoning.summary request field.
       hideThinkingSummary: true,
       getApiKey: this.#getApiKey,
+      streamFn: createGatedStream(this.#modelCallGate),
       getToolChoice: () =>
         auditSubmissionTool !== undefined &&
         successfulRunExperimentCallCount === 1 &&
@@ -387,9 +428,13 @@ export class AgentRuntime {
         requiredTrustedSpecTool,
       );
       if (auditSubmissionTool !== undefined) {
-        // The structured tool call is the only result path. Assistant text is
-        // deliberately discarded, including after two rejected submissions.
-        output = "";
+        // The structured tool call is the only result path. The legacy output
+        // slot receives only host-serialized accepted arguments; assistant
+        // free text is always discarded.
+        output =
+          successfulAuditSubmissionCount === 1 && submittedAuditResult !== undefined
+            ? JSON.stringify(submittedAuditResult)
+            : "";
       } else {
         output ||= lastAssistantText(agent.state.messages);
       }
