@@ -55,7 +55,6 @@ export function createProductionA2AApp(config: ProductionA2AConfig): AssayA2AApp
   let nextAuditApiKey = 0;
   const runtime = new AgentRuntime({
     model,
-    maxConcurrentModelCalls: 1,
     registry: new AgentRegistry(
       createAuditCheckAgentDefinitions({ availableTools: pandaDataTools }),
     ),

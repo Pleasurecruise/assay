@@ -222,7 +222,8 @@ export class AgentRuntime {
     const auditSubmissionTool = tools.find(
       (tool) => tool.name === AUDIT_CHECK_SUBMISSION_TOOL_NAME,
     )?.name;
-    const agent = new Agent({
+    let agent: Agent;
+    agent = new Agent({
       initialState: {
         systemPrompt: [...definition.systemPrompt],
         model: this.#model,
@@ -242,6 +243,35 @@ export class AgentRuntime {
         auditSubmissionAttemptCount < MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS
           ? { type: "tool", name: auditSubmissionTool }
           : undefined,
+      // Advance the protocol state inside the agent loop, before the framework
+      // emits tool_execution_end. Event subscribers consume a separate async
+      // stream and can otherwise lose a race with the next getToolChoice call.
+      afterToolCall: ({ toolCall, isError }) => {
+        if (toolCall.name === AUDIT_CHECK_SUBMISSION_TOOL_NAME) {
+          const pending = pendingAuditSubmissions.get(toolCall.id);
+          if (
+            isError !== true &&
+            pending !== undefined &&
+            submittedAuditResult === undefined
+          ) {
+            submittedAuditResult = pending;
+            successfulAuditSubmissionCount += 1;
+          }
+          pendingAuditSubmissions.delete(toolCall.id);
+          if (
+            successfulAuditSubmissionCount === 1 ||
+            (isError === true &&
+              auditSubmissionAttemptCount >= MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS)
+          ) {
+            agent.abort(TERMINAL_TOOL_RESULT_ABORT_REASON);
+          }
+        } else if (
+          TRUSTED_SPEC_TOOL_NAMES.some((name) => name === toolCall.name) &&
+          isError !== true
+        ) {
+          successfulRunExperimentCallCount += 1;
+        }
+      },
       beforeToolCall: async ({ toolCall, args }) => {
         if (toolCall.name === AUDIT_CHECK_SUBMISSION_TOOL_NAME) {
           auditSubmissionAttemptCount += 1;
@@ -359,30 +389,6 @@ export class AgentRuntime {
           });
           break;
         case "tool_execution_end":
-          if (event.toolName === AUDIT_CHECK_SUBMISSION_TOOL_NAME) {
-            const pending = pendingAuditSubmissions.get(event.toolCallId);
-            if (
-              event.isError !== true &&
-              pending !== undefined &&
-              submittedAuditResult === undefined
-            ) {
-              submittedAuditResult = pending;
-              successfulAuditSubmissionCount += 1;
-            }
-            pendingAuditSubmissions.delete(event.toolCallId);
-            if (
-              successfulAuditSubmissionCount === 1 ||
-              (event.isError === true &&
-                auditSubmissionAttemptCount >= MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS)
-            ) {
-              agent.abort(TERMINAL_TOOL_RESULT_ABORT_REASON);
-            }
-          } else if (
-            TRUSTED_SPEC_TOOL_NAMES.some((name) => name === event.toolName) &&
-            event.isError !== true
-          ) {
-            successfulRunExperimentCallCount += 1;
-          }
           void emit({
             type: "tool.completed",
             agentId: definition.id,
