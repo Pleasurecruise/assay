@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from hashlib import sha256
+from io import StringIO
 import json
 import os
 from pathlib import Path
@@ -20,6 +21,7 @@ from panda_adapter.availability_audit import (
     _rebalance_pairs,
     run_availability_audit,
 )
+from panda_adapter import moire_stdio
 from panda_adapter.engine import protocol as engine_protocol
 from panda_adapter.local_data import (
     LOCAL_DATA_PACKAGE_SCHEMA_VERSION,
@@ -359,6 +361,111 @@ class LocalDataLoaderTest(unittest.TestCase):
         loader.assert_called_once_with(data_ref)
         local.require_spec_identity.assert_called_once_with(spec)
         self.assertIs(observed, local)
+
+    def test_engine_grid_persists_below_the_bound_audit_root(self) -> None:
+        spec = _strategy_spec()
+        data_ref = (
+            "assay-local-data-v1:audit:g01:"
+            f"sha256-{'a' * 64}"
+        )
+        scoped_root = Path("task-scoped-derived")
+        dates = pd.bdate_range("2026-01-01", periods=3)
+        prices = pd.DataFrame(
+            {"000001.SZ": [100.0, 101.0, 102.0]},
+            index=dates,
+        )
+        panel = MarketPanel(
+            adjusted_close=prices,
+            tradable=prices.notna(),
+        )
+        local = Mock()
+        local.as_of_market_panel.return_value = panel
+        local.derived_root = scoped_root
+        expected = {
+            "engineVersion": "test",
+            "baseline": {},
+            "variants": [],
+            "summaryRef": "artifact:backtest/parameter-grid",
+        }
+
+        with (
+            patch(
+                "panda_adapter.engine.protocol.load_local_audit_data",
+                return_value=local,
+            ),
+            patch(
+                "panda_adapter.engine.protocol.run_grid",
+                return_value=expected,
+            ) as grid_runner,
+        ):
+            observed = engine_protocol.run_request(
+                {
+                    "kind": "grid",
+                    "spec": spec,
+                    "dataRef": data_ref,
+                    "grid": {
+                        "signalParams": {"window": [20]},
+                        "topN": [1],
+                    },
+                    "budget": {"maxVariants": 1},
+                }
+            )
+
+        self.assertEqual(observed, expected)
+        self.assertEqual(
+            grid_runner.call_args.kwargs["artifact_root"],
+            scoped_root,
+        )
+
+    def test_moire_stdio_uses_one_bound_root_for_every_derived_artifact(
+        self,
+    ) -> None:
+        spec = _strategy_spec()
+        data_ref = (
+            "assay-local-data-v1:audit:g01:"
+            f"sha256-{'a' * 64}"
+        )
+        scoped_root = Path("task-scoped-derived")
+        local = Mock()
+        local.derived_root = scoped_root
+        local.cache_version = V9_CACHE_VERSION
+        output = StringIO()
+
+        with (
+            patch(
+                "panda_adapter.moire_stdio.json.load",
+                return_value={
+                    "kind": "regime_slice_of_grid",
+                    "spec": spec,
+                    "dataRef": data_ref,
+                },
+            ),
+            patch(
+                "panda_adapter.moire_stdio.load_local_audit_data",
+                return_value=local,
+            ),
+            patch(
+                "panda_adapter.moire_stdio.run_moire_request",
+                return_value={"kind": "regime_slice_of_grid"},
+            ) as moire_runner,
+            patch("panda_adapter.moire_stdio.sys.stdout", output),
+        ):
+            exit_code = moire_stdio.main()
+
+        self.assertEqual(exit_code, 0)
+        local.require_spec_identity.assert_called_once_with(spec)
+        self.assertEqual(
+            moire_runner.call_args.kwargs["backtest_artifact_root"],
+            scoped_root,
+        )
+        self.assertEqual(
+            moire_runner.call_args.kwargs["moire_artifact_root"],
+            scoped_root,
+        )
+        self.assertEqual(
+            moire_runner.call_args.kwargs["pit_cache_root"],
+            scoped_root,
+        )
 
     def test_availability_preserves_local_remove_only_disclosure(self) -> None:
         dates = pd.bdate_range("2026-01-01", "2026-04-01")

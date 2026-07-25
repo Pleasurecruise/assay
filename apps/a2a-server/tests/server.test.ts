@@ -146,9 +146,7 @@ describe("Assay A2A transports", () => {
     expect(card.securitySchemes).toHaveProperty("assayBearer");
     expect(card.securityRequirements).toHaveLength(1);
     expect(unauthenticatedRest.status).toBe(401);
-    expect(unauthenticatedRest.headers.get("www-authenticate")).toBe(
-      'Bearer realm="assay-a2a"',
-    );
+    expect(unauthenticatedRest.headers.get("www-authenticate")).toBe('Bearer realm="assay-a2a"');
     expect(unauthenticatedJsonRpc.status).toBe(401);
     expect(authenticatedJsonRpc.status).toBe(200);
     expect(authenticatedPayload.jsonrpc).toBe("2.0");

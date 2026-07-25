@@ -33,6 +33,7 @@ def main() -> int:
                 raise ValueError("Moiré request spec must be an object")
             local_data = load_local_audit_data(data_ref)
             local_data.require_spec_identity(spec)
+            derived_root = local_data.derived_root
             response = run_moire_request(
                 {
                     "kind": request.get("kind"),
@@ -41,7 +42,9 @@ def main() -> int:
                 panel_loader=local_data.as_of_market_panel,
                 index_loader=local_data.index_daily_cache,
                 membership_loader=local_data.pit_membership_cache,
-                pit_cache_root=local_data.derived_root,
+                backtest_artifact_root=derived_root,
+                moire_artifact_root=derived_root,
+                pit_cache_root=derived_root,
                 corrected_cache_version=local_data.cache_version,
                 corrected_pit_dataset_version=PIT_DATASET_VERSION,
             )

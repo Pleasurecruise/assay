@@ -134,12 +134,21 @@ def run_request(
         variants = _expand_grid(grid)
         if len(variants) > max_variants:
             raise ValueError("grid exceeds budget.maxVariants")
+        scoped_artifact_root = (
+            artifact_root
+            if artifact_root is not None
+            else (
+                local_data.derived_root
+                if local_data is not None
+                else None
+            )
+        )
         return run_grid(
             panel.adjusted_close,
             tradable=panel.tradable,
             baseline=baseline,
             variants=variants,
-            artifact_root=artifact_root,
+            artifact_root=scoped_artifact_root,
         )
     if kind == "cost_ladder":
         if len(COST_LADDER) > max_variants:
