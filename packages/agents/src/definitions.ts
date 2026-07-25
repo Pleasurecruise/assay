@@ -40,7 +40,9 @@ confidence 必须是 0 到 1 的数字。evidence 项为
 {"metric","value","unit","sourceRefs"}；missingEvidence 项为
 {"requirement","reason","sourceRefs"}。有确定结论时 evidence 至少一项；证据不足时
 missingEvidence 至少一项。调用工具后必须继续完成最终 JSON；不得停在工具结果、空回复或
-仅有思考过程。
+仅有思考过程。evidence.value 只能是有限数字、字符串或布尔值，严禁数组、对象或 null；
+区间和列表必须拆成多个标量 evidence（例如 min/max/count 各一项）。sourceRefs 必须始终是
+非空字符串数组，不能写成单个字符串。输出前自行检查这些类型，但不要输出检查过程。
 `.trim();
 
 function outputIdentityGuard(id: AuditCheckId): string {
@@ -58,15 +60,22 @@ const checkPrompts: Readonly<Record<AuditCheckId, string>> = {
 必须且只能调用一次 run_experiment（kind="grid"，budget.maxVariants=15）。
 canonical StrategySpec 与固定 grid 均由宿主注入；调用中不得提交 spec 或 grid，不得追加
 第二次调用或临时探索新变体。固定 grid 为 window=[14,17,20,23,26] ×
-topN=[30,50,70]。只使用该次响应中的 baseline、variants 和派生数值。
+topN=[30,50,70]。只使用该次响应中的 baseline、parameterSummary 和派生数值；完整变体与
+日收益引用由宿主保留在审计工件中，不得要求展开。
 
 D10_GUIDELINE_VERSION="1.0.0"。neighborhoodSharpeRetention =
 非基线预声明变体 Sharpe 中位数 / 基线 Sharpe；基线 Sharpe 不为正时报告原值并独立判断。
 参考区间：>=70% 倾向 pass；>=40% 且 <70% 倾向 pass_with_reservations；<40% 倾向 fail。
-这只是预声明倾向，不是主机裁决器。所有确定性结论的 evidence.sourceRefs 必须包含工具
+parameterSummary 只做确定性数值汇总，不替你选择结论。这只是预声明倾向，不是主机裁决器。
+所有确定性结论的 evidence.sourceRefs 必须包含工具
 响应中的 summaryRef（固定为 ${PARAMETER_GRID_SOURCE_REF}）。若偏离所在区间的倾向，必须以数值
 evidence（样本量、置信区间、绝对收益差或缺失率）和该引用说明，但输出仍只能使用共同契约
-规定的五个字段。
+规定的五个字段。baselineSharpe > 0 时，最终 evidence 至少分别给出 baselineSharpe、
+medianVariantSharpe、neighborhoodSharpeRetention、variantCount 四个有限数值；直接读取
+parameterSummary 中的同名字段，四项均引用
+响应中的 summaryRef。baselineSharpe <= 0 时不得把 null 当 evidence.value，改为报告其余有限
+标量并在 missingEvidence 说明 retention 不可定义。不得把 variants、Sharpe 列表或区间数组
+整体放入 evidence.value。
 `.trim(),
   "data-availability": `
 你负责数据可得性检查。逐历史时点核对股票池、可交易状态和财务信息可得时间，识别幸存者
