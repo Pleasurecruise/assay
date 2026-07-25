@@ -5,8 +5,17 @@ import type {
   RuntimeTaskRequest,
   RuntimeTaskResult,
 } from "@assay/contracts";
-import { Agent, type AgentMessage, type AgentOptions } from "@oh-my-pi/pi-agent-core";
-import type { Model } from "@oh-my-pi/pi-ai";
+import {
+  Agent,
+  type AgentMessage,
+  type AgentOptions,
+  type StreamFn,
+} from "@oh-my-pi/pi-agent-core";
+import {
+  createAssistantMessageEventStream,
+  streamSimple,
+  type Model,
+} from "@oh-my-pi/pi-ai";
 import { AgentRegistry } from "./registry";
 import { ToolPolicy } from "./policy";
 import {
@@ -19,8 +28,10 @@ import {
   AUDIT_CHECK_SUBMISSION_TOOL_NAME,
   parseAuditCheckSubmission,
 } from "./final-result";
+import { ModelCallGate } from "./model-call-gate";
 
 const DEFAULT_MAX_RUN_MS = 19 * 60 * 1_000;
+const DEFAULT_MAX_CONCURRENT_MODEL_CALLS = 3;
 
 export interface AgentRuntimeOptions {
   model: Model;
@@ -28,6 +39,7 @@ export interface AgentRuntimeOptions {
   getApiKey?: AgentOptions["getApiKey"];
   toolPolicy?: ToolPolicy;
   maxRunMs?: number;
+  maxConcurrentModelCalls?: number;
   onEvent?: (event: RuntimeEvent) => void | Promise<void>;
 }
 
@@ -63,12 +75,41 @@ function lastAssistantText(messages: readonly AgentMessage[]): string {
   return "";
 }
 
+function createGatedStream(gate: ModelCallGate): StreamFn {
+  return async (...arguments_) => {
+    const release = await gate.acquire();
+    const outer = createAssistantMessageEventStream();
+    try {
+      const inner = streamSimple(...arguments_);
+      void (async () => {
+        try {
+          for await (const event of inner) {
+            outer.push(event);
+          }
+          if (!outer.done) {
+            outer.end(await inner.result());
+          }
+        } catch (error) {
+          outer.fail(error);
+        } finally {
+          release();
+        }
+      })();
+      return outer;
+    } catch (error) {
+      release();
+      throw error;
+    }
+  };
+}
+
 export class AgentRuntime {
   readonly #model: Model;
   readonly #registry: AgentRegistry;
   readonly #getApiKey?: AgentOptions["getApiKey"];
   readonly #toolPolicy: ToolPolicy;
   readonly #maxRunMs: number;
+  readonly #modelCallGate: ModelCallGate;
   readonly #onEvent?: AgentRuntimeOptions["onEvent"];
 
   constructor(options: AgentRuntimeOptions) {
@@ -77,6 +118,9 @@ export class AgentRuntime {
     this.#getApiKey = options.getApiKey;
     this.#toolPolicy = options.toolPolicy ?? new ToolPolicy();
     this.#maxRunMs = options.maxRunMs ?? DEFAULT_MAX_RUN_MS;
+    this.#modelCallGate = new ModelCallGate(
+      options.maxConcurrentModelCalls ?? DEFAULT_MAX_CONCURRENT_MODEL_CALLS,
+    );
     this.#onEvent = options.onEvent;
 
     if (this.#maxRunMs <= 0) {
@@ -139,6 +183,7 @@ export class AgentRuntime {
       // OpenAI's optional reasoning.summary request field.
       hideThinkingSummary: true,
       getApiKey: this.#getApiKey,
+      streamFn: createGatedStream(this.#modelCallGate),
       getToolChoice: () =>
         auditSubmissionTool !== undefined &&
         successfulRunExperimentCallCount === 1 &&
