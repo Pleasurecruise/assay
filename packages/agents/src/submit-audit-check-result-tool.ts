@@ -2,13 +2,13 @@ import {
   AUDIT_CHECK_SUBMISSION_TOOL_NAME,
   type AgentTool,
 } from "@assay/agent-runtime";
-import { CHECK_CONCLUSIONS, type AuditCheckId } from "@assay/contracts";
+import { CHECK_CONCLUSIONS } from "@assay/contracts";
 
 const AGENT_CHECK_CONCLUSIONS = CHECK_CONCLUSIONS.filter(
   (conclusion) => conclusion !== "not_applicable",
 );
 
-export function createSubmitAuditCheckResultTool(checkId: AuditCheckId): AgentTool {
+export function createSubmitCheckResultTool(): AgentTool {
   return {
     name: AUDIT_CHECK_SUBMISSION_TOOL_NAME,
     label: "Submit final audit check result",
@@ -17,9 +17,8 @@ export function createSubmitAuditCheckResultTool(checkId: AuditCheckId): AgentTo
     parameters: {
       type: "object",
       additionalProperties: false,
-      required: ["id", "conclusion", "confidence", "evidence", "missingEvidence"],
+      required: ["conclusion", "confidence", "evidence", "missingEvidence"],
       properties: {
-        id: { type: "string", enum: [checkId] },
         conclusion: { type: "string", enum: AGENT_CHECK_CONCLUSIONS },
         confidence: { type: "number", minimum: 0, maximum: 1 },
         evidence: {
@@ -62,6 +61,9 @@ export function createSubmitAuditCheckResultTool(checkId: AuditCheckId): AgentTo
       },
     },
     strict: true,
+    // Let the Assay runtime see the original arguments and return its own exact
+    // frozen-contract error instead of accepting framework coercions.
+    lenientArgValidation: true,
     approval: "read",
     intent: "omit",
     async execute() {

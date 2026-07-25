@@ -138,11 +138,11 @@ describe("run_experiment tool", () => {
     );
 
     expect(toolsById).toEqual({
-      "param-robustness": ["run_experiment", "submit_audit_check_result"],
-      "data-availability": ["run_availability_audit", "submit_audit_check_result"],
-      "cost-stress": ["run_experiment", "submit_audit_check_result"],
-      "regime-dependency": ["run_experiment", "submit_audit_check_result"],
-      "homogeneity-decay": ["run_homogeneity", "submit_audit_check_result"],
+      "param-robustness": ["run_experiment", "submit_check_result"],
+      "data-availability": ["run_availability_audit", "submit_check_result"],
+      "cost-stress": ["run_experiment", "submit_check_result"],
+      "regime-dependency": ["run_experiment", "submit_check_result"],
+      "homogeneity-decay": ["run_homogeneity", "submit_check_result"],
     });
   });
 

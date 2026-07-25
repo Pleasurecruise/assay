@@ -30,11 +30,18 @@ function checkResult(id: AuditCheckId): AuditCheckResult {
 
 function runtimeResult(request: RuntimeTaskRequest, output: string): RuntimeTaskResult {
   const now = new Date().toISOString();
+  let auditCheckResult: AuditCheckResult | undefined;
+  try {
+    auditCheckResult = JSON.parse(output) as AuditCheckResult;
+  } catch {
+    // Free-form output is deliberately not promoted to the structured channel.
+  }
   return {
     taskId: request.id ?? "task",
     traceId: request.traceId ?? "trace",
     agentId: request.agentId,
     output,
+    ...(auditCheckResult === undefined ? {} : { auditCheckResult }),
     events: [],
     startedAt: now,
     completedAt: now,
@@ -174,7 +181,7 @@ describe("ParallelAuditCheckRunner", () => {
     ]);
   });
 
-  test("accepts a valid result wrapped in a Markdown JSON fence", async () => {
+  test("ignores a valid-looking result wrapped in free-form Markdown", async () => {
     const taskRunner: AuditCheckTaskRunner = {
       async run(request) {
         const output = JSON.stringify(checkResult(request.agentId as AuditCheckId));
@@ -184,7 +191,9 @@ describe("ParallelAuditCheckRunner", () => {
 
     const result = await new ParallelAuditCheckRunner(taskRunner).run(strategyRequest());
 
-    expect(result.checks.every((check) => check.conclusion === "pass")).toBe(true);
+    expect(
+      result.checks.every((check) => check.conclusion === "insufficient_evidence"),
+    ).toBe(true);
   });
 
   test("keeps Moiré follow-ups disabled by default", async () => {

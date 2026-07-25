@@ -6,7 +6,6 @@ import {
 
 function validSubmission() {
   return {
-    id: "param-robustness",
     conclusion: "pass",
     confidence: 0.82,
     evidence: [
@@ -26,12 +25,13 @@ describe("final audit result submission", () => {
     const raw = validSubmission();
     const parsed = parseAuditCheckSubmission(raw, "param-robustness");
 
-    expect(parsed).toEqual(raw);
+    expect(parsed).toEqual({ id: "param-robustness", ...raw });
     expect(parsed).not.toBe(raw);
     expect(parsed.evidence).not.toBe(raw.evidence);
   });
 
   test.each([
+    ["model-authored id", { id: "param-robustness", ...validSubmission() }],
     ["unknown top-level field", { ...validSubmission(), extra: true }],
     ["host-only field", { ...validSubmission(), refinedByMoire: "forbidden" }],
     [
@@ -61,7 +61,7 @@ describe("final audit result submission", () => {
     );
   });
 
-  test("rejects composite evidence and wrong-agent impersonation", () => {
+  test("rejects composite evidence and injects the host-owned id", () => {
     expect(() =>
       parseAuditCheckSubmission(
         {
@@ -71,9 +71,7 @@ describe("final audit result submission", () => {
         "param-robustness",
       ),
     ).toThrow("invalid evidence");
-    expect(() => parseAuditCheckSubmission(validSubmission(), "cost-stress")).toThrow(
-      'returned result for "param-robustness"',
-    );
+    expect(parseAuditCheckSubmission(validSubmission(), "cost-stress").id).toBe("cost-stress");
   });
 
   test("requires exactly one successful captured submission", () => {

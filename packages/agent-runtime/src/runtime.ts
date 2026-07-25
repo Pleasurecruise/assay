@@ -5,7 +5,12 @@ import type {
   RuntimeTaskRequest,
   RuntimeTaskResult,
 } from "@assay/contracts";
-import { Agent, type AgentMessage, type AgentOptions } from "@oh-my-pi/pi-agent-core";
+import {
+  Agent,
+  TERMINAL_TOOL_RESULT_ABORT_REASON,
+  type AgentMessage,
+  type AgentOptions,
+} from "@oh-my-pi/pi-agent-core";
 import type { Model } from "@oh-my-pi/pi-ai";
 import { AgentRegistry } from "./registry";
 import { ToolPolicy } from "./policy";
@@ -15,8 +20,8 @@ import {
   TRUSTED_SPEC_TOOL_NAMES,
 } from "./runtime-tool-guard";
 import {
-  assertAuditCheckSubmissionCompleted,
   AUDIT_CHECK_SUBMISSION_TOOL_NAME,
+  MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS,
   parseAuditCheckSubmission,
 } from "./final-result";
 
@@ -63,6 +68,55 @@ function lastAssistantText(messages: readonly AgentMessage[]): string {
   return "";
 }
 
+const SAFE_SUBMISSION_DIAGNOSTIC_KEYS = new Set([
+  "conclusion",
+  "confidence",
+  "evidence",
+  "missingEvidence",
+  "metric",
+  "value",
+  "unit",
+  "sourceRefs",
+  "requirement",
+  "reason",
+  "id",
+  "refinedByMoire",
+]);
+
+function safeSubmissionDiagnostic(value: unknown, depth = 0): unknown {
+  if (depth >= 8) {
+    return "[depth-limit]";
+  }
+  if (typeof value === "string") {
+    return `[string:${String(value.length)}]`;
+  }
+  if (
+    value === null ||
+    typeof value === "boolean" ||
+    (typeof value === "number" && Number.isFinite(value))
+  ) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value
+      .slice(0, 100)
+      .map((entry) => safeSubmissionDiagnostic(entry, depth + 1));
+  }
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .slice(0, 100)
+        .map(([key, entry], index) => [
+          SAFE_SUBMISSION_DIAGNOSTIC_KEYS.has(key)
+            ? key
+            : `[unexpected-key:${String(index + 1)}]`,
+          safeSubmissionDiagnostic(entry, depth + 1),
+        ]),
+    );
+  }
+  return `[${typeof value}]`;
+}
+
 export class AgentRuntime {
   readonly #model: Model;
   readonly #registry: AgentRegistry;
@@ -105,6 +159,7 @@ export class AgentRuntime {
     let runExperimentCallCount = 0;
     let successfulRunExperimentCallCount = 0;
     let successfulAuditSubmissionCount = 0;
+    let auditSubmissionAttemptCount = 0;
     let submittedAuditResult: AuditCheckResult | undefined;
     const pendingAuditSubmissions = new Map<string, AuditCheckResult>();
 
@@ -142,35 +197,48 @@ export class AgentRuntime {
       getToolChoice: () =>
         auditSubmissionTool !== undefined &&
         successfulRunExperimentCallCount === 1 &&
-        successfulAuditSubmissionCount === 0
+        successfulAuditSubmissionCount === 0 &&
+        auditSubmissionAttemptCount < MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS
           ? { type: "tool", name: auditSubmissionTool }
           : undefined,
       beforeToolCall: async ({ toolCall, args }) => {
         if (toolCall.name === AUDIT_CHECK_SUBMISSION_TOOL_NAME) {
+          auditSubmissionAttemptCount += 1;
+          let submissionError: string | undefined;
           if (successfulRunExperimentCallCount !== 1) {
-            return {
-              block: true,
-              reason: "The evidence tool must complete before the final audit submission.",
-            };
-          }
-          if (submittedAuditResult !== undefined) {
-            return {
-              block: true,
-              reason: "The final audit result has already been submitted.",
-            };
-          }
-          try {
-            pendingAuditSubmissions.set(
-              toolCall.id,
-              parseAuditCheckSubmission(toolCall.arguments, definition.id),
-            );
-          } catch (error) {
-            return {
-              block: true,
-              reason:
+            submissionError =
+              "The evidence tool must complete before the final audit submission.";
+          } else if (submittedAuditResult !== undefined) {
+            submissionError = "The final audit result has already been submitted.";
+          } else if (
+            auditSubmissionAttemptCount > MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS
+          ) {
+            submissionError = `submit_check_result allows at most ${String(MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS)} attempts.`;
+          } else {
+            try {
+              pendingAuditSubmissions.set(
+                toolCall.id,
+                parseAuditCheckSubmission(toolCall.arguments, definition.id),
+              );
+            } catch (error) {
+              submissionError =
                 error instanceof Error
                   ? error.message
-                  : "Final audit submission did not satisfy the frozen schema.",
+                  : "Final audit submission did not satisfy the frozen schema.";
+            }
+          }
+          if (submissionError !== undefined) {
+            await emit({
+              type: "audit.submission_invalid",
+              agentId: definition.id,
+              toolCallId: toolCall.id,
+              attempt: auditSubmissionAttemptCount,
+              arguments: safeSubmissionDiagnostic(toolCall.arguments),
+              error: submissionError,
+            });
+            return {
+              block: true,
+              reason: submissionError,
             };
           }
         }
@@ -261,6 +329,13 @@ export class AgentRuntime {
               successfulAuditSubmissionCount += 1;
             }
             pendingAuditSubmissions.delete(event.toolCallId);
+            if (
+              successfulAuditSubmissionCount === 1 ||
+              (event.isError === true &&
+                auditSubmissionAttemptCount >= MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS)
+            ) {
+              agent.abort(TERMINAL_TOOL_RESULT_ABORT_REASON);
+            }
           } else if (
             TRUSTED_SPEC_TOOL_NAMES.some((name) => name === event.toolName) &&
             event.isError !== true
@@ -312,11 +387,9 @@ export class AgentRuntime {
         requiredTrustedSpecTool,
       );
       if (auditSubmissionTool !== undefined) {
-        assertAuditCheckSubmissionCompleted(
-          successfulAuditSubmissionCount,
-          submittedAuditResult,
-        );
-        output = JSON.stringify(submittedAuditResult);
+        // The structured tool call is the only result path. Assistant text is
+        // deliberately discarded, including after two rejected submissions.
+        output = "";
       } else {
         output ||= lastAssistantText(agent.state.messages);
       }
@@ -332,6 +405,9 @@ export class AgentRuntime {
         traceId,
         agentId: definition.id,
         output,
+        ...(successfulAuditSubmissionCount === 1 && submittedAuditResult !== undefined
+          ? { auditCheckResult: submittedAuditResult }
+          : {}),
         events,
         startedAt,
         completedAt: new Date().toISOString(),

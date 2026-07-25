@@ -5,9 +5,10 @@ import {
   type AuditCheckResult,
 } from "@assay/contracts";
 
-export const AUDIT_CHECK_SUBMISSION_TOOL_NAME = "submit_audit_check_result";
+export const AUDIT_CHECK_SUBMISSION_TOOL_NAME = "submit_check_result";
+export const MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS = 2;
 
-const RESULT_KEYS = ["id", "conclusion", "confidence", "evidence", "missingEvidence"] as const;
+const RESULT_KEYS = ["conclusion", "confidence", "evidence", "missingEvidence"] as const;
 const EVIDENCE_KEYS = ["metric", "value", "unit", "sourceRefs"] as const;
 const MISSING_EVIDENCE_KEYS = ["requirement", "reason", "sourceRefs"] as const;
 
@@ -79,7 +80,15 @@ export function parseAuditCheckSubmission(
     }
   }
 
-  return cloneResult(parseAuditCheckResult(value, expectedId as AuditCheckId));
+  return cloneResult(
+    parseAuditCheckResult(
+      {
+        id: expectedId,
+        ...value,
+      },
+      expectedId as AuditCheckId,
+    ),
+  );
 }
 
 export function assertAuditCheckSubmissionCompleted(

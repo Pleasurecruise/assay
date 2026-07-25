@@ -25,6 +25,8 @@ import {
 export const HARD_CHECK_DEADLINE_MS = 120_000;
 const DEFAULT_CHECK_TIMEOUT_MS = HARD_CHECK_DEADLINE_MS;
 const CHECK_EXECUTION_FAILURE_REASON = "Check execution failed before a valid result was produced.";
+const CHECK_SUBMISSION_FAILURE_REASON =
+  "Check agent did not complete one valid submit_check_result call within two attempts.";
 
 export interface AuditCheckTaskRunner {
   run(request: RuntimeTaskRequest, options?: { signal?: AbortSignal }): Promise<RuntimeTaskResult>;
@@ -59,7 +61,11 @@ export interface MoireExperimentExecutor {
   ): Promise<DiscriminativeMoireOutcome>;
 }
 
-function parseAgentJson(output: string): unknown {
+/**
+ * Legacy free-text extraction is retained only for diagnostic tooling. The
+ * production result path reads RuntimeTaskResult.auditCheckResult instead.
+ */
+export function parseLegacyAgentTextForDiagnostics(output: string): unknown {
   const unfenced = output
     .trim()
     .replace(/^```(?:json)?\s*/i, "")
@@ -157,7 +163,7 @@ function buildAgentInput(
 ): string {
   const lines = [
     "执行下面 JSON 中分配的单项审计。只使用你自己的工具和该请求内容；",
-    "不得引用或推测其他检查结果。严格按 system prompt 的 JSON 契约输出。",
+    "不得引用或推测其他检查结果。严格按 system prompt 的 submit_check_result 契约交卷。",
     JSON.stringify(request),
   ];
   if (followUp) {
@@ -364,7 +370,10 @@ export class ParallelAuditCheckRunner {
         },
         { signal },
       );
-      const parsed = parseAuditCheckResult(parseAgentJson(result.output), checkId);
+      if (result.auditCheckResult === undefined) {
+        return insufficientEvidence(checkId, CHECK_SUBMISSION_FAILURE_REASON);
+      }
+      const parsed = parseAuditCheckResult(result.auditCheckResult, checkId);
       if (parsed.refinedByMoire !== undefined) {
         throw new Error("Only the host may write refinedByMoire");
       }

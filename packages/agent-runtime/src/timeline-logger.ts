@@ -26,9 +26,10 @@ function durationMs(startedAt: number | undefined, finishedAt: number): number {
 /**
  * Emit credential-safe runtime timing records.
  *
- * Agent text, tool arguments/results, and provider errors are deliberately
- * excluded. JSON encoding also prevents untrusted identifiers from injecting
- * additional log lines.
+ * Agent text, domain-tool arguments/results, and provider errors are
+ * deliberately excluded. Rejected submit_check_result arguments are the one
+ * exception: they are bounded contract data retained for acceptance forensics.
+ * JSON encoding prevents untrusted strings from injecting additional log lines.
  */
 export function createRuntimeTimelineLogger(
   options: RuntimeTimelineLoggerOptions = {},
@@ -85,6 +86,20 @@ export function createRuntimeTimelineLogger(
           toolName: event.toolName,
           durationMs: durationMs(started?.startedAt, observedAt),
           isError: event.isError,
+        })}\n`,
+      );
+      return;
+    }
+
+    if (event.type === "audit.submission_invalid") {
+      write(
+        `[assay-runtime] ${JSON.stringify({
+          ...base,
+          phase: "audit_submission_invalid",
+          toolCallId: event.toolCallId,
+          attempt: event.attempt,
+          arguments: event.arguments,
+          toolError: event.error,
         })}\n`,
       );
       return;
