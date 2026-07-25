@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "assay-case-source-summary-v1",
+  "packageId": "csi300-momentum-20d-monthly-top50-equal",
+  "generatedAt": "2026-07-24T17:32:38.316413+00:00",
+  "state": "degraded",
+  "sources": {
+    "equityDaily": {
+      "status": "ready",
+      "primarySourceRef": "pandadata:get_factor(close)",
+      "fallbackSourceRef": "pandadata:get_stock_daily_post(close)",
+      "mode": "factor-close-with-validated-official-post-fallback",
+      "fallbackFillCount": 111,
+      "fallbackRecords": "provenance/fallback-records"
+    },
+    "indexMembership": {
+      "status": "ready",
+      "sourceRef": "pandadata:get_index_weights",
+      "snapshots": 37,
+      "memberSymbols": 379,
+      "equityPanelSymbols": 300,
+      "symbolsWithoutPromotedDailyHistory": 79
+    }
+  },
+  "degradedDatasets": [
+    {
+      "name": "historicalMemberDaily",
+      "path": null,
+      "mode": "remove_only",
+      "reasonCode": "HISTORICAL_MEMBER_DATA_UNAVAILABLE",
+      "assumptions": [
+        "Historical constituents could not be fully cached within the stage budget; availability correction must use remove-only mode."
+      ]
+    },
+    {
+      "name": "indexDaily",
+      "path": null,
+      "mode": "constituent_proxy",
+      "reasonCode": "INDEX_DAILY_UNAVAILABLE",
+      "assumptions": [
+        "CSI 300 index daily data is unavailable; regime analysis must use the disclosed constituent equal-weight proxy."
+      ]
+    },
+    {
+      "name": "comparatorFactors",
+      "path": null,
+      "mode": "classic_only",
+      "reasonCode": "COMPARATOR_FACTORS_UNAVAILABLE",
+      "assumptions": [
+        "ratio_pe_ttm and market_cap are unavailable; homogeneity analysis must use only the three self-built classic factors."
+      ]
+    }
+  ],
+  "incompleteAttempts": {
+    "path": "provenance/incomplete-attempts",
+    "runtimeEligible": false
+  }
+}

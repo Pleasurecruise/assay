@@ -12,7 +12,7 @@ import type { AuditCheckTaskRunner, MoireExperimentExecutor } from "../src/paral
 import { HARD_CHECK_DEADLINE_MS, ParallelAuditCheckRunner } from "../src/parallel-check-runner";
 
 const dataRef =
-  "assay-local-data-v1:audit_test:g01:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  "assay-local-data-v1:audit_test:test-package:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 function checkResult(id: AuditCheckId): AuditCheckResult {
   return {

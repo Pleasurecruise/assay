@@ -9,8 +9,9 @@ import {
 
 export const LOCAL_DATA_PACKAGE_SCHEMA_VERSION = "assay-local-data-package-v1" as const;
 export const LOCAL_DATA_REF_VERSION = "assay-local-data-v1" as const;
+export const LOCAL_DATA_RUNTIME_ROOT = ".cache/assay/local-packages" as const;
 
-const MAX_DESCRIPTOR_BYTES = 256 * 1024;
+const MAX_MANIFEST_BYTES = 256 * 1024;
 const PACKAGE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/u;
 const AUDIT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/u;
 const CURRENT_SUPPORTED_INDEX_SYMBOL = "000300.SH";
@@ -20,11 +21,17 @@ const SHA256_PATTERN = /^sha256-[a-f0-9]{64}$/u;
 const BASE_REQUIREMENTS = LOCAL_DATA_REQUIREMENTS.filter(
   (requirement) => requirement !== "strategy_signal_factors",
 ) as readonly Exclude<LocalDataRequirement, "strategy_signal_factors">[];
+const REQUIRED_READY_CAPABILITIES = [
+  "trade_calendar",
+  "pit_membership",
+  "adjusted_close",
+  "trade_status",
+] as const;
 
 export type LocalDataCapabilityStatus = "ready" | "degraded";
 export type LocalDataPackageErrorCode =
   | "ambiguous_match"
-  | "descriptor_invalid"
+  | "manifest_invalid"
   | "package_integrity_failed"
   | "registry_unavailable"
   | "unsupported_strategy";
@@ -35,7 +42,7 @@ export class LocalDataPackageError extends Error {
   constructor(code: LocalDataPackageErrorCode) {
     const messageByCode: Readonly<Record<LocalDataPackageErrorCode, string>> = {
       ambiguous_match: "Local data package resolution returned more than one match",
-      descriptor_invalid: "Local data package descriptor is invalid",
+      manifest_invalid: "Local data package manifest is invalid",
       package_integrity_failed: "Local data package integrity verification failed",
       registry_unavailable: "Local data package registry is unavailable",
       unsupported_strategy: "No local data package supports the frozen strategy",
@@ -50,7 +57,7 @@ export type LocalDataPackageCapabilities = Readonly<
   Record<Exclude<LocalDataRequirement, "strategy_signal_factors">, LocalDataCapabilityStatus>
 >;
 
-export interface LocalDataPackageDescriptor {
+export interface LocalDataPackageManifest {
   readonly schemaVersion: typeof LOCAL_DATA_PACKAGE_SCHEMA_VERSION;
   readonly packageId: string;
   readonly strategyKey: `sha256-${string}`;
@@ -69,14 +76,14 @@ export interface LocalDataPackageDescriptor {
   };
   readonly capabilities: LocalDataPackageCapabilities;
   readonly paths: {
-    readonly marketDataCache: string;
-    readonly v9CacheRoot: string;
-    readonly pitCacheRoot: string;
+    readonly marketData: string;
+    readonly auditSupport: string;
+    readonly pitMembership: string;
   };
   readonly checksums: {
     readonly marketData: `sha256-${string}`;
-    readonly v9Manifest: `sha256-${string}`;
-    readonly pitTree: `sha256-${string}`;
+    readonly auditSupport: `sha256-${string}`;
+    readonly pitMembership: `sha256-${string}`;
   };
 }
 
@@ -90,8 +97,8 @@ export interface LocalDataPackageResolverOptions {
   readonly root: string;
 }
 
-interface ParsedDescriptor {
-  readonly descriptor: LocalDataPackageDescriptor;
+interface ParsedManifest {
+  readonly manifest: LocalDataPackageManifest;
   readonly digest: `sha256-${string}`;
 }
 
@@ -122,15 +129,15 @@ function parseCapabilityStatus(value: unknown): LocalDataCapabilityStatus | unde
   return value === "ready" || value === "degraded" ? value : undefined;
 }
 
-function parseDescriptor(raw: Uint8Array): ParsedDescriptor {
-  if (raw.byteLength === 0 || raw.byteLength > MAX_DESCRIPTOR_BYTES) {
-    throw new LocalDataPackageError("descriptor_invalid");
+function parseManifest(raw: Uint8Array): ParsedManifest {
+  if (raw.byteLength === 0 || raw.byteLength > MAX_MANIFEST_BYTES) {
+    throw new LocalDataPackageError("manifest_invalid");
   }
   let value: unknown;
   try {
     value = JSON.parse(Buffer.from(raw).toString("utf8"));
   } catch {
-    throw new LocalDataPackageError("descriptor_invalid");
+    throw new LocalDataPackageError("manifest_invalid");
   }
   if (
     !isRecord(value) ||
@@ -151,7 +158,7 @@ function parseDescriptor(raw: Uint8Array): ParsedDescriptor {
     typeof value.strategyKey !== "string" ||
     !SHA256_PATTERN.test(value.strategyKey)
   ) {
-    throw new LocalDataPackageError("descriptor_invalid");
+    throw new LocalDataPackageError("manifest_invalid");
   }
 
   const universe = value.universe;
@@ -186,20 +193,21 @@ function parseDescriptor(raw: Uint8Array): ParsedDescriptor {
     !BASE_REQUIREMENTS.every(
       (requirement) => parseCapabilityStatus(capabilities[requirement]) !== undefined,
     ) ||
+    !REQUIRED_READY_CAPABILITIES.every((requirement) => capabilities[requirement] === "ready") ||
     !hasExactKeys(capabilities, BASE_REQUIREMENTS) ||
     !isRecord(paths) ||
-    !hasExactKeys(paths, ["marketDataCache", "v9CacheRoot", "pitCacheRoot"]) ||
+    !hasExactKeys(paths, ["marketData", "auditSupport", "pitMembership"]) ||
     !Object.values(paths).every((path) => typeof path === "string" && path.length > 0) ||
     !isRecord(checksums) ||
-    !hasExactKeys(checksums, ["marketData", "v9Manifest", "pitTree"]) ||
+    !hasExactKeys(checksums, ["marketData", "auditSupport", "pitMembership"]) ||
     !Object.values(checksums).every(
       (checksum) => typeof checksum === "string" && SHA256_PATTERN.test(checksum),
     )
   ) {
-    throw new LocalDataPackageError("descriptor_invalid");
+    throw new LocalDataPackageError("manifest_invalid");
   }
   return {
-    descriptor: value as unknown as LocalDataPackageDescriptor,
+    manifest: value as unknown as LocalDataPackageManifest,
     digest: sha256Bytes(raw),
   };
 }
@@ -316,54 +324,53 @@ async function treeDigest(root: string, signal?: AbortSignal): Promise<`sha256-$
   return `sha256-${digest.digest("hex")}`;
 }
 
-function supportsPlan(descriptor: LocalDataPackageDescriptor, plan: DataPlan): boolean {
+function supportsPlan(manifest: LocalDataPackageManifest, plan: DataPlan): boolean {
   return (
-    descriptor.strategyKey === plan.strategyKey &&
-    descriptor.universe.indexSymbol === plan.indexSymbol &&
-    descriptor.window.start === plan.window.start &&
-    descriptor.window.end === plan.window.end &&
-    descriptor.coverage.start <= plan.requiredCoverage.start &&
-    descriptor.coverage.end >= plan.requiredCoverage.end &&
-    descriptor.coverage.asOf >= plan.requiredCoverage.end &&
+    manifest.strategyKey === plan.strategyKey &&
+    manifest.universe.indexSymbol === plan.indexSymbol &&
+    manifest.window.start === plan.window.start &&
+    manifest.window.end === plan.window.end &&
+    manifest.coverage.start <= plan.requiredCoverage.start &&
+    manifest.coverage.end >= plan.requiredCoverage.end &&
+    manifest.coverage.asOf >= plan.requiredCoverage.end &&
     plan.requirements.every(
       (requirement) =>
         requirement !== "strategy_signal_factors" &&
-        parseCapabilityStatus(descriptor.capabilities[requirement]) !== undefined,
+        parseCapabilityStatus(manifest.capabilities[requirement]) !== undefined,
     )
   );
 }
 
 async function verifyPackage(
-  registryRoot: string,
-  descriptor: LocalDataPackageDescriptor,
+  packageRoot: string,
+  manifest: LocalDataPackageManifest,
   signal?: AbortSignal,
 ): Promise<void> {
   signal?.throwIfAborted();
-  const marketDataPath = await checkedPackagePath(
-    registryRoot,
-    descriptor.paths.marketDataCache,
-    "file",
-  );
-  const v9Root = await checkedPackagePath(registryRoot, descriptor.paths.v9CacheRoot, "directory");
-  const pitRoot = await checkedPackagePath(
-    registryRoot,
-    descriptor.paths.pitCacheRoot,
+  const marketDataPath = await checkedPackagePath(packageRoot, manifest.paths.marketData, "file");
+  const auditSupportRoot = await checkedPackagePath(
+    packageRoot,
+    manifest.paths.auditSupport,
     "directory",
   );
-  const pitTimelineRoot = await checkedPackagePath(
-    pitRoot,
-    `index-weights/${descriptor.universe.indexSymbol.replace(".", "_")}`,
+  const pitMembershipRoot = await checkedPackagePath(
+    packageRoot,
+    manifest.paths.pitMembership,
     "directory",
   );
-  const v9ManifestPath = await checkedPackagePath(v9Root, "manifest.json", "file");
+  await checkedPackagePath(
+    pitMembershipRoot,
+    `index-weights/${manifest.universe.indexSymbol.replace(".", "_")}`,
+    "directory",
+  );
+  await checkedPackagePath(auditSupportRoot, "manifest.json", "file");
   try {
     const marketData = await readFile(marketDataPath);
     signal?.throwIfAborted();
-    const v9Manifest = await readFile(v9ManifestPath);
     if (
-      sha256Bytes(marketData) !== descriptor.checksums.marketData ||
-      sha256Bytes(v9Manifest) !== descriptor.checksums.v9Manifest ||
-      (await treeDigest(pitTimelineRoot, signal)) !== descriptor.checksums.pitTree
+      sha256Bytes(marketData) !== manifest.checksums.marketData ||
+      (await treeDigest(auditSupportRoot, signal)) !== manifest.checksums.auditSupport ||
+      (await treeDigest(pitMembershipRoot, signal)) !== manifest.checksums.pitMembership
     ) {
       throw new LocalDataPackageError("package_integrity_failed");
     }
@@ -375,42 +382,46 @@ async function verifyPackage(
   }
 }
 
-async function readRegistryDescriptors(
+interface RegisteredManifest extends ParsedManifest {
+  readonly packageRoot: string;
+}
+
+async function readRegistryManifests(
   registryRoot: string,
   signal?: AbortSignal,
-): Promise<readonly ParsedDescriptor[]> {
-  const descriptorRoot = await checkedPackagePath(registryRoot, "local-packages", "directory");
+): Promise<readonly RegisteredManifest[]> {
   let entries;
   try {
-    entries = await readdir(descriptorRoot, { withFileTypes: true });
+    entries = await readdir(registryRoot, { withFileTypes: true });
   } catch {
     throw new LocalDataPackageError("registry_unavailable");
   }
-  const descriptorNames = entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+  const packageNames = entries
+    .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
     .sort((left, right) => Buffer.compare(Buffer.from(left), Buffer.from(right)));
-  if (descriptorNames.length === 0) {
+  if (packageNames.length === 0) {
     throw new LocalDataPackageError("registry_unavailable");
   }
 
-  const descriptors: ParsedDescriptor[] = [];
-  for (const descriptorName of descriptorNames) {
+  const manifests: RegisteredManifest[] = [];
+  for (const packageName of packageNames) {
     signal?.throwIfAborted();
-    const descriptorPath = await checkedPackagePath(descriptorRoot, descriptorName, "file");
+    const packageRoot = await checkedPackagePath(registryRoot, packageName, "directory");
+    const manifestPath = await checkedPackagePath(packageRoot, "manifest.json", "file");
     let raw: Buffer;
     try {
-      raw = await readFile(descriptorPath);
+      raw = await readFile(manifestPath);
     } catch {
-      throw new LocalDataPackageError("descriptor_invalid");
+      throw new LocalDataPackageError("manifest_invalid");
     }
-    const parsed = parseDescriptor(raw);
-    if (descriptorName !== `${parsed.descriptor.packageId}.json`) {
-      throw new LocalDataPackageError("descriptor_invalid");
+    const parsed = parseManifest(raw);
+    if (packageName !== parsed.manifest.packageId) {
+      throw new LocalDataPackageError("manifest_invalid");
     }
-    descriptors.push(parsed);
+    manifests.push({ ...parsed, packageRoot });
   }
-  return descriptors;
+  return manifests;
 }
 
 export class LocalDataPackageResolver {
@@ -423,11 +434,11 @@ export class LocalDataPackageResolver {
   async validateRegistry(signal?: AbortSignal): Promise<readonly string[]> {
     signal?.throwIfAborted();
     const registryRoot = await checkedRegistryRoot(this.#root);
-    const descriptors = await readRegistryDescriptors(registryRoot, signal);
-    for (const { descriptor } of descriptors) {
-      await verifyPackage(registryRoot, descriptor, signal);
+    const manifests = await readRegistryManifests(registryRoot, signal);
+    for (const { manifest, packageRoot } of manifests) {
+      await verifyPackage(packageRoot, manifest, signal);
     }
-    return descriptors.map(({ descriptor }) => descriptor.packageId);
+    return manifests.map(({ manifest }) => manifest.packageId);
   }
 
   async resolve(
@@ -437,13 +448,13 @@ export class LocalDataPackageResolver {
   ): Promise<PreparedLocalAuditData> {
     signal?.throwIfAborted();
     if (!AUDIT_ID_PATTERN.test(auditId)) {
-      throw new LocalDataPackageError("descriptor_invalid");
+      throw new LocalDataPackageError("manifest_invalid");
     }
     const registryRoot = await checkedRegistryRoot(this.#root);
-    const descriptors = await readRegistryDescriptors(registryRoot, signal);
-    const matches: ParsedDescriptor[] = [];
-    for (const parsed of descriptors) {
-      if (supportsPlan(parsed.descriptor, plan)) {
+    const manifests = await readRegistryManifests(registryRoot, signal);
+    const matches: RegisteredManifest[] = [];
+    for (const parsed of manifests) {
+      if (supportsPlan(parsed.manifest, plan)) {
         matches.push(parsed);
       }
     }
@@ -454,16 +465,16 @@ export class LocalDataPackageResolver {
       throw new LocalDataPackageError("ambiguous_match");
     }
 
-    const match = matches[0] as ParsedDescriptor;
-    await verifyPackage(registryRoot, match.descriptor, signal);
-    const { descriptor, digest } = match;
+    const match = matches[0] as RegisteredManifest;
+    await verifyPackage(match.packageRoot, match.manifest, signal);
+    const { manifest, digest } = match;
     return {
-      dataRef: `${LOCAL_DATA_REF_VERSION}:${auditId}:${descriptor.packageId}:${digest}`,
-      packageId: descriptor.packageId,
+      dataRef: `${LOCAL_DATA_REF_VERSION}:${auditId}:${manifest.packageId}:${digest}`,
+      packageId: manifest.packageId,
       sources: [
-        `pandadata:market-data-cache:${descriptor.checksums.marketData}`,
-        `pandadata:v9-cache-manifest:${descriptor.checksums.v9Manifest}`,
-        `pandadata:pit-timeline:${descriptor.checksums.pitTree}`,
+        `pandadata:market-data:${manifest.checksums.marketData}`,
+        `pandadata:audit-support:${manifest.checksums.auditSupport}`,
+        `pandadata:pit-membership:${manifest.checksums.pitMembership}`,
       ],
     };
   }

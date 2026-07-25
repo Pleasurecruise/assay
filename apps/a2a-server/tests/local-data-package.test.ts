@@ -11,6 +11,7 @@ import {
   LocalDataPackageResolver,
 } from "../src/local-data-package";
 
+const PACKAGE_ID = "csi300-momentum-20d-monthly-top50-equal";
 const roots: string[] = [];
 
 afterEach(async () => {
@@ -41,37 +42,48 @@ function goldenPlan() {
 
 async function fixtureRoot(): Promise<{
   root: string;
-  descriptor: Record<string, unknown>;
-  descriptorPath: string;
+  manifest: Record<string, unknown>;
+  manifestPath: string;
   marketPath: string;
-  pitFile: string;
+  auditManifestPath: string;
+  pitMetadataFile: string;
 }> {
   const root = await mkdtemp(join(tmpdir(), "assay-local-package-"));
   roots.push(root);
-  const descriptorRoot = join(root, "local-packages");
-  const v9Root = join(root, "v9-p1-v1");
-  const pitRoot = join(root, "pit-availability-v1");
-  await mkdir(descriptorRoot);
-  await mkdir(v9Root);
-  await mkdir(join(pitRoot, "index-weights", "000300_SH"), { recursive: true });
-  const marketPath = join(root, "csi300-3y.csv");
-  const v9ManifestPath = join(v9Root, "manifest.json");
-  const pitFile = join(pitRoot, "index-weights", "000300_SH", "20260723.json");
+  const packageRoot = join(root, PACKAGE_ID);
+  const auditSupportRoot = join(packageRoot, "audit-support");
+  const pitMembershipRoot = join(packageRoot, "pit-membership");
+  await mkdir(auditSupportRoot, { recursive: true });
+  await mkdir(join(pitMembershipRoot, "index-weights", "000300_SH"), { recursive: true });
+  const marketPath = join(packageRoot, "market-data.csv");
+  const auditManifestPath = join(auditSupportRoot, "manifest.json");
+  const pitFile = join(pitMembershipRoot, "index-weights", "000300_SH", "20260723.json");
+  const pitMetadataFile = join(pitMembershipRoot, "source.json");
   const marketData = Buffer.from("date,symbol,adjClose,tradeStatus\n2026-07-23,000001.SZ,10,1\n");
-  const v9Manifest = Buffer.from('{"cacheVersion":"assay-v9-p1-v1","promoted":true}\n');
+  const auditManifest = Buffer.from('{"cacheVersion":"assay-v9-p1-v1","promoted":true}\n');
   const pitData = Buffer.from('{"requestedDate":"2026-07-23","symbols":["000001.SZ"]}\n');
+  const pitMetadata = Buffer.from('{"source":"pandadata"}\n');
   await writeFile(marketPath, marketData);
-  await writeFile(v9ManifestPath, v9Manifest);
+  await writeFile(auditManifestPath, auditManifest);
   await writeFile(pitFile, pitData);
-  const pitRelativePath = "20260723.json";
+  await writeFile(pitMetadataFile, pitMetadata);
   const pitHash = createHash("sha256");
-  pitHash.update(pitRelativePath, "utf8");
-  pitHash.update(Buffer.from([0]));
-  pitHash.update(pitData);
+  for (const [relativePath, content] of [
+    ["index-weights/000300_SH/20260723.json", pitData],
+    ["source.json", pitMetadata],
+  ] as const) {
+    pitHash.update(relativePath, "utf8");
+    pitHash.update(Buffer.from([0]));
+    pitHash.update(content);
+  }
+  const auditSupportHash = createHash("sha256");
+  auditSupportHash.update("manifest.json", "utf8");
+  auditSupportHash.update(Buffer.from([0]));
+  auditSupportHash.update(auditManifest);
 
-  const descriptor = {
+  const manifest = {
     schemaVersion: LOCAL_DATA_PACKAGE_SCHEMA_VERSION,
-    packageId: "g01-csi300-momentum",
+    packageId: PACKAGE_ID,
     strategyKey: goldenPlan().strategyKey,
     universe: {
       indexSymbol: "000300.SH",
@@ -95,19 +107,19 @@ async function fixtureRoot(): Promise<{
       comparator_factors: "degraded",
     },
     paths: {
-      marketDataCache: "csi300-3y.csv",
-      v9CacheRoot: "v9-p1-v1",
-      pitCacheRoot: "pit-availability-v1",
+      marketData: "market-data.csv",
+      auditSupport: "audit-support",
+      pitMembership: "pit-membership",
     },
     checksums: {
       marketData: sha256(marketData),
-      v9Manifest: sha256(v9Manifest),
-      pitTree: `sha256-${pitHash.digest("hex")}`,
+      auditSupport: `sha256-${auditSupportHash.digest("hex")}`,
+      pitMembership: `sha256-${pitHash.digest("hex")}`,
     },
   };
-  const descriptorPath = join(descriptorRoot, "g01-csi300-momentum.json");
-  await writeFile(descriptorPath, JSON.stringify(descriptor));
-  return { root, descriptor, descriptorPath, marketPath, pitFile };
+  const manifestPath = join(packageRoot, "manifest.json");
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  return { root, manifest, manifestPath, marketPath, auditManifestPath, pitMetadataFile };
 }
 
 describe("LocalDataPackageResolver", () => {
@@ -115,7 +127,7 @@ describe("LocalDataPackageResolver", () => {
     const fixture = await fixtureRoot();
     const resolver = new LocalDataPackageResolver({ root: fixture.root });
 
-    await expect(resolver.validateRegistry()).resolves.toEqual(["g01-csi300-momentum"]);
+    await expect(resolver.validateRegistry()).resolves.toEqual([PACKAGE_ID]);
     await writeFile(fixture.marketPath, "tampered\n");
     await expect(resolver.validateRegistry()).rejects.toMatchObject({
       name: "LocalDataPackageError",
@@ -125,22 +137,22 @@ describe("LocalDataPackageResolver", () => {
 
   test("uniquely resolves and authenticates the golden local package", async () => {
     const fixture = await fixtureRoot();
-    const rawDescriptor = await readFile(fixture.descriptorPath);
-    const expectedDescriptorDigest = sha256(rawDescriptor);
+    const rawManifest = await readFile(fixture.manifestPath);
+    const expectedManifestDigest = sha256(rawManifest);
 
     const result = await new LocalDataPackageResolver({ root: fixture.root }).resolve(
       goldenPlan(),
       "audit_g01",
     );
 
-    const checksums = fixture.descriptor.checksums as Record<string, string>;
+    const checksums = fixture.manifest.checksums as Record<string, string>;
     expect(result).toEqual({
-      dataRef: `assay-local-data-v1:audit_g01:g01-csi300-momentum:${expectedDescriptorDigest}`,
-      packageId: "g01-csi300-momentum",
+      dataRef: `assay-local-data-v1:audit_g01:${PACKAGE_ID}:${expectedManifestDigest}`,
+      packageId: PACKAGE_ID,
       sources: [
-        `pandadata:market-data-cache:${checksums.marketData}`,
-        `pandadata:v9-cache-manifest:${checksums.v9Manifest}`,
-        `pandadata:pit-timeline:${checksums.pitTree}`,
+        `pandadata:market-data:${checksums.marketData}`,
+        `pandadata:audit-support:${checksums.auditSupport}`,
+        `pandadata:pit-membership:${checksums.pitMembership}`,
       ],
     });
   });
@@ -161,16 +173,15 @@ describe("LocalDataPackageResolver", () => {
     });
   });
 
-  test("rejects multiple matching descriptors", async () => {
+  test("rejects multiple matching manifests", async () => {
     const fixture = await fixtureRoot();
     const duplicate = {
-      ...fixture.descriptor,
-      packageId: "g01-duplicate",
+      ...fixture.manifest,
+      packageId: "duplicate-package",
     };
-    await writeFile(
-      join(fixture.root, "local-packages", "g01-duplicate.json"),
-      JSON.stringify(duplicate),
-    );
+    const duplicateRoot = join(fixture.root, "duplicate-package");
+    await mkdir(duplicateRoot);
+    await writeFile(join(duplicateRoot, "manifest.json"), JSON.stringify(duplicate));
 
     await expect(
       new LocalDataPackageResolver({ root: fixture.root }).resolve(goldenPlan(), "audit_ambiguous"),
@@ -180,12 +191,12 @@ describe("LocalDataPackageResolver", () => {
     });
   });
 
-  test("requires descriptor filename to equal packageId", async () => {
+  test("requires the package directory name to equal packageId", async () => {
     const fixture = await fixtureRoot();
     await writeFile(
-      fixture.descriptorPath,
+      fixture.manifestPath,
       JSON.stringify({
-        ...fixture.descriptor,
+        ...fixture.manifest,
         packageId: "renamed-package",
       }),
     );
@@ -194,7 +205,7 @@ describe("LocalDataPackageResolver", () => {
       new LocalDataPackageResolver({ root: fixture.root }).resolve(goldenPlan(), "audit_filename"),
     ).rejects.toMatchObject({
       name: "LocalDataPackageError",
-      code: "descriptor_invalid",
+      code: "manifest_invalid",
     });
   });
 
@@ -210,16 +221,56 @@ describe("LocalDataPackageResolver", () => {
     });
   });
 
+  test("binds the complete audit-support tree", async () => {
+    const fixture = await fixtureRoot();
+    await writeFile(fixture.auditManifestPath, '{"cacheVersion":"tampered"}\n');
+
+    await expect(
+      new LocalDataPackageResolver({ root: fixture.root }).resolve(
+        goldenPlan(),
+        "audit_support_tampered",
+      ),
+    ).rejects.toMatchObject({
+      name: "LocalDataPackageError",
+      code: "package_integrity_failed",
+    });
+  });
+
+  test("rejects degraded hard data capabilities", async () => {
+    const fixture = await fixtureRoot();
+    const capabilities = fixture.manifest.capabilities as Record<string, string>;
+    await writeFile(
+      fixture.manifestPath,
+      JSON.stringify({
+        ...fixture.manifest,
+        capabilities: {
+          ...capabilities,
+          trade_calendar: "degraded",
+        },
+      }),
+    );
+
+    await expect(
+      new LocalDataPackageResolver({ root: fixture.root }).resolve(
+        goldenPlan(),
+        "audit_degraded_calendar",
+      ),
+    ).rejects.toMatchObject({
+      name: "LocalDataPackageError",
+      code: "manifest_invalid",
+    });
+  });
+
   test("rejects unsafe paths without exposing them in the public error", async () => {
     const fixture = await fixtureRoot();
     const unsafe = {
-      ...fixture.descriptor,
+      ...fixture.manifest,
       paths: {
-        ...(fixture.descriptor.paths as Record<string, string>),
-        marketDataCache: "../outside.csv",
+        ...(fixture.manifest.paths as Record<string, string>),
+        marketData: "../outside.csv",
       },
     };
-    await writeFile(fixture.descriptorPath, JSON.stringify(unsafe));
+    await writeFile(fixture.manifestPath, JSON.stringify(unsafe));
 
     let observed: unknown;
     try {
@@ -235,9 +286,9 @@ describe("LocalDataPackageResolver", () => {
     expect((observed as Error).message).not.toContain("outside.csv");
   });
 
-  test("binds the recursive PIT tree rather than only one snapshot", async () => {
+  test("binds the entire recursive PIT membership tree", async () => {
     const fixture = await fixtureRoot();
-    await writeFile(fixture.pitFile, '{"requestedDate":"2026-07-23","symbols":[]}\n');
+    await writeFile(fixture.pitMetadataFile, '{"source":"tampered"}\n');
 
     await expect(
       new LocalDataPackageResolver({ root: fixture.root }).resolve(

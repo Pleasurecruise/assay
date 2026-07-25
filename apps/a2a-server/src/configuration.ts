@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
+import { LOCAL_DATA_RUNTIME_ROOT } from "./local-data-package";
 
 const DEFAULT_ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
-const DEFAULT_LOCAL_DATA_PACKAGE_ROOT = ".cache/assay";
 const DEFAULT_AUDIT_OUTPUT_ROOT = ".cache/assay/audit-output";
 export const DEFAULT_ASSAY_A2A_CORS_ORIGINS = [
   "http://localhost:5173",
@@ -137,12 +137,12 @@ export function readProductionConfig(
     dataAsOf: requireDate(dataAsOf, "ASSAY_DATA_AS_OF"),
     databasePath: environment.ASSAY_DATABASE_PATH?.trim() || "data/assay.sqlite",
     capabilitySnapshotId:
-      environment.ASSAY_CAPABILITY_SNAPSHOT_ID?.trim() || "local-data-package:registry-v1",
+      environment.ASSAY_CAPABILITY_SNAPSHOT_ID?.trim() || "local-data-package:registry",
     codeRevision: environment.ASSAY_CODE_REVISION?.trim() || "development",
     publicUrl: requireHttpUrl(publicUrl, "ASSAY_A2A_PUBLIC_URL"),
     corsOrigins: parsedCorsOrigins,
     localDataPackageRoot: resolve(
-      environment.ASSAY_LOCAL_DATA_PACKAGE_ROOT?.trim() || DEFAULT_LOCAL_DATA_PACKAGE_ROOT,
+      environment.ASSAY_LOCAL_DATA_PACKAGE_ROOT?.trim() || LOCAL_DATA_RUNTIME_ROOT,
     ),
     auditOutputRoot: resolve(
       environment.ASSAY_AUDIT_OUTPUT_ROOT?.trim() || DEFAULT_AUDIT_OUTPUT_ROOT,

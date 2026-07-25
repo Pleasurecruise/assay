@@ -1,0 +1,682 @@
+{
+  "assumptions": [
+    "111 identity-bound single-key get_factor(close) gaps were filled from get_stock_daily_post(close) only after both adjacent trading-date prices matched the primary source.",
+    "The final PIT observation is a terminal as-of point, not a completed month-end rebalance signal.",
+    "Historical constituents could not be fully cached within the stage budget; availability correction must use remove-only mode.",
+    "CSI 300 index daily data is unavailable; regime analysis must use the disclosed constituent equal-weight proxy.",
+    "ratio_pe_ttm and market_cap are unavailable; homogeneity analysis must use only the three self-built classic factors."
+  ],
+  "cacheVersion": "assay-v9-p1-v1",
+  "datasets": {
+    "basePanel": {
+      "assumptions": [
+        "111 identity-bound single-key get_factor(close) gaps were filled from get_stock_daily_post(close) only after both adjacent trading-date prices matched the primary source."
+      ],
+      "columns": [
+        "date",
+        "symbol",
+        "adjClose",
+        "tradeStatus"
+      ],
+      "duplicatePrimaryKeys": 0,
+      "effectiveTradabilityRule": "price_available_and_trade_status",
+      "factorWindowAnchor": "2023-07-23",
+      "factorWindowAnchorSource": "identity_bound_parent_fragments",
+      "fallbackFillCount": 111,
+      "fallbackFilledKeys": [
+        {
+          "date": "2026-04-15",
+          "symbol": "000001.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000002.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000063.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000100.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000157.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000166.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000301.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000333.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000338.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000408.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000425.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000538.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000568.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000596.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000617.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000625.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000630.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000651.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000657.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000708.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000725.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000768.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000776.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000792.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000807.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000858.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000895.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000938.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000963.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000975.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000977.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000988.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000999.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "001280.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "001391.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "001965.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "001979.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002001.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002027.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002028.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002049.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002050.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002074.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002142.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002179.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002202.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002230.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002236.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002241.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002304.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002311.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002352.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002353.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002371.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002384.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002415.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002422.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002460.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002463.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002466.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002475.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002493.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002532.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002558.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002594.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002600.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002602.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002625.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002648.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002709.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002714.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002736.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002837.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002916.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002920.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002938.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "003816.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300014.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300015.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300033.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300059.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300122.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300124.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300251.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300274.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300308.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300316.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300394.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300408.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300413.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300418.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300433.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300442.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300450.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300476.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300498.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300502.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300628.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300661.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300750.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300760.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300803.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300832.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300866.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300896.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300999.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "301165.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "301236.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "301269.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "301308.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "302132.SZ"
+        }
+      ],
+      "fallbackProvenance": {
+        "path": "provenance/fallback-records/provenance.json",
+        "schemaVersion": "assay-base-official-post-fallback-index-v1",
+        "sha256": "f79ee4fb45228b24cc0e770839d478ebff782123513e76af53ccc4cfb9ae0904"
+      },
+      "fallbackRejectedCount": 0,
+      "fallbackRejectedReasonCounts": {},
+      "fallbackSourceRef": "pandadata:get_stock_daily_post(close)",
+      "nullPrimaryKeys": 0,
+      "officialFallbackFillCount": 111,
+      "path": "datasets/equity-daily.csv",
+      "priceSourceMode": "factor-close-with-validated-official-post-fallback",
+      "primarySourceRef": "pandadata:get_factor(close)",
+      "quality": {
+        "effectiveTradableFactorCoverage": true,
+        "officialFallbackFillCount": 111,
+        "officialFallbackRejectedCount": 0,
+        "officialSdkEffectiveTradableFactorCoverage": true,
+        "primaryKeysValid": true,
+        "providerTradableFactorCoverage": false,
+        "unverifiedTradableMissingKeys": 0,
+        "verifiedSourceAbsenceCount": 111
+      },
+      "repairedFragments": [
+        "2026-04-15/2026-04-15"
+      ],
+      "rowCount": 216688,
+      "scaleCheckPolicy": {
+        "absoluteTolerance": 1e-8,
+        "forwardFillAllowed": false,
+        "interpolationAllowed": false,
+        "method": "two-sided-exact-overlap",
+        "relativeTolerance": 1e-10,
+        "rescalingAllowed": false
+      },
+      "spotCheck": {
+        "date": "2025-01-21",
+        "matched": true,
+        "symbol": "601658.SH"
+      },
+      "status": "ready",
+      "statusOnlyNonTradable": 0,
+      "symbols": 300,
+      "tradingDates": 727,
+      "verifiedSourceAbsenceCount": 111
+    },
+    "comparatorFactors": {
+      "assumptions": [
+        "ratio_pe_ttm and market_cap are unavailable; homogeneity analysis must use only the three self-built classic factors."
+      ],
+      "columns": [
+        "date",
+        "symbol",
+        "ratio_pe_ttm",
+        "market_cap"
+      ],
+      "mode": "classic_only",
+      "path": null,
+      "quality": {
+        "primaryKeysValid": false,
+        "verified": false
+      },
+      "reasonCode": "COMPARATOR_FACTORS_UNAVAILABLE",
+      "rowCount": 0,
+      "spotCheck": {
+        "matched": false,
+        "skipped": true
+      },
+      "status": "degraded",
+      "symbols": 0,
+      "tradingDates": 0
+    },
+    "historicalMembers": {
+      "assumptions": [
+        "Historical constituents could not be fully cached within the stage budget; availability correction must use remove-only mode."
+      ],
+      "columns": [
+        "date",
+        "symbol",
+        "adjClose",
+        "tradeStatus"
+      ],
+      "mode": "remove_only",
+      "path": null,
+      "quality": {
+        "primaryKeysValid": false,
+        "verified": false
+      },
+      "reasonCode": "HISTORICAL_MEMBER_DATA_UNAVAILABLE",
+      "rowCount": 0,
+      "spotCheck": {
+        "matched": false,
+        "skipped": true
+      },
+      "status": "degraded",
+      "symbols": 0,
+      "tradingDates": 0
+    },
+    "indexDaily": {
+      "assumptions": [
+        "CSI 300 index daily data is unavailable; regime analysis must use the disclosed constituent equal-weight proxy."
+      ],
+      "columns": [
+        "date",
+        "symbol",
+        "close"
+      ],
+      "mode": "constituent_proxy",
+      "path": null,
+      "quality": {
+        "primaryKeysValid": false,
+        "verified": false
+      },
+      "reasonCode": "INDEX_DAILY_UNAVAILABLE",
+      "rowCount": 0,
+      "spotCheck": {
+        "matched": false,
+        "skipped": true
+      },
+      "status": "degraded",
+      "symbols": 0,
+      "tradingDates": 0
+    },
+    "pitTimeline": {
+      "columns": [
+        "requestedDate",
+        "effectiveDate",
+        "symbols"
+      ],
+      "completedMonthEnds": 36,
+      "downloaded": 37,
+      "path": "datasets/index-membership/000300.SH",
+      "quality": {
+        "memberCountRange": {
+          "max": 311,
+          "min": 300
+        },
+        "memberCounts": {
+          "2023-07-31": 300,
+          "2023-08-31": 300,
+          "2023-09-28": 300,
+          "2023-10-31": 300,
+          "2023-11-30": 300,
+          "2023-12-29": 300,
+          "2024-01-31": 300,
+          "2024-02-29": 300,
+          "2024-03-29": 300,
+          "2024-04-30": 300,
+          "2024-05-31": 300,
+          "2024-06-28": 300,
+          "2024-07-31": 300,
+          "2024-08-30": 300,
+          "2024-09-30": 300,
+          "2024-10-31": 300,
+          "2024-11-29": 300,
+          "2024-12-31": 300,
+          "2025-01-27": 300,
+          "2025-02-28": 300,
+          "2025-03-31": 300,
+          "2025-04-30": 300,
+          "2025-05-30": 300,
+          "2025-06-30": 300,
+          "2025-07-31": 300,
+          "2025-08-29": 300,
+          "2025-09-30": 301,
+          "2025-10-31": 300,
+          "2025-11-28": 300,
+          "2025-12-31": 311,
+          "2026-01-30": 300,
+          "2026-02-27": 300,
+          "2026-03-31": 300,
+          "2026-04-30": 300,
+          "2026-05-29": 300,
+          "2026-06-30": 300,
+          "2026-07-23": 300
+        },
+        "nominalMemberCount": 300,
+        "pointCount": 37,
+        "primaryKeysValid": true,
+        "terminalAsOfIsNotMonthEnd": true
+      },
+      "refreshed": 36,
+      "reused": 0,
+      "rowCount": 11112,
+      "spotCheck": {
+        "date": "2025-01-27",
+        "matched": true,
+        "symbol": "000001.SZ"
+      },
+      "status": "ready",
+      "symbols": 379,
+      "terminalAsOf": [
+        "2026-07-23"
+      ],
+      "tradingDates": 37
+    }
+  },
+  "generatedAt": "2026-07-24T17:32:38.316413+00:00",
+  "promoted": true,
+  "schemaVersion": "assay-p1-cache-manifest-v1",
+  "state": "degraded",
+  "universe": {
+    "baseSymbols": 300,
+    "baseUniverseHash": "4239252582fb99af",
+    "indexSymbol": "000300.SH"
+  },
+  "window": {
+    "end": "2026-07-23",
+    "start": "2023-07-24"
+  }
+}

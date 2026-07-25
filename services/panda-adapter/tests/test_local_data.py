@@ -30,6 +30,7 @@ from panda_adapter.local_data import (
     load_local_audit_data,
     parse_local_data_ref,
 )
+from panda_adapter.local_data_validate import validate_local_data_registry
 from panda_adapter.market_panel import MarketPanel
 
 
@@ -98,11 +99,11 @@ def _tree_digest(root: Path) -> str:
 def _build_local_package(
     root: Path,
     *,
-    package_id: str = "g01",
+    package_id: str = "csi300-momentum-20d-monthly-top1-equal",
 ) -> tuple[str, Path]:
-    registry = root / "local-packages"
-    registry.mkdir()
-    market_path = root / "market.csv"
+    package_root = root / package_id
+    package_root.mkdir()
+    market_path = package_root / "market-data.csv"
     market = pd.DataFrame(
         [
             {
@@ -124,8 +125,8 @@ def _build_local_package(
         encoding="utf-8",
     )
 
-    pit_root = root / "pit"
-    timeline_root = pit_root / "index-weights" / "000300_SH"
+    pit_membership_root = package_root / "pit-membership"
+    timeline_root = pit_membership_root / "index-weights" / "000300_SH"
     timeline_root.mkdir(parents=True)
     snapshots = {
         "2026-01-02": ["000001.SZ", "600001.SH"],
@@ -150,11 +151,11 @@ def _build_local_package(
     base_universe_hash = sha256("\n".join(symbols).encode("utf-8")).hexdigest()[
         :16
     ]
-    v9_root = root / "v9"
-    v9_root.mkdir()
+    audit_support_root = package_root / "audit-support"
+    audit_support_root.mkdir()
     timeline_dataset = {
         "status": "ready",
-        "path": "pit/index-weights/000300_SH",
+        "path": "pit-membership/index-weights/000300_SH",
         "columns": ["requestedDate", "effectiveDate", "symbols"],
         "downloaded": 2,
         "tradingDates": 2,
@@ -211,11 +212,11 @@ def _build_local_package(
             },
         },
     }
-    v9_manifest_path = v9_root / "manifest.json"
-    v9_manifest_path.write_bytes(_canonical_bytes(manifest))
+    audit_manifest_path = audit_support_root / "manifest.json"
+    audit_manifest_path.write_bytes(_canonical_bytes(manifest))
 
     spec = _strategy_spec()
-    descriptor = {
+    package_manifest = {
         "schemaVersion": LOCAL_DATA_PACKAGE_SCHEMA_VERSION,
         "packageId": package_id,
         "strategyKey": _strategy_key(spec),
@@ -238,29 +239,63 @@ def _build_local_package(
             "comparator_factors": "degraded",
         },
         "paths": {
-            "marketDataCache": "market.csv",
-            "v9CacheRoot": "v9",
-            "pitCacheRoot": "pit",
+            "marketData": "market-data.csv",
+            "auditSupport": "audit-support",
+            "pitMembership": "pit-membership",
         },
         "checksums": {
             "marketData": f"sha256-{sha256(market_path.read_bytes()).hexdigest()}",
-            "v9Manifest": (
-                f"sha256-{sha256(v9_manifest_path.read_bytes()).hexdigest()}"
-            ),
-            "pitTree": _tree_digest(timeline_root),
+            "auditSupport": _tree_digest(audit_support_root),
+            "pitMembership": _tree_digest(pit_membership_root),
         },
     }
-    descriptor_bytes = _canonical_bytes(descriptor)
-    descriptor_path = registry / f"{package_id}.json"
-    descriptor_path.write_bytes(descriptor_bytes)
-    descriptor_digest = f"sha256-{sha256(descriptor_bytes).hexdigest()}"
+    manifest_bytes = _canonical_bytes(package_manifest)
+    manifest_path = package_root / "manifest.json"
+    manifest_path.write_bytes(manifest_bytes)
+    manifest_digest = f"sha256-{sha256(manifest_bytes).hexdigest()}"
     return (
-        f"{LOCAL_DATA_REF_VERSION}:audit-1:{package_id}:{descriptor_digest}",
-        descriptor_path,
+        f"{LOCAL_DATA_REF_VERSION}:audit-1:{package_id}:{manifest_digest}",
+        manifest_path,
     )
 
 
 class LocalDataLoaderTest(unittest.TestCase):
+    def test_offline_registry_validator_reuses_the_complete_loader(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            data_ref, _ = _build_local_package(root)
+
+            validated = validate_local_data_registry(root)
+
+            self.assertEqual(len(validated), 1)
+            self.assertEqual(
+                validated[0].package_id,
+                "csi300-momentum-20d-monthly-top1-equal",
+            )
+            self.assertTrue(data_ref.endswith(validated[0].manifest_digest))
+
+    def test_offline_registry_validator_rejects_semantically_rebound_audit_data(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, manifest_path = _build_local_package(root)
+            audit_support_root = manifest_path.parent / "audit-support"
+            audit_manifest_path = audit_support_root / "manifest.json"
+            audit_manifest = json.loads(
+                audit_manifest_path.read_text(encoding="utf-8")
+            )
+            audit_manifest["universe"]["indexSymbol"] = "000905.SH"
+            audit_manifest_path.write_bytes(_canonical_bytes(audit_manifest))
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["checksums"]["auditSupport"] = _tree_digest(
+                audit_support_root
+            )
+            manifest_path.write_bytes(_canonical_bytes(manifest))
+
+            with self.assertRaisesRegex(RuntimeError, "audit-support identity"):
+                validate_local_data_registry(root)
+
     def test_loader_reuses_v9_degradations_and_ignores_claims(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -302,22 +337,42 @@ class LocalDataLoaderTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "strategy identity"):
                 local.require_spec_identity(_strategy_spec(top_n=2))
 
-    def test_loader_rejects_descriptor_market_and_pit_tampering(self) -> None:
+    def test_loader_rejects_manifest_market_audit_support_and_pit_tampering(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            data_ref, descriptor = _build_local_package(root)
+            data_ref, manifest = _build_local_package(root)
 
-            descriptor.write_bytes(descriptor.read_bytes() + b" ")
-            with self.assertRaisesRegex(RuntimeError, "descriptor digest"):
+            manifest.write_bytes(manifest.read_bytes() + b" ")
+            with self.assertRaisesRegex(RuntimeError, "manifest digest"):
                 load_local_audit_data(data_ref, root=root)
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             data_ref, _ = _build_local_package(root)
-            (root / "market.csv").write_bytes(
-                (root / "market.csv").read_bytes().replace(b"100.0", b"999.0", 1)
+            market_path = (
+                root
+                / "csi300-momentum-20d-monthly-top1-equal"
+                / "market-data.csv"
             )
-            with self.assertRaisesRegex(RuntimeError, "market-data cache digest"):
+            market_path.write_bytes(
+                market_path.read_bytes().replace(b"100.0", b"999.0", 1)
+            )
+            with self.assertRaisesRegex(RuntimeError, "market-data digest"):
+                load_local_audit_data(data_ref, root=root)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            data_ref, _ = _build_local_package(root)
+            audit_manifest_path = (
+                root
+                / "csi300-momentum-20d-monthly-top1-equal"
+                / "audit-support"
+                / "manifest.json"
+            )
+            audit_manifest_path.write_bytes(audit_manifest_path.read_bytes() + b" ")
+            with self.assertRaisesRegex(RuntimeError, "audit-support digest"):
                 load_local_audit_data(data_ref, root=root)
 
         with tempfile.TemporaryDirectory() as directory:
@@ -325,26 +380,72 @@ class LocalDataLoaderTest(unittest.TestCase):
             data_ref, _ = _build_local_package(root)
             snapshot = (
                 root
-                / "pit"
+                / "csi300-momentum-20d-monthly-top1-equal"
+                / "pit-membership"
                 / "index-weights"
                 / "000300_SH"
                 / "20260105.json"
             )
             snapshot.write_bytes(snapshot.read_bytes() + b" ")
-            with self.assertRaisesRegex(RuntimeError, "PIT timeline digest"):
+            with self.assertRaisesRegex(RuntimeError, "PIT-membership digest"):
+                load_local_audit_data(data_ref, root=root)
+
+    def test_loader_rejects_resource_paths_outside_package(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, manifest_path = _build_local_package(root)
+            package_id = "csi300-momentum-20d-monthly-top1-equal"
+            outside_market = root / "outside-market-data.csv"
+            outside_market.write_bytes(
+                (manifest_path.parent / "market-data.csv").read_bytes()
+            )
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["paths"]["marketData"] = "../outside-market-data.csv"
+            manifest_bytes = _canonical_bytes(manifest)
+            manifest_path.write_bytes(manifest_bytes)
+            data_ref = (
+                f"{LOCAL_DATA_REF_VERSION}:audit-1:{package_id}:"
+                f"sha256-{sha256(manifest_bytes).hexdigest()}"
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "path is invalid"):
                 load_local_audit_data(data_ref, root=root)
 
     def test_data_ref_rejects_path_traversal(self) -> None:
         with self.assertRaisesRegex(ValueError, "valid Assay"):
             parse_local_data_ref(
-                "assay-local-data-v1:audit:../g01:"
+                "assay-local-data-v1:audit:../fixture-package:"
                 f"sha256-{'a' * 64}"
             )
+
+    def test_data_ref_rejects_package_id_longer_than_resolver_contract(self) -> None:
+        with self.assertRaisesRegex(ValueError, "valid Assay"):
+            parse_local_data_ref(
+                f"assay-local-data-v1:audit:{'a' * 65}:"
+                f"sha256-{'a' * 64}"
+            )
+
+    def test_loader_rejects_degraded_hard_capability(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, manifest_path = _build_local_package(root)
+            package_id = "csi300-momentum-20d-monthly-top1-equal"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["capabilities"]["trade_calendar"] = "degraded"
+            manifest_bytes = _canonical_bytes(manifest)
+            manifest_path.write_bytes(manifest_bytes)
+            data_ref = (
+                f"{LOCAL_DATA_REF_VERSION}:audit-1:{package_id}:"
+                f"sha256-{sha256(manifest_bytes).hexdigest()}"
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "manifest is invalid"):
+                load_local_audit_data(data_ref, root=root)
 
     def test_engine_protocol_selects_local_prefix(self) -> None:
         spec = _strategy_spec()
         data_ref = (
-            "assay-local-data-v1:audit:g01:"
+            "assay-local-data-v1:audit:fixture-package:"
             f"sha256-{'a' * 64}"
         )
         local = Mock()
@@ -503,18 +604,18 @@ class LocalDataLoaderTest(unittest.TestCase):
             root = Path(directory)
             local = LocalAuditData(
                 data_ref=(
-                    "assay-local-data-v1:audit:g01:"
+                    "assay-local-data-v1:audit:fixture-package:"
                     f"sha256-{'a' * 64}"
                 ),
                 root=root,
                 audit_id="audit",
-                package_id="g01",
-                descriptor_digest=f"sha256-{'a' * 64}",
-                descriptor={},
+                package_id="fixture-package",
+                manifest_digest=f"sha256-{'a' * 64}",
+                manifest={},
                 market_data_path=root / "unused.csv",
-                v9_cache_root=root,
-                pit_cache_root=root,
-                v9_manifest={"cacheVersion": V9_CACHE_VERSION},
+                audit_support_root=root,
+                pit_membership_root=root,
+                audit_manifest={"cacheVersion": V9_CACHE_VERSION},
             )
             with (
                 patch.dict(

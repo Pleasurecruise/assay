@@ -1,0 +1,8 @@
+# Generated provider payloads are byte-preserved and covered by manifest checksums.
+data/packages/**
+
+# Online acceptance output is refreshed by the E2E writer, not by source formatting.
+artifacts/v9/assay-real-data-run.json
+
+# Local discard area; it is not part of the repository submission.
+_to_delete/**

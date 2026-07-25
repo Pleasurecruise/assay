@@ -22,7 +22,9 @@ import {
 } from "@assay/contracts";
 import { createAssayA2AClient, extractAuditArtifact } from "../../../apps/web/src/lib/a2a-client";
 import { deriveVerdict } from "../../../apps/a2a-server/src/audit-orchestrator";
-import { prepareLocalGoldenPackage } from "./local-golden-package";
+import { LOCAL_DATA_RUNTIME_ROOT } from "../../../apps/a2a-server/src/local-data-package";
+import { CSI300_MOMENTUM_CASE_PACKAGE_ID } from "../../../scripts/case_data_package";
+import { loadCsi300MomentumRuntimePackage } from "./local-runtime-package";
 import { assertOutputSafe } from "./sprint-acceptance";
 
 export const V9_REAL_BUNDLE_VERSION = "assay-v9-real-acceptance-v1";
@@ -42,10 +44,7 @@ export const V9_REAL_ARTIFACT_PATH = "artifacts/v9/assay-real-data-run.json";
 export const V9_UNACCEPTED_DIAGNOSTIC_DIR = ".cache/assay/run-logs";
 export const V9_UNACCEPTED_DIAGNOSTIC_VERSION = "assay-v9-unaccepted-diagnostic-v1";
 export const V9_MECHANISM_REPLAY_VERSION = "assay-v9-mechanism-replay-v1";
-const ASSAY_CACHE_ROOT = ".cache/assay";
-const V9_CACHE_RELATIVE_ROOT = "v9-p1-v1";
-const V9_CACHE_ROOT = `${ASSAY_CACHE_ROOT}/${V9_CACHE_RELATIVE_ROOT}`;
-const V9_MANIFEST_PATH = `${V9_CACHE_ROOT}/manifest.json`;
+const DEFAULT_LOCAL_PACKAGE_ROOT = `${LOCAL_DATA_RUNTIME_ROOT}/${CSI300_MOMENTUM_CASE_PACKAGE_ID}`;
 const V9_DATASET_NAMES = [
   "basePanel",
   "pitTimeline",
@@ -153,8 +152,6 @@ export interface V9MechanismReplayReport {
 
 interface V9CacheInspection {
   readonly snapshot: V9CacheSnapshot;
-  readonly basePanelPath: string;
-  readonly pitCacheRoot: string;
 }
 
 function requireValue(condition: unknown, message: string): asserts condition {
@@ -405,12 +402,12 @@ function assertDatasetMatrix(
   );
 }
 
-function safeCachePath(value: unknown, location: string): string {
+function safePackagePath(packageRoot: string, value: unknown, location: string): string {
   requireValue(
     typeof value === "string" && value.length > 0,
     `${location} must be a non-empty relative path`,
   );
-  const root = resolve(ASSAY_CACHE_ROOT);
+  const root = resolve(packageRoot);
   const candidate = resolve(root, value);
   const relativePath = relative(root, candidate);
   requireValue(
@@ -502,6 +499,7 @@ function assertFallbackScaleCheck(value: unknown, location: string): void {
 }
 
 async function inspectPriceSources(
+  packageRoot: string,
   basePanel: Record<string, unknown>,
 ): Promise<V9PriceSourceSnapshot> {
   requireValue(
@@ -538,12 +536,15 @@ async function inspectPriceSources(
         Object.values(rejectedReasonCounts).reduce((total, count) => total + count, 0) &&
       isRecord(basePanel.fallbackProvenance) &&
       basePanel.fallbackProvenance.schemaVersion === V9_FALLBACK_PROVENANCE_SCHEMA_VERSION &&
+      typeof basePanel.fallbackProvenance.path === "string" &&
       typeof basePanel.fallbackProvenance.sha256 === "string" &&
       /^[a-f0-9]{64}$/.test(basePanel.fallbackProvenance.sha256),
     "v9 base panel fallback metadata does not reconcile",
   );
-  const provenancePath = safeCachePath(
-    basePanel.fallbackProvenance.path,
+  const provenanceRelativePath = basePanel.fallbackProvenance.path;
+  const provenancePath = safePackagePath(
+    packageRoot,
+    provenanceRelativePath,
     "v9 cache manifest.datasets.basePanel.fallbackProvenance.path",
   );
   const provenanceBytes = await readFile(provenancePath);
@@ -596,8 +597,9 @@ async function inspectPriceSources(
     requireValue(isRecord(item), "v9 fallback provenance accepted item is invalid");
     const key = acceptedKeys[index]!;
     const symbolDigest = createHash("sha256").update(key.symbol).digest("hex").slice(0, 16);
-    const leafPath = safeCachePath(
-      `${V9_CACHE_RELATIVE_ROOT}/base-official-post-fallback/fills/${key.date.replaceAll("-", "")}/symbol-${symbolDigest}.json`,
+    const leafPath = safePackagePath(
+      packageRoot,
+      `${dirname(provenanceRelativePath)}/fills/${key.date.replaceAll("-", "")}/symbol-${symbolDigest}.json`,
       `v9 fallback leaf ${key.date}|${key.symbol}`,
     );
     const leafBytes = await readFile(leafPath);
@@ -648,9 +650,7 @@ async function inspectPriceSources(
 export function assertV9PitTimelineManifest(value: unknown, dataAsOf: string): void {
   requireValue(isRecord(value), "v9 PIT timeline metadata must be an object");
   requireValue(
-    value.status === "ready" &&
-      typeof value.path === "string" &&
-      value.path.startsWith("pit-availability-v1/"),
+    value.status === "ready" && value.path === "pit-membership/index-weights/000300_SH",
     "v9 PIT timeline is not a ready frozen-cache dataset",
   );
   requireValue(
@@ -680,8 +680,12 @@ export function assertV9PitTimelineManifest(value: unknown, dataAsOf: string): v
   );
 }
 
-export async function inspectV9Cache(): Promise<V9CacheInspection> {
-  const bytes = await readFile(resolve(V9_MANIFEST_PATH));
+export async function inspectV9Cache(
+  packageRoot = DEFAULT_LOCAL_PACKAGE_ROOT,
+): Promise<V9CacheInspection> {
+  const bytes = await readFile(
+    safePackagePath(packageRoot, "audit-support/manifest.json", "v9 audit manifest"),
+  );
   const manifest: unknown = JSON.parse(bytes.toString("utf8"));
   requireValue(isRecord(manifest), "v9 cache manifest must be an object");
   requireValue(
@@ -710,12 +714,13 @@ export async function inspectV9Cache(): Promise<V9CacheInspection> {
     "v9 cache manifest omitted hard-gate dataset metadata",
   );
   assertV9PitTimelineManifest(manifestDatasets.pitTimeline, manifest.window.end);
-  const basePanelPath = safeCachePath(
+  const basePanelPath = safePackagePath(
+    packageRoot,
     manifestDatasets.basePanel.path,
     "v9 cache manifest.datasets.basePanel.path",
   );
-  const pitCacheRoot = safeCachePath("pit-availability-v1", "v9 PIT cache root");
-  const priceSources = await inspectPriceSources(manifestDatasets.basePanel);
+  safePackagePath(packageRoot, "pit-membership", "v9 PIT membership root");
+  const priceSources = await inspectPriceSources(packageRoot, manifestDatasets.basePanel);
   const basePanelBytes = await readFile(basePanelPath);
   return {
     snapshot: {
@@ -728,8 +733,6 @@ export async function inspectV9Cache(): Promise<V9CacheInspection> {
       priceSources,
       datasets,
     },
-    basePanelPath,
-    pitCacheRoot,
   };
 }
 
@@ -1462,6 +1465,14 @@ async function closeServer(server: Server): Promise<void> {
 
 export async function runV9RealAcceptance(): Promise<string> {
   const apiKey = process.env.ARK_API_KEY?.trim();
+  const supplementalApiKeys = [
+    ...new Set(
+      (process.env.ARK_API_KEYS ?? "")
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0),
+    ),
+  ];
   const arkModel = process.env.ARK_MODEL_DEEPSEEK?.trim();
   const codeRevision = process.env.ASSAY_CODE_REVISION?.trim();
   requireValue(apiKey, "ARK_API_KEY is required");
@@ -1470,23 +1481,20 @@ export async function runV9RealAcceptance(): Promise<string> {
     codeRevision !== undefined && /^[a-f0-9]{40}$/.test(codeRevision),
     "ASSAY_CODE_REVISION must be the tested Git commit",
   );
-  const cacheInspection = await inspectV9Cache();
-  const { snapshot: cacheSnapshot } = cacheInspection;
-  const localPackage = await prepareLocalGoldenPackage({
-    root: ASSAY_CACHE_ROOT,
-    marketDataCache: cacheInspection.basePanelPath,
-    v9CacheRoot: V9_CACHE_ROOT,
-    pitCacheRoot: cacheInspection.pitCacheRoot,
-  });
+  const localPackage = await loadCsi300MomentumRuntimePackage(LOCAL_DATA_RUNTIME_ROOT);
+  const { snapshot: cacheSnapshot } = await inspectV9Cache(localPackage.packageRoot);
+  process.env.ASSAY_EXPERIMENT_PYTHON = resolve("services/panda-adapter/.venv/bin/python");
+
   const { createProductionA2AApp } = await import("../../../apps/a2a-server/src/production");
   const { app } = await createProductionA2AApp({
     arkApiKey: apiKey,
+    arkApiKeys: supplementalApiKeys,
     arkBaseUrl: process.env.ARK_BASE_URL?.trim() || "https://ark.cn-beijing.volces.com/api/v3",
     arkModel,
     dataAsOf: cacheSnapshot.dataAsOf,
     capabilitySnapshotId:
-      `local-data-package:${localPackage.descriptor.packageId}:` +
-      localPackage.descriptorDigest.slice("sha256-".length, "sha256-".length + 12),
+      `local-data-package:${localPackage.manifest.packageId}:` +
+      localPackage.manifestDigest.slice("sha256-".length, "sha256-".length + 12),
     codeRevision,
     publicUrl: "http://127.0.0.1",
     corsOrigins: ["http://localhost:5173"],

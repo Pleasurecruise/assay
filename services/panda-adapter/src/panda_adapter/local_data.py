@@ -32,11 +32,12 @@ LOCAL_DATA_PACKAGE_SCHEMA_VERSION: Final = "assay-local-data-package-v1"
 LOCAL_DATA_PACKAGE_ROOT_ENV: Final = "ASSAY_LOCAL_DATA_PACKAGE_ROOT"
 LOCAL_DATA_DERIVED_ROOT_ENV: Final = "ASSAY_AUDIT_OUTPUT_ROOT"
 
-_IDENTIFIER_PATTERN = r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}"
+_AUDIT_IDENTIFIER_PATTERN = r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}"
+_PACKAGE_IDENTIFIER_PATTERN = r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}"
 _DATA_REF_PATTERN = re.compile(
     rf"^{LOCAL_DATA_REF_VERSION}:"
-    rf"(?P<audit_id>{_IDENTIFIER_PATTERN}):"
-    rf"(?P<package_id>{_IDENTIFIER_PATTERN}):"
+    rf"(?P<audit_id>{_AUDIT_IDENTIFIER_PATTERN}):"
+    rf"(?P<package_id>{_PACKAGE_IDENTIFIER_PATTERN}):"
     r"(?P<digest>sha256-[a-f0-9]{64})$"
 )
 _DIGEST_PATTERN = re.compile(r"^sha256-[a-f0-9]{64}$")
@@ -50,7 +51,13 @@ _CAPABILITIES: Final = {
     "index_daily",
     "comparator_factors",
 }
-_DESCRIPTOR_KEYS: Final = {
+_REQUIRED_READY_CAPABILITIES: Final = {
+    "trade_calendar",
+    "pit_membership",
+    "adjusted_close",
+    "trade_status",
+}
+_MANIFEST_KEYS: Final = {
     "schemaVersion",
     "packageId",
     "strategyKey",
@@ -67,29 +74,29 @@ _DESCRIPTOR_KEYS: Final = {
 class ParsedLocalDataRef:
     audit_id: str
     package_id: str
-    descriptor_digest: str
+    manifest_digest: str
 
 
 @dataclass(frozen=True, slots=True)
 class LocalAuditData:
-    """A verified V9 package exposed through the deterministic audit interface."""
+    """A verified local package exposed through the deterministic audit interface."""
 
     data_ref: str
     root: Path
     audit_id: str
     package_id: str
-    descriptor_digest: str
-    descriptor: Mapping[str, Any]
+    manifest_digest: str
+    manifest: Mapping[str, Any]
     market_data_path: Path
-    v9_cache_root: Path
-    pit_cache_root: Path
-    v9_manifest: Mapping[str, Any]
+    audit_support_root: Path
+    pit_membership_root: Path
+    audit_manifest: Mapping[str, Any]
 
     @property
     def cache_version(self) -> str:
-        value = self.v9_manifest.get("cacheVersion")
+        value = self.audit_manifest.get("cacheVersion")
         if not isinstance(value, str) or not value:
-            raise RuntimeError("local data V9 cache version is invalid")
+            raise RuntimeError("local data audit cache version is invalid")
         return value
 
     @property
@@ -108,7 +115,7 @@ class LocalAuditData:
         runtime_root = runtime_root.resolve()
         root = runtime_root / "local-derived"
         audit_root = root / self.audit_id
-        package_root = audit_root / self.descriptor_digest
+        package_root = audit_root / self.manifest_digest
         for candidate, boundary, label in (
             (root, runtime_root, "local derived-data root"),
             (audit_root, root, "local derived-data audit root"),
@@ -125,16 +132,16 @@ class LocalAuditData:
             raise ValueError("local data requires a strategy spec object")
         universe = spec.get("universe")
         window = spec.get("window")
-        descriptor_universe = self.descriptor["universe"]
-        descriptor_window = self.descriptor["window"]
+        manifest_universe = self.manifest["universe"]
+        manifest_window = self.manifest["window"]
         if (
             not isinstance(universe, Mapping)
-            or universe.get("index") != descriptor_universe["indexSymbol"]
+            or universe.get("index") != manifest_universe["indexSymbol"]
             or not isinstance(window, Mapping)
             or set(window) != {"start", "end"}
-            or window.get("start") != descriptor_window["start"]
-            or window.get("end") != descriptor_window["end"]
-            or _strategy_key(spec) != self.descriptor["strategyKey"]
+            or window.get("start") != manifest_window["start"]
+            or window.get("end") != manifest_window["end"]
+            or _strategy_key(spec) != self.manifest["strategyKey"]
         ):
             raise ValueError(
                 "local dataRef strategy identity does not match the frozen strategy spec"
@@ -146,7 +153,7 @@ class LocalAuditData:
 
     def as_of_market_panel(self, spec: Mapping[str, Any]) -> MarketPanel:
         panel = self.full_market_panel(spec)
-        coverage = self.descriptor["coverage"]
+        coverage = self.manifest["coverage"]
         snapshots = self.pit_membership_cache().snapshots
         symbols = snapshots.get(pd.Timestamp(coverage["asOf"]))
         if symbols is None or not symbols:
@@ -163,13 +170,13 @@ class LocalAuditData:
         )
 
     def pit_membership_cache(self) -> PitMembershipCache:
-        return load_pit_membership_cache(self.v9_cache_root)
+        return load_pit_membership_cache(self.audit_support_root)
 
     def index_daily_cache(self) -> IndexDailyCache | None:
-        return load_index_daily_cache(self.v9_cache_root)
+        return load_index_daily_cache(self.audit_support_root)
 
     def comparator_factor_cache(self) -> ComparatorFactorCache | None:
-        return load_comparator_factor_cache(self.v9_cache_root)
+        return load_comparator_factor_cache(self.audit_support_root)
 
     def historical_members_policy(
         self,
@@ -177,8 +184,8 @@ class LocalAuditData:
     ) -> HistoricalMembersPolicy:
         panel = self.full_market_panel(spec)
         return load_historical_members_policy(
-            self.v9_cache_root,
-            pit_cache_root=self.pit_cache_root,
+            self.audit_support_root,
+            pit_cache_root=self.pit_membership_root,
             base_symbols=tuple(str(value) for value in panel.adjusted_close.columns),
             panel_dates=tuple(pd.Timestamp(value) for value in panel.adjusted_close.index),
         )
@@ -193,7 +200,7 @@ def parse_local_data_ref(value: Any) -> ParsedLocalDataRef:
     return ParsedLocalDataRef(
         audit_id=match.group("audit_id"),
         package_id=match.group("package_id"),
-        descriptor_digest=match.group("digest"),
+        manifest_digest=match.group("digest"),
     )
 
 
@@ -220,92 +227,91 @@ def load_local_audit_data(
     root: Path | None = None,
 ) -> LocalAuditData:
     parsed = parse_local_data_ref(data_ref)
-    configured_root = local_data_package_root(root)
-    registry = configured_root / "local-packages"
-    _require_directory_within(
-        registry,
-        boundary=configured_root,
-        label="local data package registry",
+    registry_root = local_data_package_root(root)
+    package_root = _resolve_directory(
+        registry_root,
+        parsed.package_id,
+        "local data package",
     )
-    descriptor_path = registry / f"{parsed.package_id}.json"
-    descriptor_bytes = _read_regular_file(
-        descriptor_path,
-        boundary=registry,
-        label="local data package descriptor",
+    manifest_path = package_root / "manifest.json"
+    manifest_bytes = _read_regular_file(
+        manifest_path,
+        boundary=package_root,
+        label="local data package manifest",
     )
-    observed_descriptor_digest = f"sha256-{sha256(descriptor_bytes).hexdigest()}"
-    if observed_descriptor_digest != parsed.descriptor_digest:
-        raise RuntimeError("local data package descriptor digest mismatch")
+    observed_manifest_digest = f"sha256-{sha256(manifest_bytes).hexdigest()}"
+    if observed_manifest_digest != parsed.manifest_digest:
+        raise RuntimeError("local data package manifest digest mismatch")
     try:
-        descriptor = json.loads(descriptor_bytes)
+        manifest = json.loads(manifest_bytes)
     except (UnicodeError, json.JSONDecodeError) as error:
-        raise RuntimeError("local data package descriptor is unreadable") from error
-    if not isinstance(descriptor, Mapping):
-        raise RuntimeError("local data package descriptor must be an object")
-    _validate_descriptor(descriptor, package_id=parsed.package_id)
+        raise RuntimeError("local data package manifest is unreadable") from error
+    if not isinstance(manifest, Mapping):
+        raise RuntimeError("local data package manifest must be an object")
+    _validate_manifest(manifest, package_id=parsed.package_id)
 
-    paths = descriptor["paths"]
+    paths = manifest["paths"]
     market_data_path = _resolve_file(
-        configured_root,
-        paths["marketDataCache"],
-        "local market-data cache",
+        package_root,
+        paths["marketData"],
+        "local market data",
     )
-    v9_cache_root = _resolve_directory(
-        configured_root,
-        paths["v9CacheRoot"],
-        "local V9 cache root",
+    audit_support_root = _resolve_directory(
+        package_root,
+        paths["auditSupport"],
+        "local audit-support root",
     )
-    pit_cache_root = _resolve_directory(
-        configured_root,
-        paths["pitCacheRoot"],
-        "local PIT cache root",
+    pit_membership_root = _resolve_directory(
+        package_root,
+        paths["pitMembership"],
+        "local PIT-membership root",
     )
-    v9_manifest_path = v9_cache_root / "manifest.json"
+    audit_manifest_path = audit_support_root / "manifest.json"
     market_bytes = _read_regular_file(
         market_data_path,
-        boundary=configured_root,
-        label="local market-data cache",
+        boundary=package_root,
+        label="local market data",
     )
-    v9_manifest_bytes = _read_regular_file(
-        v9_manifest_path,
-        boundary=v9_cache_root,
-        label="local V9 cache manifest",
+    audit_manifest_bytes = _read_regular_file(
+        audit_manifest_path,
+        boundary=audit_support_root,
+        label="local audit-support manifest",
     )
-    checksums = descriptor["checksums"]
+    checksums = manifest["checksums"]
     if f"sha256-{sha256(market_bytes).hexdigest()}" != checksums["marketData"]:
-        raise RuntimeError("local market-data cache digest mismatch")
-    if f"sha256-{sha256(v9_manifest_bytes).hexdigest()}" != checksums["v9Manifest"]:
-        raise RuntimeError("local V9 cache manifest digest mismatch")
-
-    universe = descriptor["universe"]
-    pit_timeline = (
-        pit_cache_root
-        / "index-weights"
-        / str(universe["indexSymbol"]).replace(".", "_")
+        raise RuntimeError("local market-data digest mismatch")
+    audit_support_digest = (
+        f"sha256-{_tree_digest(audit_support_root, label='local audit-support')}"
     )
-    pit_tree_digest = f"sha256-{_tree_digest(pit_timeline)}"
-    if pit_tree_digest != checksums["pitTree"]:
-        raise RuntimeError("local PIT timeline digest mismatch")
+    if audit_support_digest != checksums["auditSupport"]:
+        raise RuntimeError("local audit-support digest mismatch")
+
+    universe = manifest["universe"]
+    pit_membership_digest = (
+        f"sha256-{_tree_digest(pit_membership_root, label='local PIT-membership')}"
+    )
+    if pit_membership_digest != checksums["pitMembership"]:
+        raise RuntimeError("local PIT-membership digest mismatch")
 
     try:
-        v9_manifest = json.loads(v9_manifest_bytes)
+        audit_manifest = json.loads(audit_manifest_bytes)
     except (UnicodeError, json.JSONDecodeError) as error:
-        raise RuntimeError("local V9 cache manifest is unreadable") from error
-    if not isinstance(v9_manifest, Mapping):
-        raise RuntimeError("local V9 cache manifest must be an object")
-    _validate_v9_binding(descriptor, v9_manifest)
+        raise RuntimeError("local audit-support manifest is unreadable") from error
+    if not isinstance(audit_manifest, Mapping):
+        raise RuntimeError("local audit-support manifest must be an object")
+    _validate_audit_binding(manifest, audit_manifest)
 
     local_data = LocalAuditData(
         data_ref=data_ref,
-        root=configured_root,
+        root=package_root,
         audit_id=parsed.audit_id,
         package_id=parsed.package_id,
-        descriptor_digest=parsed.descriptor_digest,
-        descriptor=descriptor,
+        manifest_digest=parsed.manifest_digest,
+        manifest=manifest,
         market_data_path=market_data_path,
-        v9_cache_root=v9_cache_root,
-        pit_cache_root=pit_cache_root,
-        v9_manifest=v9_manifest,
+        audit_support_root=audit_support_root,
+        pit_membership_root=pit_membership_root,
+        audit_manifest=audit_manifest,
     )
     # Parse the complete immutable boundary once. Downstream calls may parse
     # again, but they cannot be the first place corruption is discovered.
@@ -313,22 +319,22 @@ def load_local_audit_data(
         market_data_path,
         {
             "universe": {"index": universe["indexSymbol"]},
-            "window": descriptor["window"],
+            "window": manifest["window"],
         },
     )
     local_data.pit_membership_cache()
     local_data.index_daily_cache()
     local_data.comparator_factor_cache()
     load_historical_members_policy(
-        v9_cache_root,
-        pit_cache_root=pit_cache_root,
+        audit_support_root,
+        pit_cache_root=pit_membership_root,
         base_symbols=tuple(str(value) for value in panel.adjusted_close.columns),
         panel_dates=tuple(pd.Timestamp(value) for value in panel.adjusted_close.index),
     )
     return local_data
 
 
-def _validate_descriptor(
+def _validate_manifest(
     value: Mapping[str, Any],
     *,
     package_id: str,
@@ -340,7 +346,7 @@ def _validate_descriptor(
     paths = value.get("paths")
     checksums = value.get("checksums")
     if (
-        set(value) != _DESCRIPTOR_KEYS
+        set(value) != _MANIFEST_KEYS
         or value.get("schemaVersion") != LOCAL_DATA_PACKAGE_SCHEMA_VERSION
         or value.get("packageId") != package_id
         or not isinstance(value.get("strategyKey"), str)
@@ -356,17 +362,21 @@ def _validate_descriptor(
         or not isinstance(capabilities, Mapping)
         or set(capabilities) != _CAPABILITIES
         or not all(status in {"ready", "degraded"} for status in capabilities.values())
+        or any(
+            capabilities[capability] != "ready"
+            for capability in _REQUIRED_READY_CAPABILITIES
+        )
         or not isinstance(paths, Mapping)
-        or set(paths) != {"marketDataCache", "v9CacheRoot", "pitCacheRoot"}
+        or set(paths) != {"marketData", "auditSupport", "pitMembership"}
         or not all(isinstance(path, str) and path for path in paths.values())
         or not isinstance(checksums, Mapping)
-        or set(checksums) != {"marketData", "v9Manifest", "pitTree"}
+        or set(checksums) != {"marketData", "auditSupport", "pitMembership"}
         or not all(
             isinstance(digest, str) and _DIGEST_PATTERN.fullmatch(digest)
             for digest in checksums.values()
         )
     ):
-        raise RuntimeError("local data package descriptor is invalid")
+        raise RuntimeError("local data package manifest is invalid")
     start = _plan_date(window["start"], "local package window start")
     end = _plan_date(window["end"], "local package window end")
     coverage_start = _storage_date(
@@ -388,32 +398,35 @@ def _validate_descriptor(
         raise RuntimeError("local data package window or coverage is invalid")
 
 
-def _validate_v9_binding(
-    descriptor: Mapping[str, Any],
-    manifest: Mapping[str, Any],
+def _validate_audit_binding(
+    package_manifest: Mapping[str, Any],
+    audit_manifest: Mapping[str, Any],
 ) -> None:
-    universe = descriptor["universe"]
-    coverage = descriptor["coverage"]
-    capabilities = descriptor["capabilities"]
-    manifest_universe = manifest.get("universe")
-    manifest_window = manifest.get("window")
-    datasets = manifest.get("datasets")
+    universe = package_manifest["universe"]
+    coverage = package_manifest["coverage"]
+    capabilities = package_manifest["capabilities"]
+    manifest_universe = audit_manifest.get("universe")
+    manifest_window = audit_manifest.get("window")
+    datasets = audit_manifest.get("datasets")
     if (
-        manifest.get("schemaVersion") != V9_CACHE_MANIFEST_SCHEMA_VERSION
-        or manifest.get("promoted") is not True
-        or manifest.get("state") not in {"ready", "degraded"}
+        audit_manifest.get("schemaVersion") != V9_CACHE_MANIFEST_SCHEMA_VERSION
+        or audit_manifest.get("promoted") is not True
+        or audit_manifest.get("state") not in {"ready", "degraded"}
         or not isinstance(manifest_universe, Mapping)
         or manifest_universe.get("indexSymbol") != universe["indexSymbol"]
         or not isinstance(manifest_window, Mapping)
         or set(manifest_window) != {"start", "end"}
         or not isinstance(datasets, Mapping)
     ):
-        raise RuntimeError("local data package V9 identity is invalid")
+        raise RuntimeError("local data package audit-support identity is invalid")
     manifest_start = _storage_date(
         manifest_window["start"],
-        "local V9 window start",
+        "local audit-support window start",
     )
-    manifest_end = _storage_date(manifest_window["end"], "local V9 window end")
+    manifest_end = _storage_date(
+        manifest_window["end"],
+        "local audit-support window end",
+    )
     coverage_start = _storage_date(coverage["start"], "local package coverage start")
     coverage_end = _storage_date(coverage["end"], "local package coverage end")
     base_panel = datasets.get("basePanel")
@@ -424,7 +437,7 @@ def _validate_v9_binding(
         or base_panel.get("status") != "ready"
         or base_panel.get("factorWindowAnchor") != coverage["start"]
     ):
-        raise RuntimeError("local data package V9 coverage is invalid")
+        raise RuntimeError("local data package audit-support coverage is invalid")
 
     pit_timeline = datasets.get("pitTimeline")
     historical = datasets.get("historicalMembers")
@@ -465,7 +478,9 @@ def _validate_v9_binding(
             degraded_reason="COMPARATOR_FACTORS_UNAVAILABLE",
         )
     ):
-        raise RuntimeError("local data package capabilities do not match V9")
+        raise RuntimeError(
+            "local data package capabilities do not match audit support"
+        )
 
 
 def _optional_capability_matches(
@@ -556,23 +571,23 @@ def _strategy_key(spec: Mapping[str, Any]) -> str:
     return f"sha256-{sha256(canonical).hexdigest()}"
 
 
-def _tree_digest(root: Path) -> str:
-    resolved_root = _resolve_directory(root.parent, root.name, "local PIT timeline")
+def _tree_digest(root: Path, *, label: str) -> str:
+    resolved_root = _resolve_directory(root.parent, root.name, label)
     paths: list[tuple[bytes, str, Path]] = []
     for candidate in resolved_root.rglob("*"):
         relative = candidate.relative_to(resolved_root).as_posix()
         try:
             status = candidate.lstat()
         except OSError as error:
-            raise RuntimeError("local PIT timeline is unreadable") from error
+            raise RuntimeError(f"{label} is unreadable") from error
         if stat.S_ISLNK(status.st_mode):
-            raise RuntimeError("local PIT timeline must not contain symbolic links")
+            raise RuntimeError(f"{label} must not contain symbolic links")
         if stat.S_ISREG(status.st_mode):
             paths.append((relative.encode("utf-8"), relative, candidate))
         elif not stat.S_ISDIR(status.st_mode):
-            raise RuntimeError("local PIT timeline contains an unsupported entry")
+            raise RuntimeError(f"{label} contains an unsupported entry")
     if not paths:
-        raise RuntimeError("local PIT timeline is empty")
+        raise RuntimeError(f"{label} is empty")
     digest = sha256()
     for relative_bytes, _relative, candidate in sorted(
         paths,
@@ -581,7 +596,7 @@ def _tree_digest(root: Path) -> str:
         content = _read_regular_file(
             candidate,
             boundary=resolved_root,
-            label="local PIT snapshot",
+            label=f"{label} file",
         )
         digest.update(relative_bytes)
         digest.update(b"\0")

@@ -27,7 +27,7 @@ const context = {
   traceId: "trace-moire-subprocess",
   subjectId: "strategy-moire-subprocess",
   dataRef:
-    "assay-local-data-v1:audit_test:g01:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "assay-local-data-v1:audit_test:test-package:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   frozenStrategySpec,
   specHash: hashStrategySpec(frozenStrategySpec),
 };

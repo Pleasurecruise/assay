@@ -17,7 +17,7 @@ const mockProcess: ExperimentProcessConfig = {
   args: [fileURLToPath(new URL("./fixtures/mock-experiment-runner.mjs", import.meta.url))],
 };
 const dataRef =
-  "assay-local-data-v1:audit_test:g01:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  "assay-local-data-v1:audit_test:test-package:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 function contentText(
   result: Awaited<ReturnType<NonNullable<ReturnType<typeof createRunExperimentTool>["execute"]>>>,

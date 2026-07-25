@@ -12,6 +12,9 @@ import {
   createEarlyExitAuditArtifact,
   parseAuditArtifact,
   type AuditArtifact,
+  type AuditCheckId,
+  type AuditVerdict,
+  type CheckConclusion,
   type MissingEvidence,
 } from "@assay/contracts";
 import { DeterministicStrategyDataPlanner, type StrategyDataPlanner } from "@assay/finance-tools";
@@ -169,6 +172,42 @@ function extractSkeletonInput(message: Message): SkeletonInput {
   return { kind: "text", text };
 }
 
+const VERDICT_LABELS_ZH: Record<AuditVerdict, string> = {
+  KEEP: "保留",
+  WATCH: "观察",
+  QUARANTINE: "隔离",
+  RETIRE: "退役",
+  UNVERIFIABLE: "不可验证",
+};
+
+const CHECK_LABELS_ZH: Record<AuditCheckId, string> = {
+  "param-robustness": "参数稳健性",
+  "data-availability": "数据可得性",
+  "cost-stress": "成本压力",
+  "regime-dependency": "行情依赖",
+  "homogeneity-decay": "同质化衰减",
+};
+
+const CONCLUSION_LABELS_ZH: Record<CheckConclusion, string> = {
+  pass: "通过",
+  pass_with_reservations: "有保留通过",
+  fail: "不通过",
+  insufficient_evidence: "证据不足",
+  not_applicable: "不适用",
+};
+
+const CLAIM_METRIC_ROWS = [
+  ["annualReturn", "年化收益 Annual return"],
+  ["sharpe", "夏普 Sharpe"],
+  ["maxDrawdown", "最大回撤 Max drawdown"],
+] as const;
+
+const NOT_AVAILABLE = "暂缺 not available";
+
+function formatConfidence(confidence: number | null): string {
+  return confidence === null ? NOT_AVAILABLE : confidence.toFixed(2);
+}
+
 function appendList(
   lines: string[],
   heading: string,
@@ -180,6 +219,12 @@ function appendList(
   lines.push("", `## ${heading}`, "", ...entries.map((entry) => `- ${entry}`));
 }
 
+/**
+ * Deterministic bilingual (zh/en) rendering of the audit Artifact. Every
+ * number is quoted verbatim from the validated Artifact JSON — no model is
+ * involved and no value is restated in prose, so the Markdown can never
+ * disagree with the DataPart.
+ */
 function renderAuditArtifactMarkdown(auditArtifact: AuditArtifact): string {
   const result = auditArtifact.results[0];
   if (result === undefined) {
@@ -187,15 +232,17 @@ function renderAuditArtifactMarkdown(auditArtifact: AuditArtifact): string {
   }
 
   const lines = [
-    "# Assay Strategy Audit",
+    "# Assay 策略审计报告 | Strategy Audit Report",
     "",
-    `- Audit ID: \`${auditArtifact.auditId}\``,
-    `- Subject ID: \`${result.subjectId}\``,
-    `- Verdict: **${result.verdict}**`,
-    `- Confidence: ${result.confidence === null ? "not available" : result.confidence.toFixed(2)}`,
-    ...(result.reasonCode === undefined ? [] : [`- Early-exit reason: \`${result.reasonCode}\``]),
+    `- 审计编号 Audit ID: \`${auditArtifact.auditId}\``,
+    `- 审计对象 Subject ID: \`${result.subjectId}\``,
+    `- **判定 Verdict: ${result.verdict}（${VERDICT_LABELS_ZH[result.verdict]}）**`,
+    `- 置信度 Confidence: ${formatConfidence(result.confidence)}`,
+    ...(result.reasonCode === undefined
+      ? []
+      : [`- 提前退出原因 Early-exit reason: \`${result.reasonCode}\``]),
     "",
-    "## Summary",
+    "## 结论摘要 Summary",
     "",
     result.summary,
   ];
@@ -203,76 +250,89 @@ function renderAuditArtifactMarkdown(auditArtifact: AuditArtifact): string {
   if (result.strategySpec !== undefined) {
     lines.push(
       "",
-      "## Frozen StrategySpec",
+      "## 冻结策略 Frozen StrategySpec",
       "",
       "```json",
       JSON.stringify(result.strategySpec, null, 2),
       "```",
     );
   }
-  appendList(lines, "Defaults Applied", result.defaultsApplied);
-  appendList(lines, "Parsing Assumptions", result.parsingAssumptions);
+  appendList(lines, "应用默认值 Defaults Applied", result.defaultsApplied);
+  appendList(lines, "解析假设 Parsing Assumptions", result.parsingAssumptions);
 
   if (auditArtifact.claimComparison !== null) {
+    const { claimed, reproduced, gaps } = auditArtifact.claimComparison;
     lines.push(
       "",
-      "## Claim Comparison",
+      "## 申报复算 Claim Comparison",
       "",
-      `- Claimed: \`${JSON.stringify(auditArtifact.claimComparison.claimed)}\``,
-      `- Reproduced: \`${JSON.stringify(auditArtifact.claimComparison.reproduced)}\``,
-      `- Gaps (claimed - reproduced): \`${JSON.stringify(auditArtifact.claimComparison.gaps)}\``,
+      "| 指标 Metric | 申报 Claimed | 复算 Reproduced | 偏差 Gap (claimed − reproduced) |",
+      "| --- | --- | --- | --- |",
     );
+    for (const [key, label] of CLAIM_METRIC_ROWS) {
+      if (claimed[key] === undefined) {
+        continue;
+      }
+      lines.push(
+        `| ${label} | ${String(claimed[key])} | ${String(reproduced[key])} | ${String(gaps[key])} |`,
+      );
+    }
     appendList(
       lines,
-      "Known Convention Differences",
+      "已知口径差异 Known Convention Differences",
       auditArtifact.claimComparison.knownConventionDiffs,
     );
   }
 
-  lines.push("", "## Checks");
+  lines.push("", "## 五项检查 Checks");
   for (const check of result.checks) {
     lines.push(
       "",
-      `### ${check.id}`,
+      `### ${CHECK_LABELS_ZH[check.id]} ${check.id}`,
       "",
-      `- Conclusion: \`${check.conclusion}\``,
-      `- Confidence: ${check.confidence === null ? "not available" : check.confidence.toFixed(2)}`,
+      `- 结论 Conclusion: \`${check.conclusion}\`（${CONCLUSION_LABELS_ZH[check.conclusion]}）`,
+      `- 置信度 Confidence: ${formatConfidence(check.confidence)}`,
     );
     for (const evidence of check.evidence) {
       lines.push(
-        `- Evidence: ${evidence.metric} = ${String(evidence.value)} ${evidence.unit} (${evidence.sourceRefs.join(", ")})`,
+        `- 证据 Evidence: ${evidence.metric} = ${String(evidence.value)} ${evidence.unit} (${evidence.sourceRefs.join(", ")})`,
       );
     }
     for (const missing of check.missingEvidence) {
       lines.push(
-        `- Missing evidence: ${missing.requirement} — ${missing.reason} (${missing.sourceRefs.join(", ")})`,
+        `- 缺失证据 Missing evidence: ${missing.requirement} — ${missing.reason} (${missing.sourceRefs.join(", ")})`,
       );
     }
   }
 
   appendList(
     lines,
-    "Missing Information",
+    "缺失信息 Missing Information",
     result.missingInformation?.map(
       (item) => `${item.requirement} — ${item.reason} (${item.sourceRefs.join(", ")})`,
     ),
   );
   appendList(
     lines,
-    "Recovery Conditions",
+    "恢复条件 Recovery Conditions",
     result.recoveryConditions.map((item) => `${item.scope}: ${item.condition}`),
   );
-  appendList(lines, "Review Triggers", result.reviewTriggers);
-  appendList(lines, "Assumptions and Limits", result.assumptionsAndLimits);
+  appendList(lines, "复审触发 Review Triggers", result.reviewTriggers);
+  appendList(lines, "假设与边界 Assumptions and Limits", result.assumptionsAndLimits);
   lines.push(
     "",
-    "## Provenance",
+    "## 溯源 Provenance",
     "",
-    `- Input hash: \`${auditArtifact.provenance.inputHash}\``,
-    `- Data as of: \`${auditArtifact.provenance.dataAsOf}\``,
-    `- Code revision: \`${auditArtifact.provenance.codeRevision}\``,
+    `- 输入哈希 Input hash: \`${auditArtifact.provenance.inputHash}\``,
+    `- 数据截至 Data as of: \`${auditArtifact.provenance.dataAsOf}\``,
+    `- 代码版本 Code revision: \`${auditArtifact.provenance.codeRevision}\``,
   );
-  appendList(lines, "Risk Disclosure", auditArtifact.riskDisclosure);
+  appendList(
+    lines,
+    "数据来源 Data Sources",
+    auditArtifact.provenance.dataSources.map((source) => `\`${source.id}\` @ ${source.version}`),
+  );
+  appendList(lines, "风险披露 Risk Disclosure", auditArtifact.riskDisclosure);
   return lines.join("\n");
 }
 

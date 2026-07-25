@@ -1,0 +1,1 @@
+{"request":{"cacheVersion":"assay-v9-p1-v1","end":"2023-07-24","fields":["ratio_pe_ttm","market_cap"],"source":"comparator-factors","start":"2023-07-24","symbols":["000999.SZ"]},"rows":[{"date":"2023-07-24","market_cap":53559572800.0,"ratio_pe_ttm":19.4123729485851,"symbol":"000999.SZ"}],"schemaVersion":"assay-p1-fragment-v1"}

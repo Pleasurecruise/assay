@@ -11,7 +11,7 @@
     "a2a:server": "bun run apps/a2a-server/src/index.ts",
     "dev": "bun run --parallel --filter @assay/a2a-server --filter @assay/web dev",
     "check": "vp check && bun test && bun run sdk:test",
-    "e2e:checks": "bun run tests/e2e/src/index.ts",
+    "e2e:checks": "bun run data:prepare && bun run tests/e2e/src/index.ts",
     "v9:replay": "bun run tests/e2e/src/replay-v9-real.ts",
     "fmt": "vp fmt . --write",
     "fmt:check": "vp fmt --check",
@@ -21,7 +21,14 @@
     "sdk:sync": "uv sync --project services/panda-adapter",
     "sdk:doctor": "uv run --project services/panda-adapter python -m panda_adapter doctor",
     "sdk:init": "uv run --project services/panda-adapter python -m panda_adapter initialize",
-    "sdk:test": "uv run --project services/panda-adapter python -m unittest discover -s services/panda-adapter/tests"
+    "sdk:test": "uv run --project services/panda-adapter python -m unittest discover -s services/panda-adapter/tests",
+    "data:base": "uv run --project services/panda-adapter python services/panda-adapter/scripts/prepare_csi300_cache.py cache --start 2023-07-23 --end 2026-07-23",
+    "data:audit-support": "uv run --project services/panda-adapter python services/panda-adapter/scripts/prepare_v9_p1_cache.py --cache-root .cache/assay --base-cache .cache/assay/csi300-3y.csv",
+    "data:package": "bun run scripts/package_local_data.ts",
+    "data:install": "bun run scripts/install_local_data.ts",
+    "data:validate": "uv run --project services/panda-adapter python -m panda_adapter.local_data_validate --root .cache/assay/local-packages",
+    "data:prepare": "bun run data:install && bun run data:validate",
+    "data:rebuild": "bun run data:base && bun run data:audit-support && bun run data:package && bun run data:prepare"
   },
   "devDependencies": {
     "@types/bun": "1.3.14",
