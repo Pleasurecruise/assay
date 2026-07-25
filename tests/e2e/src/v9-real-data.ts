@@ -34,6 +34,7 @@ export const V9_FALLBACK_CLOSE_SOURCE_REF = "pandadata:get_stock_daily_post(clos
 export const V9_FALLBACK_PROVENANCE_SCHEMA_VERSION = "assay-base-official-post-fallback-index-v1";
 export const V9_EXPECTED_PIT_POINTS = 37;
 export const V9_EXPECTED_COMPLETED_MONTH_ENDS = 36;
+export const V9_REAL_POLL_TIMEOUT_MS = 600_000;
 export const V9_REAL_INPUT =
   "沪深 300 每月底买过去 20 天涨幅最大的 50 只，等权持有，宣称年化 18% 夏普 1.9";
 export const V9_REAL_ARTIFACT_PATH = "artifacts/v9/assay-real-data-run.json";
@@ -1533,7 +1534,7 @@ export async function runV9RealAcceptance(): Promise<string> {
       try {
         completed = await client.pollTask(submitted.id, {
           intervalMs: 250,
-          timeoutMs: 300_000,
+          timeoutMs: V9_REAL_POLL_TIMEOUT_MS,
         });
         writeAcceptanceTimeline({
           phase: "poll_finished",

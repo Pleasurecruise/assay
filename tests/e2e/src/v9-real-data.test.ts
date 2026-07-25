@@ -16,6 +16,7 @@ import {
   runV9RealAcceptance,
   v9UnacceptedDiagnosticPath,
   V9_REAL_ARTIFACT_PATH,
+  V9_REAL_POLL_TIMEOUT_MS,
   V9_UNACCEPTED_DIAGNOSTIC_VERSION,
   type V9RealAcceptanceBundle,
 } from "./v9-real-data";
@@ -363,5 +364,5 @@ liveTest(
   async () => {
     await expect(runV9RealAcceptance()).resolves.toBe(V9_REAL_ARTIFACT_PATH);
   },
-  360_000,
+  V9_REAL_POLL_TIMEOUT_MS + 60_000,
 );

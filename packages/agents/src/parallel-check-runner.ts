@@ -8,6 +8,7 @@ import type {
   RuntimeTaskResult,
 } from "@assay/contracts";
 import {
+  AUDIT_CHECK_HARD_DEADLINE_MS,
   AUDIT_CHECK_IDS,
   AUDIT_CHECK_SCHEMA_VERSION,
   parseAuditCheckResult,
@@ -22,7 +23,7 @@ import {
   type MoireExperiment,
 } from "./moire";
 
-export const HARD_CHECK_DEADLINE_MS = 120_000;
+export const HARD_CHECK_DEADLINE_MS = AUDIT_CHECK_HARD_DEADLINE_MS;
 const DEFAULT_CHECK_TIMEOUT_MS = HARD_CHECK_DEADLINE_MS;
 const CHECK_EXECUTION_FAILURE_REASON = "Check execution failed before a valid result was produced.";
 const CHECK_SUBMISSION_FAILURE_REASON =
