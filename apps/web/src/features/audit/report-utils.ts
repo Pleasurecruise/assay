@@ -1,4 +1,5 @@
 import type { AuditVerdict, ClaimComparison } from "@assay/contracts/audit-artifact";
+import { shortWindowSuppression } from "@assay/contracts/report-core";
 import type {
   AuditCheckId,
   AuditCheckResult,
@@ -179,7 +180,19 @@ export function confidenceLevel(t: TranslationFunction, confidence: number | nul
   return t("report.confidenceLow");
 }
 
-export function formatEvidenceValue(evidence: CheckEvidence, language: Language): string {
+export function formatEvidenceValue(
+  evidence: CheckEvidence,
+  language: Language,
+  siblings: readonly CheckEvidence[] = [],
+): string {
+  // REPORT_V3_BRIEF red line 3 (shared with the Markdown renderer): metrics
+  // annualized over short windows must never be presented in annualized form.
+  const suppression = shortWindowSuppression(evidence, siblings);
+  if (suppression !== undefined) {
+    return language.startsWith("zh")
+      ? `不予年化呈现（样本 ${suppression.windowTradingDays} 个交易日）`
+      : `not annualized (window of ${suppression.windowTradingDays} trading days)`;
+  }
   if (typeof evidence.value !== "number") {
     return String(evidence.value);
   }
