@@ -23,7 +23,7 @@ import type { ExecutionTimelineEvent, ExecutionTimelineStage } from "../src/exec
 import { LocalDataPackageError } from "../src/local-data-package";
 
 const TEST_DATA_REF =
-  "assay-local-data-v1:audit_test:test-package:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  "assay-local-data-v1:audit_test:g01:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const fakeDataResolver = {
   resolve: async () => ({
     dataRef: TEST_DATA_REF,
@@ -373,21 +373,33 @@ describe("AssayAgentExecutor", () => {
     expect(parts[0]?.content?.$case).toBe("data");
     expect(parts[1]?.mediaType).toBe("text/markdown");
     const markdown = parts[1]?.content?.$case === "text" ? parts[1].content.value : "";
-    // Bilingual headings and verdict labelling.
+    // A1 structure: verdict-first bilingual heading blocks.
     expect(markdown).toContain("# Assay 策略审计报告 | Strategy Audit Report");
-    expect(markdown).toContain("**判定 Verdict: WATCH（观察）**");
-    expect(markdown).toContain("### 参数稳健性 param-robustness");
-    expect(markdown).toContain("（通过）");
-    // Claim numbers are quoted verbatim from the Artifact JSON.
-    expect(markdown).toContain("| 夏普 Sharpe | 1.9 | 1 | 0.8999999999999999 |");
-    expect(markdown).toContain("| 年化收益 Annual return | 0.18 | 0.1 | 0.08 |");
-    // maxDrawdown was not claimed, so it must not appear as a comparison row.
-    expect(markdown).not.toContain("| 最大回撤 Max drawdown |");
+    expect(markdown).toContain("> **WATCH（观察）—— 可以使用，但必须带着保留**");
+    // A2/D2 rationale derived from the same rules that graded the audit.
     expect(markdown).toContain(
-      `- 输入哈希 Input hash: \`${storedArtifact?.provenance.inputHash}\``,
+      "**定档依据 Rationale**：五项检查全部通过，但申报业绩与独立复算的差距超过预声明阈值，定档上限压至 WATCH（观察）。",
     );
-    expect(markdown).toContain("## 数据来源 Data Sources");
-    expect(markdown).toContain("`pandadata:test` @ panda_data@0.0.12");
+    // B1a case-specific summary is transcribed from the artifact.
+    expect(storedArtifact?.results[0]?.summary).toBe(
+      "申报夏普 1.9 与独立复算 1 的差距超过预声明阈值；按预声明规则定档 WATCH（观察——可以使用，但必须带着保留）。",
+    );
+    expect(markdown).toContain(`**结论摘要 Summary**：${storedArtifact?.results[0]?.summary}`);
+    // A3 findings section with bilingual check headings.
+    expect(markdown).toContain("### 1. 参数稳健性 Parameter robustness —— 通过（置信度 0.80）");
+    // A4 unit-aware display rounding with the fixed footnote.
+    expect(markdown).toContain("| 年化收益 Annual return | 18% | 10% | +8 pp |");
+    expect(markdown).toContain("| 夏普 Sharpe | 1.9 | 1 | +0.9 |");
+    expect(markdown).toContain("| 最大回撤 Max drawdown | 未申报 not claimed | -20% | — |");
+    expect(markdown).toContain("精确值以 JSON DataPart 为准");
+    expect(markdown).toContain("申报口径不完整");
+    // A6 scope statement and provenance.
+    expect(markdown).toContain("**C. 审计范围与独立性声明 Scope & Independence**");
+    expect(markdown).toContain(
+      `- 输入哈希 Input hash：\`${storedArtifact?.provenance.inputHash}\``,
+    );
+    expect(markdown).toContain("- 数据来源 Data source：`pandadata:test` @ panda_data@0.0.12");
+    expect(markdown).toContain("本报告不提供操作建议。");
   });
 
   test("aborts the running checks and publishes CANCELED without a FAILED race", async () => {

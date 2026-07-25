@@ -5,6 +5,7 @@ export * from "./audit-artifact";
 export * from "./audit-request";
 export * from "./audit-tool-contracts";
 export * from "./moire-policy";
+export * from "./report-core";
 export * from "./strategy-spec";
 export * from "./strategy-spec-hash";
 export * from "./verdict-policy";

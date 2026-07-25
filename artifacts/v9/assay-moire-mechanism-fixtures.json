@@ -61,7 +61,7 @@
             "subjectId": "strategy-M1-regime-slice-of-grid-v2",
             "verdict": "QUARANTINE",
             "confidence": 0.8,
-            "summary": "The strategy should be paused until its scoped recovery conditions are met.",
+            "summary": "「参数稳健性」失败（邻近参数保留度 0.35）；按预声明的 fail 优先规则定档 QUARANTINE（隔离——先暂停，修复后再审）。",
             "checks": [
               {
                 "id": "param-robustness",
@@ -210,7 +210,7 @@
           "codeRevision": "moire-mechanism-fixture-v2"
         }
       },
-      "recordDigest": "sha256:19147a4f8888639d68698be8673fac3117c1fbf82f693c9e872724ee13d9c015"
+      "recordDigest": "sha256:466de39a5f1ee8772177dddc8c4b2cd7480ff5c3cf78ad9d8ccd69da85b1e30e"
     },
     {
       "fixtureId": "M2-corrected-cost-ladder-v2",
@@ -257,7 +257,7 @@
             "subjectId": "strategy-M2-corrected-cost-ladder-v2",
             "verdict": "QUARANTINE",
             "confidence": 0.8,
-            "summary": "The strategy should be paused until its scoped recovery conditions are met.",
+            "summary": "「数据可得性」失败（修正前后年化差 -0.03）；「成本压力」失败（pessimisticAnnualReturn 0.02）；按预声明的 fail 优先规则定档 QUARANTINE（隔离——先暂停，修复后再审）。",
             "checks": [
               {
                 "id": "param-robustness",
@@ -410,7 +410,7 @@
           "codeRevision": "moire-mechanism-fixture-v2"
         }
       },
-      "recordDigest": "sha256:5c3dcf230fb0d0ace2227462877806f92c4b86b8d8702fbeea9e00360aa6a0cf"
+      "recordDigest": "sha256:c88eea18c24b7e6568f78e51994b11de79655d1f6c7f329c9849b74a00b93514"
     }
   ]
 }

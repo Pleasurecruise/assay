@@ -303,7 +303,7 @@ function PriorityCheckCard({ check, language }: { check: AuditCheckResult; langu
           {highlights.map((evidence) => (
             <div key={evidence.metric}>
               <dt>{metricLabel(t, evidence.metric)}</dt>
-              <dd>{formatEvidenceValue(evidence, language)}</dd>
+              <dd>{formatEvidenceValue(evidence, language, check.evidence)}</dd>
             </div>
           ))}
         </dl>
@@ -439,7 +439,7 @@ function AuditCheckResults({
                       {check.evidence.map((evidence, evidenceIndex) => (
                         <div key={`${evidence.metric}-${evidenceIndex}`}>
                           <dt>{metricLabel(t, evidence.metric)}</dt>
-                          <dd>{formatEvidenceValue(evidence, language)}</dd>
+                          <dd>{formatEvidenceValue(evidence, language, check.evidence)}</dd>
                         </div>
                       ))}
                     </dl>

@@ -5,12 +5,14 @@ import {
   CLAIM_PROFILE_RECOVERY_CONDITION,
   DEFAULT_RISK_DISCLOSURE,
   FAILURE_RECOVERY_CONDITION_BY_CHECK,
+  buildCaseSummaryZh,
+  effectiveConclusion,
   parseAuditArtifact,
   parseAuditCheckResult,
+  parseMoireRefinement,
   type AuditArtifact,
   type AuditCheckResult,
   type AuditVerdict,
-  type CheckConclusion,
   type ClaimComparison,
   type ParallelAuditChecksRequest,
   type ParallelAuditChecksResult,
@@ -102,52 +104,6 @@ export function deriveVerdict(
   throw new Error("An executed strategy audit cannot contain only not-applicable checks");
 }
 
-type MoireResolution = "resolved" | "unresolved" | "legacy";
-
-interface ParsedMoireRefinement {
-  readonly resolution: MoireResolution;
-  readonly effectiveConclusion?: CheckConclusion;
-}
-
-const MOIRE_TAG_PATTERN = /^\[(M1|M2)\]\[(resolved|unresolved)\]\s/u;
-const M2_CORRECTED_CONCLUSION_PATTERN =
-  /(?:^|;\s*)corrected=(pass|pass_with_reservations|fail)(?:;|$)/u;
-
-function parseMoireRefinement(check: AuditCheckResult): ParsedMoireRefinement | undefined {
-  const refinement = check.refinedByMoire;
-  if (refinement === undefined) {
-    return undefined;
-  }
-  const tag = MOIRE_TAG_PATTERN.exec(refinement);
-  if (tag === null) {
-    return { resolution: "legacy" };
-  }
-  if (tag[2] === "unresolved") {
-    return {
-      resolution: "unresolved",
-      effectiveConclusion: "insufficient_evidence",
-    };
-  }
-  if (tag[1] !== "M2") {
-    return { resolution: "resolved" };
-  }
-  const corrected = M2_CORRECTED_CONCLUSION_PATTERN.exec(refinement)?.[1];
-  if (corrected !== "pass" && corrected !== "pass_with_reservations" && corrected !== "fail") {
-    return {
-      resolution: "unresolved",
-      effectiveConclusion: "insufficient_evidence",
-    };
-  }
-  return {
-    resolution: "resolved",
-    effectiveConclusion: corrected,
-  };
-}
-
-function effectiveConclusion(check: AuditCheckResult): CheckConclusion {
-  return parseMoireRefinement(check)?.effectiveConclusion ?? check.conclusion;
-}
-
 function deriveRecoveryConditions(
   checks: readonly AuditCheckResult[],
   verdict: AuditVerdict,
@@ -207,14 +163,6 @@ function deriveConfidence(checks: readonly AuditCheckResult[]): number {
   );
 }
 
-const VERDICT_SUMMARIES: Readonly<Record<AuditVerdict, string>> = {
-  KEEP: "All applicable checks passed with the evidence available to this audit.",
-  WATCH: "The strategy remains usable only with the reservations identified by the checks.",
-  QUARANTINE: "The strategy should be paused until its scoped recovery conditions are met.",
-  RETIRE: "At least one material check failed without a verified recovery path.",
-  UNVERIFIABLE: "The checks ran, but required evidence was insufficient for a strong conclusion.",
-};
-
 export interface BuildExecutedArtifactOptions {
   frozen: FrozenAuditInput;
   identity: AuditExecutionIdentity;
@@ -228,6 +176,15 @@ export function buildExecutedAuditArtifact(options: BuildExecutedArtifactOptions
   const checks = validateRunnerResult(options.result, options.identity);
   const claimComparison = options.claimComparison ?? null;
   const verdict = deriveVerdict(checks, claimComparison);
+  // REPORT_V3_BRIEF B1a: the summary is a deterministic, case-specific
+  // assembly quoting the checks' own key evidence — never model prose and
+  // never per-verdict boilerplate.
+  const summary = buildCaseSummaryZh({
+    checks,
+    verdict,
+    claimComparison,
+    watchCapApplied: claimComparisonTriggersWatchCap(claimComparison),
+  });
   const refinedChecks = checks.filter((check) => check.refinedByMoire !== undefined);
   const resolvedDisputes = refinedChecks
     .filter((check) => parseMoireRefinement(check)?.resolution !== "unresolved")
@@ -245,7 +202,7 @@ export function buildExecutedAuditArtifact(options: BuildExecutedArtifactOptions
         subjectId: options.identity.subjectId,
         verdict,
         confidence: deriveConfidence(checks),
-        summary: VERDICT_SUMMARIES[verdict],
+        summary,
         checks,
         moire: {
           disputesOpened: refinedChecks.length,
