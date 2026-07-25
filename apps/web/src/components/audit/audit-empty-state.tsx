@@ -1,42 +1,32 @@
 import { Sparkles } from "lucide-react";
 
-import { AuditComposer, AuditModeShortcuts } from "@/components/audit/audit-composer";
-import type { AuditMode } from "@/features/audit/config";
+import { AuditComposer } from "@/components/audit/audit-composer";
+import { useI18n } from "@/i18n";
 
 interface AuditEmptyStateProps {
-  mode: AuditMode;
-  onModeChange: (mode: AuditMode) => void;
   onPromptChange: (value: string) => void;
   onSubmit: () => void;
   prompt: string;
 }
 
-export function AuditEmptyState({
-  mode,
-  onModeChange,
-  onPromptChange,
-  onSubmit,
-  prompt,
-}: AuditEmptyStateProps) {
+export function AuditEmptyState({ onPromptChange, onSubmit, prompt }: AuditEmptyStateProps) {
+  const { t } = useI18n();
   return (
     <div className="empty-workspace">
       <div className="empty-workspace__content">
-        <p className="workspace-kicker">INDEPENDENT STRATEGY REVIEW</p>
+        <p className="workspace-kicker">{t("empty.kicker")}</p>
         <h1>
           <Sparkles aria-hidden="true" />
-          <span>What should we put under the microscope?</span>
+          <span>{t("empty.title")}</span>
         </h1>
         <AuditComposer
           disabled={false}
           isActive={false}
-          mode={mode}
           onChange={onPromptChange}
-          onModeChange={onModeChange}
           onSubmit={onSubmit}
           prompt={prompt}
         />
-        <AuditModeShortcuts onSelect={onModeChange} />
-        <p className="empty-hint">One request. Five isolated checks. No shared conclusions.</p>
+        <p className="empty-hint">{t("empty.hint")}</p>
       </div>
     </div>
   );

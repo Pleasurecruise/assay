@@ -265,8 +265,7 @@ export function regimeSplitAgentView(result: RegimeSplitResult): RegimeSplitAgen
       dominantPnlShare: result.dominantEnvironment.pnlShare,
       nonDominantEnvironmentCount: nonDominant.length,
       allNonDominantAnnualReturnsNegative:
-        nonDominant.length > 0 &&
-        nonDominant.every((environment) => environment.annualReturn < 0),
+        nonDominant.length > 0 && nonDominant.every((environment) => environment.annualReturn < 0),
       thinSliceIds: thinSlices.map((environment) => environment.id),
       sufficientSliceCount: result.environments.length - thinSlices.length,
     },

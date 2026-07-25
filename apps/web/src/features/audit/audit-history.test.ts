@@ -1,8 +1,9 @@
 import { createEarlyExitAuditArtifact } from "@assay/contracts/audit-artifact";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
+  deleteAudit,
   loadAuditHistory,
-  saveAuditHistory,
+  saveAudit,
   type StoredAudit,
   upsertAuditHistory,
 } from "./audit-history";
@@ -27,18 +28,7 @@ const ARTIFACT = createEarlyExitAuditArtifact({
     codeRevision: "test",
   },
 });
-
-class MemoryStorage {
-  readonly #values = new Map<string, string>();
-
-  getItem(key: string): string | null {
-    return this.#values.get(key) ?? null;
-  }
-
-  setItem(key: string, value: string): void {
-    this.#values.set(key, value);
-  }
-}
+const ORIGINAL_FETCH = globalThis.fetch;
 
 function storedAudit(id: string): StoredAudit {
   return {
@@ -54,18 +44,50 @@ function storedAudit(id: string): StoredAudit {
 }
 
 afterEach(() => {
-  vi.unstubAllGlobals();
+  globalThis.fetch = ORIGINAL_FETCH;
 });
 
 describe("audit history", () => {
-  test("persists a versioned collection and validates artifacts while loading", () => {
-    const localStorage = new MemoryStorage();
-    vi.stubGlobal("window", { localStorage });
+  test("loads and validates the signed-in user's audits from the API", async () => {
     const audits = [storedAudit("audit-1"), storedAudit("audit-2")];
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        items: audits,
+      }),
+    );
+    globalThis.fetch = fetchMock as typeof fetch;
 
-    saveAuditHistory(audits);
+    await expect(loadAuditHistory()).resolves.toEqual(audits);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/audits",
+      expect.objectContaining({ credentials: "include" }),
+    );
+  });
 
-    expect(loadAuditHistory()).toEqual(audits);
+  test("saves and deletes audits through credentialed API requests", async () => {
+    const audit = storedAudit("audit-1");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json(audit, { status: 201 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(saveAudit(audit)).resolves.toEqual(audit);
+    await expect(deleteAudit(audit.id)).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/audits",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        body: JSON.stringify(audit),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/audits/audit-1",
+      expect.objectContaining({ method: "DELETE", credentials: "include" }),
+    );
   });
 
   test("moves an updated audit to the front and caps local history", () => {

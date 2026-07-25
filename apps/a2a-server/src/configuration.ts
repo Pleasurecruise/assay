@@ -9,11 +9,16 @@ export interface ProductionA2AConfig {
   arkApiKeys?: readonly string[];
   arkBaseUrl: string;
   arkModel: string;
+  authBaseUrl?: string;
+  betterAuthSecret?: string;
   dataAsOf: string;
+  databasePath?: string;
   capabilitySnapshotId: string;
   codeRevision: string;
   publicUrl: string;
   corsOrigins: readonly string[];
+  googleClientId?: string;
+  googleClientSecret?: string;
   pandaDataConfigured: boolean;
 }
 
@@ -37,6 +42,14 @@ function requireNonEmpty(value: string | undefined, name: string): string {
     throw new Error(`${name} is required`);
   }
   return normalized;
+}
+
+function requireAuthSecret(value: string | undefined): string {
+  const secret = requireNonEmpty(value, "BETTER_AUTH_SECRET");
+  if (secret.length < 32) {
+    throw new Error("BETTER_AUTH_SECRET must contain at least 32 characters");
+  }
+  return secret;
 }
 
 function utcDate(): string {
@@ -111,17 +124,27 @@ export function readProductionConfig(
   const publicUrl = environment.ASSAY_A2A_PUBLIC_URL?.trim() || `http://127.0.0.1:${listenPort}`;
   const corsOrigins =
     environment.ASSAY_A2A_CORS_ORIGIN?.trim() || DEFAULT_ASSAY_A2A_CORS_ORIGINS.join(",");
+  const parsedCorsOrigins = requireHttpOrigins(corsOrigins, "ASSAY_A2A_CORS_ORIGIN");
+  const authBaseUrl = environment.ASSAY_AUTH_BASE_URL?.trim() || parsedCorsOrigins[0];
+  if (authBaseUrl === undefined) {
+    throw new Error("ASSAY_AUTH_BASE_URL is required");
+  }
   return {
     arkApiKey: requireNonEmpty(environment.ARK_API_KEY, "ARK_API_KEY"),
     arkApiKeys: optionalCredentialPool(environment.ARK_API_KEYS),
     arkBaseUrl: requireHttpUrl(arkBaseUrl, "ARK_BASE_URL"),
     arkModel: requireNonEmpty(environment.ARK_MODEL_DEEPSEEK, "ARK_MODEL_DEEPSEEK"),
+    authBaseUrl: requireHttpOrigin(authBaseUrl, "ASSAY_AUTH_BASE_URL"),
+    betterAuthSecret: requireAuthSecret(environment.BETTER_AUTH_SECRET),
     dataAsOf: requireDate(dataAsOf, "ASSAY_DATA_AS_OF"),
+    databasePath: environment.ASSAY_DATABASE_PATH?.trim() || "data/assay.sqlite",
     capabilitySnapshotId:
       environment.ASSAY_CAPABILITY_SNAPSHOT_ID?.trim() || "pandadata:toolset-v1",
     codeRevision: environment.ASSAY_CODE_REVISION?.trim() || "development",
     publicUrl: requireHttpUrl(publicUrl, "ASSAY_A2A_PUBLIC_URL"),
-    corsOrigins: requireHttpOrigins(corsOrigins, "ASSAY_A2A_CORS_ORIGIN"),
+    corsOrigins: parsedCorsOrigins,
+    googleClientId: requireNonEmpty(environment.GOOGLE_CLIENT_ID, "GOOGLE_CLIENT_ID"),
+    googleClientSecret: requireNonEmpty(environment.GOOGLE_CLIENT_SECRET, "GOOGLE_CLIENT_SECRET"),
     pandaDataConfigured:
       Boolean(environment.PANDA_DATA_USERNAME?.trim()) && Boolean(environment.PANDA_DATA_PASSWORD),
   };

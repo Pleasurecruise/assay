@@ -4,15 +4,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AuditArtifact } from "@assay/contracts/audit-artifact";
 
 import type { WorkspacePanel } from "@/components/audit/audit-library-panel";
+import { useI18n } from "@/i18n";
 import { createAssayA2AClient, extractAuditArtifact, type AssayA2AClient } from "@/lib/a2a-client";
+import { applyThemePreference } from "@/lib/preferences";
 
 import {
+  deleteAudit as deleteAuditRequest,
   loadAuditHistory,
-  saveAuditHistory,
+  saveAudit,
   type StoredAudit,
   upsertAuditHistory,
 } from "./audit-history";
-import type { AuditMode } from "./config";
 import {
   isActiveTaskState,
   markdownReportFromTask,
@@ -23,7 +25,7 @@ import {
 } from "./task-utils";
 
 export function useAuditWorkspace() {
-  const [mode, setMode] = useState<AuditMode>("strategy");
+  const { t } = useI18n();
   const [prompt, setPrompt] = useState("");
   const [submittedPrompt, setSubmittedPrompt] = useState("");
   const [validationMessage, setValidationMessage] = useState("");
@@ -37,7 +39,7 @@ export function useAuditWorkspace() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [workspacePanel, setWorkspacePanel] = useState<WorkspacePanel | null>(null);
   const [historyQuery, setHistoryQuery] = useState("");
-  const [auditHistory, setAuditHistory] = useState<StoredAudit[]>(loadAuditHistory);
+  const [auditHistory, setAuditHistory] = useState<StoredAudit[]>([]);
   const [serviceState, setServiceState] = useState<
     "checking" | "ready" | "configuration_required" | "offline"
   >("checking");
@@ -48,8 +50,16 @@ export function useAuditWorkspace() {
   const submittedPromptRef = useRef("");
 
   useEffect(() => {
-    saveAuditHistory(auditHistory);
-  }, [auditHistory]);
+    const controller = new AbortController();
+    void loadAuditHistory(controller.signal)
+      .then(setAuditHistory)
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setValidationMessage(t("validation.historyLoad"));
+        }
+      });
+    return () => controller.abort();
+  }, [t]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -76,67 +86,75 @@ export function useAuditWorkspace() {
     return () => controller.abort();
   }, []);
 
-  const applyTask = useCallback((nextTask: Task) => {
-    setTask(nextTask);
-    setStatusMessage(taskStatusMessage(nextTask));
+  const applyTask = useCallback(
+    (nextTask: Task) => {
+      setTask(nextTask);
+      setStatusMessage(
+        taskStatusMessage(nextTask, {
+          accepted: t("status.accepted"),
+          working: t("status.working"),
+          completed: t("status.completed"),
+          waiting: t("status.waiting"),
+        }),
+      );
 
-    switch (nextTask.status?.state) {
-      case TaskState.TASK_STATE_COMPLETED:
-        pollStartedAtRef.current = null;
-        try {
-          const artifact = extractAuditArtifact(nextTask);
-          if (artifact?.results[0] === undefined) {
-            throw new Error("Completed Task did not contain an audit result");
-          }
-          const report = markdownReportFromTask(nextTask);
-          setAuditArtifact(artifact);
-          setMarkdownReport(report);
-          setFailureMessage("");
-          setAuditHistory((history) =>
-            upsertAuditHistory(history, {
+      switch (nextTask.status?.state) {
+        case TaskState.TASK_STATE_COMPLETED:
+          pollStartedAtRef.current = null;
+          try {
+            const artifact = extractAuditArtifact(nextTask);
+            if (artifact?.results[0] === undefined) {
+              throw new Error("Completed Task did not contain an audit result");
+            }
+            const report = markdownReportFromTask(nextTask);
+            setAuditArtifact(artifact);
+            setMarkdownReport(report);
+            setFailureMessage("");
+            const storedAudit = {
               id: artifact.auditId,
               prompt: submittedPromptRef.current,
               savedAt: new Date().toISOString(),
               artifact,
               markdown: report,
-            }),
-          );
-        } catch {
+            } satisfies StoredAudit;
+            setAuditHistory((history) => upsertAuditHistory(history, storedAudit));
+            void saveAudit(storedAudit)
+              .then((saved) => {
+                setAuditHistory((history) => upsertAuditHistory(history, saved));
+              })
+              .catch(() => setValidationMessage(t("validation.historySave")));
+          } catch {
+            setAuditArtifact(undefined);
+            setMarkdownReport("");
+            setFailureMessage(t("error.invalidReport"));
+          }
+          return;
+        case TaskState.TASK_STATE_FAILED:
+          pollStartedAtRef.current = null;
           setAuditArtifact(undefined);
           setMarkdownReport("");
-          setFailureMessage(
-            "The audit completed but returned an invalid report. Please retry the request.",
-          );
-        }
-        return;
-      case TaskState.TASK_STATE_FAILED:
-        pollStartedAtRef.current = null;
-        setAuditArtifact(undefined);
-        setMarkdownReport("");
-        setFailureMessage(
-          "The audit could not be completed due to an internal error. Please retry the request.",
-        );
-        return;
-      case TaskState.TASK_STATE_CANCELED:
-      case TaskState.TASK_STATE_REJECTED:
-        pollStartedAtRef.current = null;
-        setAuditArtifact(undefined);
-        setMarkdownReport("");
-        setFailureMessage("The audit ended before a report was produced. Please retry.");
-        return;
-      case TaskState.TASK_STATE_INPUT_REQUIRED:
-      case TaskState.TASK_STATE_AUTH_REQUIRED:
-        pollStartedAtRef.current = null;
-        setAuditArtifact(undefined);
-        setMarkdownReport("");
-        setFailureMessage(
-          "This demo cannot continue an interrupted task yet. Retry with a complete strategy description.",
-        );
-        return;
-      default:
-        setFailureMessage("");
-    }
-  }, []);
+          setFailureMessage(t("error.failed"));
+          return;
+        case TaskState.TASK_STATE_CANCELED:
+        case TaskState.TASK_STATE_REJECTED:
+          pollStartedAtRef.current = null;
+          setAuditArtifact(undefined);
+          setMarkdownReport("");
+          setFailureMessage(t("error.ended"));
+          return;
+        case TaskState.TASK_STATE_INPUT_REQUIRED:
+        case TaskState.TASK_STATE_AUTH_REQUIRED:
+          pollStartedAtRef.current = null;
+          setAuditArtifact(undefined);
+          setMarkdownReport("");
+          setFailureMessage(t("error.interrupted"));
+          return;
+        default:
+          setFailureMessage("");
+      }
+    },
+    [t],
+  );
 
   const taskId = task?.id;
   const taskState = task?.status?.state;
@@ -158,9 +176,7 @@ export function useAuditWorkspace() {
           pollStartedAtRef.current = null;
           setTask(undefined);
           setStatusMessage("");
-          setFailureMessage(
-            "The audit did not finish within the 20-minute demo window. Please retry the request.",
-          );
+          setFailureMessage(t("error.timeout"));
           return;
         }
         try {
@@ -180,14 +196,14 @@ export function useAuditWorkspace() {
           }
         } catch {
           if (!controller.signal.aborted) {
-            setStatusMessage("Connection interrupted. Retrying the task status shortly.");
+            setStatusMessage(t("status.connectionRetry"));
           }
         }
       }
     })();
 
     return () => controller.abort();
-  }, [applyTask, taskId, taskState]);
+  }, [applyTask, t, taskId, taskState]);
 
   useEffect(
     () => () => {
@@ -203,12 +219,8 @@ export function useAuditWorkspace() {
       return;
     }
     const input = (retryInput ?? prompt).trim();
-    if (mode !== "strategy") {
-      setValidationMessage("Factor and comparison audits are coming soon.");
-      return;
-    }
     if (!input) {
-      setValidationMessage("Describe a strategy before starting the audit.");
+      setValidationMessage(t("validation.inputRequired"));
       return;
     }
 
@@ -224,7 +236,7 @@ export function useAuditWorkspace() {
     setMarkdownReport("");
     setTask(undefined);
     setWorkspacePanel(null);
-    setStatusMessage("Connecting to the Assay A2A server.");
+    setStatusMessage(t("status.connecting"));
     pollStartedAtRef.current = Date.now();
     setIsSubmitting(true);
 
@@ -246,7 +258,7 @@ export function useAuditWorkspace() {
           error instanceof Error && error.message.trim().length > 0
             ? ` ${error.message.trim()}`
             : "";
-        setFailureMessage(`The audit request failed before a task could be created.${detail}`);
+        setFailureMessage(`${t("error.submit")}${detail}`);
       }
     } finally {
       if (submitControllerRef.current === controller) {
@@ -261,7 +273,7 @@ export function useAuditWorkspace() {
       return;
     }
     setIsCanceling(true);
-    setStatusMessage("Canceling the audit.");
+    setStatusMessage(t("status.canceling"));
 
     try {
       if (!taskId) {
@@ -269,7 +281,7 @@ export function useAuditWorkspace() {
         pollStartedAtRef.current = null;
         setIsSubmitting(false);
         setStatusMessage("");
-        setFailureMessage("The audit request was canceled before it started.");
+        setFailureMessage(t("error.cancelBeforeStart"));
         return;
       }
       const client = await clientPromiseRef.current;
@@ -281,7 +293,7 @@ export function useAuditWorkspace() {
       });
       applyTask(canceledTask);
     } catch {
-      setStatusMessage("The cancellation request failed. The audit may still be running.");
+      setStatusMessage(t("error.cancelFailed"));
     } finally {
       setIsCanceling(false);
     }
@@ -307,13 +319,8 @@ export function useAuditWorkspace() {
 
   const toggleTheme = () => {
     const nextDark = !isDark;
-    document.documentElement.classList.toggle("dark", nextDark);
+    applyThemePreference(nextDark ? "dark" : "light", true);
     setIsDark(nextDark);
-  };
-
-  const changeMode = (nextMode: AuditMode) => {
-    setMode(nextMode);
-    setValidationMessage("");
   };
 
   const changePrompt = (value: string) => {
@@ -342,15 +349,21 @@ export function useAuditWorkspace() {
     setWorkspacePanel(null);
   };
 
-  const deleteStoredAudit = (id: string) => {
+  const deleteStoredAudit = async (id: string) => {
+    const previous = auditHistory;
     setAuditHistory((history) => history.filter((audit) => audit.id !== id));
+    try {
+      await deleteAuditRequest(id);
+    } catch {
+      setAuditHistory(previous);
+      setValidationMessage(t("validation.historyDelete"));
+    }
   };
 
   return {
     auditArtifact,
     auditHistory,
     cancelAudit,
-    changeMode,
     changePrompt,
     closeWorkspacePanel,
     deleteStoredAudit,
@@ -359,7 +372,6 @@ export function useAuditWorkspace() {
     isCanceling,
     isDark,
     markdownReport,
-    mode,
     prompt,
     historyQuery,
     openStoredAudit,

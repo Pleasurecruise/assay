@@ -1,7 +1,4 @@
-import {
-  AUDIT_CHECK_SUBMISSION_TOOL_NAME,
-  type AgentTool,
-} from "@assay/agent-runtime";
+import { AUDIT_CHECK_SUBMISSION_TOOL_NAME, type AgentTool } from "@assay/agent-runtime";
 import { CHECK_CONCLUSIONS } from "@assay/contracts";
 
 const AGENT_CHECK_CONCLUSIONS = CHECK_CONCLUSIONS.filter(

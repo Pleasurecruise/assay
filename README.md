@@ -106,7 +106,25 @@ ARK_MODEL_DEEPSEEK=...
 PANDA_DATA_USERNAME=86+你的官网注册手机号
 PANDA_DATA_PASSWORD=你的官网密码
 ASSAY_A2A_CORS_ORIGIN=http://localhost:5173,http://127.0.0.1:5173
+ASSAY_AUTH_BASE_URL=http://localhost:5173
+BETTER_AUTH_SECRET=至少32位随机字符串
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+ASSAY_DATABASE_PATH=data/assay.sqlite
 ```
+
+Create a Google OAuth Web application and register this exact local redirect
+URI:
+
+```text
+http://localhost:5173/api/auth/callback/google
+```
+
+The server automatically creates/migrates the SQLite file on startup. Better
+Auth user, account, verification, and session records live in that database,
+along with each user's private audit history. The browser stores only the
+selected UI language; authentication uses an HttpOnly cookie and completed
+audits are no longer written to `localStorage`.
 
 The web client defaults to the same-origin development proxy, so an
 `apps/web/.env` file is not required for `http://localhost:5173`. To make the
@@ -126,7 +144,8 @@ mise exec -- bun run a2a:server
 mise exec -- bun run --filter @assay/web dev
 ```
 
-Open `http://localhost:5173`, keep **Strategy** selected, and submit:
+Open `http://localhost:5173`, sign in with Google, keep **Strategy** selected,
+and submit:
 
 The development server also listens on LAN and Tailscale interfaces. By
 default (or with `VITE_A2A_URL=same-origin`), browser requests stay on the Vite origin and its

@@ -5,9 +5,11 @@ import { AuditLibraryPanel } from "@/components/audit/audit-library-panel";
 import { AuditSidebar } from "@/components/audit/audit-sidebar";
 import { AuditThread } from "@/components/audit/audit-thread";
 import { useAuditWorkspace } from "@/features/audit/use-audit-workspace";
+import { useI18n } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 export function AuditWorkspacePage() {
+  const { t } = useI18n();
   const workspace = useAuditWorkspace();
   const hasThread =
     workspace.submittedPrompt.length > 0 ||
@@ -39,7 +41,7 @@ export function AuditWorkspacePage() {
       <section className="workspace-main">
         <header className="mobile-header">
           <button
-            aria-label="Open sidebar"
+            aria-label={t("sidebar.expand")}
             className="icon-button"
             onClick={() => workspace.setSidebarOpen(true)}
             type="button"
@@ -62,8 +64,6 @@ export function AuditWorkspacePage() {
           />
         ) : !hasThread ? (
           <AuditEmptyState
-            mode={workspace.mode}
-            onModeChange={workspace.changeMode}
             onPromptChange={workspace.changePrompt}
             onSubmit={() => void workspace.startAudit()}
             prompt={workspace.prompt}
@@ -75,9 +75,7 @@ export function AuditWorkspacePage() {
             isActive={workspace.isActive}
             isCanceling={workspace.isCanceling}
             markdownReport={workspace.markdownReport}
-            mode={workspace.mode}
             onCancel={() => void workspace.cancelAudit()}
-            onModeChange={workspace.changeMode}
             onPromptChange={workspace.changePrompt}
             onRetry={() => void workspace.startAudit(workspace.submittedPrompt)}
             onSubmit={() => void workspace.startAudit()}

@@ -3,7 +3,7 @@ import type { AuditArtifact } from "@assay/contracts/audit-artifact";
 import { AuditComposer } from "@/components/audit/audit-composer";
 import { AuditReport } from "@/components/audit/audit-report";
 import { AuditFailureMessage, AuditProgress } from "@/components/audit/audit-status-messages";
-import type { AuditMode } from "@/features/audit/config";
+import { useI18n } from "@/i18n";
 
 interface AuditThreadProps {
   artifact: AuditArtifact | undefined;
@@ -11,8 +11,6 @@ interface AuditThreadProps {
   isActive: boolean;
   isCanceling: boolean;
   markdownReport: string;
-  mode: AuditMode;
-  onModeChange: (mode: AuditMode) => void;
   onCancel: () => void;
   onPromptChange: (value: string) => void;
   onRetry: () => void;
@@ -28,8 +26,6 @@ export function AuditThread({
   isActive,
   isCanceling,
   markdownReport,
-  mode,
-  onModeChange,
   onCancel,
   onPromptChange,
   onRetry,
@@ -38,6 +34,7 @@ export function AuditThread({
   statusMessage,
   submittedPrompt,
 }: AuditThreadProps) {
+  const { t } = useI18n();
   return (
     <div className="thread-viewport">
       <div className="thread-messages">
@@ -48,7 +45,7 @@ export function AuditThread({
         ) : null}
 
         {isActive ? (
-          <AuditProgress message={statusMessage || "Preparing the audit."} />
+          <AuditProgress message={statusMessage || t("progress.preparing")} />
         ) : failureMessage ? (
           <AuditFailureMessage message={failureMessage} onRetry={onRetry} />
         ) : artifact ? (
@@ -61,14 +58,12 @@ export function AuditThread({
           disabled={isActive}
           isActive={isActive}
           isCanceling={isCanceling}
-          mode={mode}
           onChange={onPromptChange}
           onCancel={onCancel}
-          onModeChange={onModeChange}
           onSubmit={onSubmit}
           prompt={prompt}
         />
-        <p>Technical robustness checks only. Historical evidence is not investment advice.</p>
+        <p>{t("thread.disclaimer")}</p>
       </footer>
     </div>
   );

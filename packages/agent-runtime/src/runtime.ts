@@ -12,11 +12,7 @@ import {
   type AgentOptions,
   type StreamFn,
 } from "@oh-my-pi/pi-agent-core";
-import {
-  createAssistantMessageEventStream,
-  streamSimple,
-  type Model,
-} from "@oh-my-pi/pi-ai";
+import { createAssistantMessageEventStream, streamSimple, type Model } from "@oh-my-pi/pi-ai";
 import { AgentRegistry } from "./registry";
 import { ToolPolicy } from "./policy";
 import {
@@ -111,18 +107,14 @@ function safeSubmissionDiagnostic(value: unknown, depth = 0): unknown {
     return value;
   }
   if (Array.isArray(value)) {
-    return value
-      .slice(0, 100)
-      .map((entry) => safeSubmissionDiagnostic(entry, depth + 1));
+    return value.slice(0, 100).map((entry) => safeSubmissionDiagnostic(entry, depth + 1));
   }
   if (typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value)
         .slice(0, 100)
         .map(([key, entry], index) => [
-          SAFE_SUBMISSION_DIAGNOSTIC_KEYS.has(key)
-            ? key
-            : `[unexpected-key:${String(index + 1)}]`,
+          SAFE_SUBMISSION_DIAGNOSTIC_KEYS.has(key) ? key : `[unexpected-key:${String(index + 1)}]`,
           safeSubmissionDiagnostic(entry, depth + 1),
         ]),
     );
@@ -190,7 +182,9 @@ export class AgentRuntime {
         ? undefined
         : [
             ...new Set(
-              options.modelApiKeys.map((apiKey) => apiKey.trim()).filter((apiKey) => apiKey.length > 0),
+              options.modelApiKeys
+                .map((apiKey) => apiKey.trim())
+                .filter((apiKey) => apiKey.length > 0),
             ),
           ];
     if (modelApiKeys !== undefined && modelApiKeys.length === 0) {
@@ -211,9 +205,7 @@ export class AgentRuntime {
     this.#toolPolicy = options.toolPolicy ?? new ToolPolicy();
     this.#maxRunMs = options.maxRunMs ?? DEFAULT_MAX_RUN_MS;
     this.#modelCallGate = new ModelCallGate(
-      modelApiKeys?.length ??
-        options.maxConcurrentModelCalls ??
-        DEFAULT_MAX_CONCURRENT_MODEL_CALLS,
+      modelApiKeys?.length ?? options.maxConcurrentModelCalls ?? DEFAULT_MAX_CONCURRENT_MODEL_CALLS,
     );
     this.#onEvent = options.onEvent;
 
@@ -303,19 +295,14 @@ export class AgentRuntime {
       afterToolCall: ({ toolCall, isError }) => {
         if (toolCall.name === AUDIT_CHECK_SUBMISSION_TOOL_NAME) {
           const pending = pendingAuditSubmissions.get(toolCall.id);
-          if (
-            isError !== true &&
-            pending !== undefined &&
-            submittedAuditResult === undefined
-          ) {
+          if (isError !== true && pending !== undefined && submittedAuditResult === undefined) {
             submittedAuditResult = pending;
             successfulAuditSubmissionCount += 1;
           }
           pendingAuditSubmissions.delete(toolCall.id);
           if (
             successfulAuditSubmissionCount === 1 ||
-            (isError === true &&
-              auditSubmissionAttemptCount >= MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS)
+            (isError === true && auditSubmissionAttemptCount >= MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS)
           ) {
             agent.abort(TERMINAL_TOOL_RESULT_ABORT_REASON);
           }
@@ -331,13 +318,10 @@ export class AgentRuntime {
           auditSubmissionAttemptCount += 1;
           let submissionError: string | undefined;
           if (successfulRunExperimentCallCount !== 1) {
-            submissionError =
-              "The evidence tool must complete before the final audit submission.";
+            submissionError = "The evidence tool must complete before the final audit submission.";
           } else if (submittedAuditResult !== undefined) {
             submissionError = "The final audit result has already been submitted.";
-          } else if (
-            auditSubmissionAttemptCount > MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS
-          ) {
+          } else if (auditSubmissionAttemptCount > MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS) {
             submissionError = `submit_check_result allows at most ${String(MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS)} attempts.`;
           } else {
             try {

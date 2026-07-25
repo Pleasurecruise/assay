@@ -121,33 +121,6 @@ def _as_frame(value: Any, name: str) -> pd.DataFrame:
     raise RuntimeError(f"{name} returned unsupported type {type(value).__name__}")
 
 
-def _column(frame: pd.DataFrame, candidates: Iterable[str], name: str) -> str:
-    by_lower = {str(column).lower(): str(column) for column in frame.columns}
-    for candidate in candidates:
-        matched = by_lower.get(candidate.lower())
-        if matched is not None:
-            return matched
-    raise RuntimeError(
-        f"{name} response is missing one of these columns: "
-        f"{', '.join(candidates)}"
-    )
-
-
-def _optional_column(
-    frame: pd.DataFrame,
-    candidates: Iterable[str],
-) -> str | None:
-    by_lower = {str(column).lower(): str(column) for column in frame.columns}
-    return next(
-        (
-            matched
-            for candidate in candidates
-            if (matched := by_lower.get(candidate.lower())) is not None
-        ),
-        None,
-    )
-
-
 def _normalized_dates(values: pd.Series) -> pd.Series:
     text = values.astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
     return pd.to_datetime(text, format="mixed", errors="coerce")

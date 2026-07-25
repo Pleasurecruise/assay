@@ -1,7 +1,5 @@
 import { TaskState, type Message, type Task } from "@a2a-js/sdk";
 
-import type { AuditCheckResult } from "@assay/contracts/audit-artifact";
-
 export const TASK_POLL_INTERVAL_MS = 2_000;
 export const TASK_POLL_TIMEOUT_MS = 20 * 60 * 1_000;
 export const TASK_STATUS_REQUEST_TIMEOUT_MS = 15_000;
@@ -19,7 +17,24 @@ function messageText(message: Message | undefined): string | undefined {
   return text ? text : undefined;
 }
 
-export function taskStatusMessage(task: Task): string {
+export interface TaskStatusLabels {
+  accepted: string;
+  working: string;
+  completed: string;
+  waiting: string;
+}
+
+const DEFAULT_TASK_STATUS_LABELS: TaskStatusLabels = {
+  accepted: "Audit accepted. Preparing the independent checks.",
+  working: "Five independent checks are running.",
+  completed: "The audit Artifact is ready.",
+  waiting: "Waiting for the audit service.",
+};
+
+export function taskStatusMessage(
+  task: Task,
+  labels: TaskStatusLabels = DEFAULT_TASK_STATUS_LABELS,
+): string {
   const serverMessage = messageText(task.status?.message);
   if (serverMessage) {
     return serverMessage;
@@ -27,13 +42,13 @@ export function taskStatusMessage(task: Task): string {
 
   switch (task.status?.state) {
     case TaskState.TASK_STATE_SUBMITTED:
-      return "Audit accepted. Preparing the independent checks.";
+      return labels.accepted;
     case TaskState.TASK_STATE_WORKING:
-      return "Five independent checks are running.";
+      return labels.working;
     case TaskState.TASK_STATE_COMPLETED:
-      return "The audit Artifact is ready.";
+      return labels.completed;
     default:
-      return "Waiting for the audit service.";
+      return labels.waiting;
   }
 }
 
@@ -46,10 +61,6 @@ export function markdownReportFromTask(task: Task): string {
     }
   }
   return "";
-}
-
-export function conclusionLabel(value: AuditCheckResult["conclusion"]): string {
-  return value.replaceAll("_", " ");
 }
 
 export function confidenceLabel(value: number | null): string {

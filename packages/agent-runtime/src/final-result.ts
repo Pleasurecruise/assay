@@ -47,17 +47,12 @@ function cloneResult(result: AuditCheckResult): AuditCheckResult {
  * reject rather than silently normalize an audit conclusion, so this parser is
  * intentionally exact at every object boundary and runs on toolCall.arguments.
  */
-export function parseAuditCheckSubmission(
-  value: unknown,
-  expectedId: string,
-): AuditCheckResult {
+export function parseAuditCheckSubmission(value: unknown, expectedId: string): AuditCheckResult {
   if (!isAuditCheckId(expectedId)) {
     throw new Error("Final audit submission is not available for this agent.");
   }
   if (!isRecord(value) || !hasExactKeys(value, RESULT_KEYS)) {
-    throw new Error(
-      `Final audit submission must contain exactly ${RESULT_KEYS.join(", ")}.`,
-    );
+    throw new Error(`Final audit submission must contain exactly ${RESULT_KEYS.join(", ")}.`);
   }
   if (!Array.isArray(value.evidence)) {
     throw new Error("Final audit submission evidence must be an array.");

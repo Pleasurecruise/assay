@@ -1,1 +1,10 @@
-export { AuditWorkspacePage as App } from "@/pages/audit-workspace-page";
+import { AuthGate } from "@/components/auth-gate";
+import { AuditWorkspacePage } from "@/pages/audit-workspace-page";
+
+export function App() {
+  return (
+    <AuthGate>
+      <AuditWorkspacePage />
+    </AuthGate>
+  );
+}

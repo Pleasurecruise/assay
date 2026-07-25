@@ -11,12 +11,60 @@ import type { ProductionA2AConfig } from "./configuration";
 import { createExecutionTimelineLogger } from "./execution-timeline";
 import { AssayAgentExecutor } from "./executor";
 import { InMemoryAuditArtifactStore } from "./artifact-store";
+import { createAssayAuth } from "./auth";
 import { SubprocessClaimReproducer } from "./claim-reproducer";
+import { AssayDatabase } from "./database";
 import { createAssayA2AApp, type AssayA2AApp } from "./server";
 
 export { readProductionConfig, type ProductionA2AConfig } from "./configuration";
 
-export function createProductionA2AApp(config: ProductionA2AConfig): AssayA2AApp {
+type AuthEnabledProductionConfig = ProductionA2AConfig &
+  Required<
+    Pick<
+      ProductionA2AConfig,
+      "authBaseUrl" | "betterAuthSecret" | "databasePath" | "googleClientId" | "googleClientSecret"
+    >
+  >;
+
+function hasCompleteAuthConfig(config: ProductionA2AConfig): config is AuthEnabledProductionConfig {
+  return (
+    config.authBaseUrl !== undefined &&
+    config.betterAuthSecret !== undefined &&
+    config.databasePath !== undefined &&
+    config.googleClientId !== undefined &&
+    config.googleClientSecret !== undefined
+  );
+}
+
+export async function createProductionA2AApp(config: ProductionA2AConfig): Promise<AssayA2AApp> {
+  const authConfigValues = [
+    config.authBaseUrl,
+    config.betterAuthSecret,
+    config.databasePath,
+    config.googleClientId,
+    config.googleClientSecret,
+  ];
+  const hasAnyAuthConfig = authConfigValues.some((value) => value !== undefined);
+  if (!hasCompleteAuthConfig(config) && hasAnyAuthConfig) {
+    throw new Error("Production auth configuration must be provided completely or omitted");
+  }
+  const database = hasCompleteAuthConfig(config)
+    ? new AssayDatabase(config.databasePath)
+    : undefined;
+  const authService =
+    database === undefined || !hasCompleteAuthConfig(config)
+      ? undefined
+      : createAssayAuth(
+          {
+            baseUrl: config.authBaseUrl,
+            secret: config.betterAuthSecret,
+            trustedOrigins: config.corsOrigins,
+            googleClientId: config.googleClientId,
+            googleClientSecret: config.googleClientSecret,
+          },
+          database,
+        );
+  await authService?.initialize();
   const parser = new ArkResponsesStrategyParser({
     apiKey: config.arkApiKey,
     baseUrl: config.arkBaseUrl,
@@ -86,6 +134,8 @@ export function createProductionA2AApp(config: ProductionA2AConfig): AssayA2AApp
   });
   return createAssayA2AApp({
     executor,
+    authService,
+    database,
     publicUrl: config.publicUrl,
     corsOrigins: config.corsOrigins,
     capabilities: {

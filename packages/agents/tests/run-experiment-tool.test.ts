@@ -147,14 +147,13 @@ describe("run_experiment tool", () => {
     });
   });
 
-  test("binds every final JSON id to the canonical check rather than a tool kind", () => {
+  test("requires the host to inject every final result id", () => {
     const definitions = createAuditCheckAgentDefinitions({ experimentProcess: mockProcess });
 
     for (const definition of definitions) {
       const prompt = definition.systemPrompt.join("\n");
-      expect(prompt).toContain(`"id" 必须严格等于 "${definition.id}"`);
-      expect(prompt).toContain("工具请求中的 kind");
-      expect(prompt).toContain("不得复制到最终 JSON");
+      expect(prompt).toContain("id 由宿主按当前检查注入");
+      expect(prompt).toContain("你不得填写 id");
     }
   });
 

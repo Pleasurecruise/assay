@@ -1,6 +1,7 @@
 import { ArrowLeft, Search, Trash2 } from "lucide-react";
 
 import type { StoredAudit } from "@/features/audit/audit-history";
+import { useI18n } from "@/i18n";
 
 export type WorkspacePanel = "search" | "archive" | "methodology";
 
@@ -23,6 +24,7 @@ export function AuditLibraryPanel({
   panel,
   query,
 }: AuditLibraryPanelProps) {
+  const { language, t } = useI18n();
   if (panel === "methodology") {
     return <MethodologyPanel onBack={onBack} />;
   }
@@ -42,12 +44,12 @@ export function AuditLibraryPanel({
   return (
     <section className="library-panel">
       <header className="library-panel__header">
-        <button aria-label="Back to current audit" className="icon-button" onClick={onBack}>
+        <button aria-label={t("library.back")} className="icon-button" onClick={onBack}>
           <ArrowLeft />
         </button>
         <div>
-          <p>LOCAL WORKSPACE</p>
-          <h1>{panel === "search" ? "Search audits" : "Archived audits"}</h1>
+          <p>{t("library.workspace")}</p>
+          <h1>{panel === "search" ? t("library.searchTitle") : t("library.archiveTitle")}</h1>
         </div>
         <span>{filteredAudits.length.toString().padStart(2, "0")}</span>
       </header>
@@ -55,11 +57,11 @@ export function AuditLibraryPanel({
       {panel === "search" ? (
         <label className="library-search">
           <Search aria-hidden="true" />
-          <span className="sr-only">Search saved audits</span>
+          <span className="sr-only">{t("library.searchAria")}</span>
           <input
             autoFocus
             onChange={(event) => onQueryChange(event.target.value)}
-            placeholder="Search prompt, verdict, summary, or audit ID"
+            placeholder={t("library.searchPlaceholder")}
             type="search"
             value={query}
           />
@@ -75,16 +77,16 @@ export function AuditLibraryPanel({
                 <button className="library-item__open" onClick={() => onOpen(audit)} type="button">
                   <span>{result?.verdict ?? "UNVERIFIABLE"}</span>
                   <h2>{audit.prompt}</h2>
-                  <p>{result?.summary ?? "Saved audit artifact"}</p>
+                  <p>{result?.summary ?? t("library.savedArtifact")}</p>
                   <time dateTime={audit.savedAt}>
-                    {new Intl.DateTimeFormat(undefined, {
+                    {new Intl.DateTimeFormat(language, {
                       dateStyle: "medium",
                       timeStyle: "short",
                     }).format(new Date(audit.savedAt))}
                   </time>
                 </button>
                 <button
-                  aria-label={`Delete audit ${audit.id}`}
+                  aria-label={t("library.delete", { id: audit.id })}
                   className="icon-button library-item__delete"
                   onClick={() => onDelete(audit.id)}
                   type="button"
@@ -96,12 +98,8 @@ export function AuditLibraryPanel({
           })
         ) : (
           <div className="library-empty">
-            <p>{normalizedQuery ? "NO MATCHES" : "NOTHING ARCHIVED YET"}</p>
-            <h2>
-              {normalizedQuery
-                ? "Try a different phrase or audit ID."
-                : "Completed audits will be stored locally in this browser."}
-            </h2>
+            <p>{normalizedQuery ? t("library.noMatches") : t("library.empty")}</p>
+            <h2>{normalizedQuery ? t("library.noMatchesHint") : t("library.emptyHint")}</h2>
           </div>
         )}
       </div>
@@ -110,50 +108,39 @@ export function AuditLibraryPanel({
 }
 
 function MethodologyPanel({ onBack }: { onBack: () => void }) {
+  const { t } = useI18n();
   return (
     <section className="library-panel methodology-panel">
       <header className="library-panel__header">
-        <button aria-label="Back to current audit" className="icon-button" onClick={onBack}>
+        <button aria-label={t("library.back")} className="icon-button" onClick={onBack}>
           <ArrowLeft />
         </button>
         <div>
-          <p>ASSAY METHOD / 1.0</p>
-          <h1>How the verdict is made</h1>
+          <p>{t("method.kicker")}</p>
+          <h1>{t("method.title")}</h1>
         </div>
       </header>
 
       <div className="methodology-grid">
         <article>
           <span>01</span>
-          <h2>Freeze the claim</h2>
-          <p>
-            Natural language is converted into one canonical StrategySpec before any numerical check
-            starts. Defaults and parsing assumptions remain visible in the Artifact.
-          </p>
+          <h2>{t("method.1.title")}</h2>
+          <p>{t("method.1.body")}</p>
         </article>
         <article>
           <span>02</span>
-          <h2>Separate the checks</h2>
-          <p>
-            Parameter, data, cost, regime, and decay branches run independently. They cannot read
-            sibling conclusions while producing their first result.
-          </p>
+          <h2>{t("method.2.title")}</h2>
+          <p>{t("method.2.body")}</p>
         </article>
         <article>
           <span>03</span>
-          <h2>Require evidence</h2>
-          <p>
-            Numerical claims must come from guarded PandaData queries or the deterministic Assay
-            backtester. Missing tools become missing evidence, never invented values.
-          </p>
+          <h2>{t("method.3.title")}</h2>
+          <p>{t("method.3.body")}</p>
         </article>
         <article>
           <span>04</span>
-          <h2>Resolve material tension</h2>
-          <p>
-            Moiré may open at most two discriminating follow-ups. The final verdict is aggregated by
-            deterministic rules and includes provenance, limits, and recovery conditions.
-          </p>
+          <h2>{t("method.4.title")}</h2>
+          <p>{t("method.4.body")}</p>
         </article>
       </div>
     </section>

@@ -5,6 +5,9 @@ const BASE_ENVIRONMENT: NodeJS.ProcessEnv = {
   ARK_API_KEY: "test-key",
   ARK_MODEL_DEEPSEEK: "ep-test-deepseek",
   ASSAY_DATA_AS_OF: "2026-07-24",
+  BETTER_AUTH_SECRET: "test-secret-that-is-at-least-thirty-two-characters",
+  GOOGLE_CLIENT_ID: "google-test-client-id",
+  GOOGLE_CLIENT_SECRET: "google-test-client-secret",
 };
 
 describe("readProductionConfig", () => {
@@ -17,6 +20,23 @@ describe("readProductionConfig", () => {
 
   test("uses the explicitly configured Ark DeepSeek endpoint id", () => {
     expect(readProductionConfig(BASE_ENVIRONMENT).arkModel).toBe("ep-test-deepseek");
+  });
+
+  test("configures Google auth and a local SQLite database", () => {
+    const config = readProductionConfig(BASE_ENVIRONMENT);
+
+    expect(config.authBaseUrl).toBe("http://localhost:5173");
+    expect(config.databasePath).toBe("data/assay.sqlite");
+    expect(config.googleClientId).toBe("google-test-client-id");
+  });
+
+  test("rejects a short Better Auth secret", () => {
+    expect(() =>
+      readProductionConfig({
+        ...BASE_ENVIRONMENT,
+        BETTER_AUTH_SECRET: "too-short",
+      }),
+    ).toThrow("BETTER_AUTH_SECRET must contain at least 32 characters");
   });
 
   test("accepts a deduplicated supplemental Ark credential pool", () => {

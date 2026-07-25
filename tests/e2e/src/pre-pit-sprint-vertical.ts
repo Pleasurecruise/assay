@@ -6,8 +6,6 @@
  * never be used as an acceptance gate or refresh target. Its immutable output
  * remains under artifacts/archive for historical mechanism comparison.
  */
-export const PRE_PIT_ARCHIVE_FIXTURE = "artifacts/archive/assay-pre-pit-real-data-run.json";
-
 if (import.meta.main) {
   throw new Error("The pre-PIT two-check E2E is archived; run the v9 terminal acceptance instead.");
 }

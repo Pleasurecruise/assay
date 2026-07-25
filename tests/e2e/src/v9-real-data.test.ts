@@ -1,7 +1,17 @@
 import { TaskState, type Task } from "@a2a-js/sdk";
-import { mkdtemp, readFile, readdir, rm, stat, symlink, unlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  symlink,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { expect, test } from "vitest";
 import {
   acceptanceCandidateFromV9MechanismFixture,
@@ -157,7 +167,9 @@ test("isolates a safe unaccepted candidate from the formal Artifact path", async
       }),
     ).toEqual(bundle);
     expect(serialized).not.toContain(temporaryRoot);
-    expect((await stat(diagnosticPath)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect((await stat(diagnosticPath)).mode & 0o777).toBe(0o600);
+    }
     expect(await readdir(temporaryRoot)).toEqual([basename(diagnosticPath)]);
     const replayed = await replayV9CandidateFile(diagnosticPath);
     expect(replayed.passed).toBe(true);
@@ -264,7 +276,12 @@ test("rejects a diagnostic-cache symlink that resolves into formal repository st
   );
   try {
     const bundle = acceptanceCandidateFromV9MechanismFixture(await loadV9OfflineMechanismFixture());
-    await symlink(resolve("artifacts"), symlinkRoot, "dir");
+    await mkdir(dirname(symlinkRoot), { recursive: true });
+    await symlink(
+      resolve("artifacts"),
+      symlinkRoot,
+      process.platform === "win32" ? "junction" : "dir",
+    );
 
     await expect(persistV9UnacceptedDiagnostic(bundle, symlinkRoot)).rejects.toThrow(
       "resolves across its physical repository boundary",

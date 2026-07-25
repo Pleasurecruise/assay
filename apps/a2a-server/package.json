@@ -7,6 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "dev": "bun --watch run src/index.ts",
     "start": "bun run src/index.ts"
   },
   "dependencies": {
@@ -17,9 +18,12 @@
     "@assay/finance-tools": "workspace:*",
     "@assay/intake": "workspace:*",
     "@oh-my-pi/pi-catalog": "17.0.8",
+    "better-auth": "1.6.11",
+    "better-sqlite3": "13.0.1",
     "express": "5.2.1"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "7.6.13",
     "@types/express": "5.0.6"
   }
 }

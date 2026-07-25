@@ -10,6 +10,7 @@
     "module": "ESNext",
     "moduleDetection": "force",
     "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
     "noEmit": true,
     "noUncheckedIndexedAccess": true,
     "paths": {

@@ -515,33 +515,25 @@
       "numericEvidence": [
         {
           "metric": "baselineSharpe",
-          "sourceRefs": [
-            "artifact:backtest/parameter-grid"
-          ],
+          "sourceRefs": ["artifact:backtest/parameter-grid"],
           "unit": "ratio",
           "value": 1.044499266119358
         },
         {
           "metric": "medianVariantSharpe",
-          "sourceRefs": [
-            "artifact:backtest/parameter-grid"
-          ],
+          "sourceRefs": ["artifact:backtest/parameter-grid"],
           "unit": "ratio",
           "value": 1.0809683416970175
         },
         {
           "metric": "neighborhoodSharpeRetention",
-          "sourceRefs": [
-            "artifact:backtest/parameter-grid"
-          ],
+          "sourceRefs": ["artifact:backtest/parameter-grid"],
           "unit": "ratio",
           "value": 1.0349153673541136
         },
         {
           "metric": "variantCount",
-          "sourceRefs": [
-            "artifact:backtest/parameter-grid"
-          ],
+          "sourceRefs": ["artifact:backtest/parameter-grid"],
           "unit": "count",
           "value": 14
         }
@@ -554,66 +546,50 @@
         {
           "reason": "Audit ran in degraded_remove_only mode; HISTORICAL_MEMBER_DATA_UNAVAILABLE — no live historical-member acquisition was attempted. Future constituents were only removed, not re-acquired with PIT snapshots.",
           "requirement": "Full PIT constituent acquisition for historical members",
-          "sourceRefs": [
-            "artifact:data-availability/pit-audit"
-          ]
+          "sourceRefs": ["artifact:data-availability/pit-audit"]
         }
       ],
       "moireRefinement": null,
       "numericEvidence": [
         {
           "metric": "affectedRebalances",
-          "sourceRefs": [
-            "artifact:data-availability/pit-audit"
-          ],
+          "sourceRefs": ["artifact:data-availability/pit-audit"],
           "unit": "count",
           "value": 35
         },
         {
           "metric": "contaminatedSelectionRate",
-          "sourceRefs": [
-            "artifact:data-availability/pit-audit"
-          ],
+          "sourceRefs": ["artifact:data-availability/pit-audit"],
           "unit": "ratio",
           "value": 0.22228571428571428
         },
         {
           "metric": "corrected.annualReturn",
-          "sourceRefs": [
-            "artifact:data-availability/pit-audit"
-          ],
+          "sourceRefs": ["artifact:data-availability/pit-audit"],
           "unit": "ratio",
           "value": 0.1769805599561396
         },
         {
           "metric": "corrected.delta",
-          "sourceRefs": [
-            "artifact:data-availability/pit-audit"
-          ],
+          "sourceRefs": ["artifact:data-availability/pit-audit"],
           "unit": "ratio",
           "value": -0.10479778343210744
         },
         {
           "metric": "corrected.sharpe",
-          "sourceRefs": [
-            "artifact:data-availability/pit-audit"
-          ],
+          "sourceRefs": ["artifact:data-availability/pit-audit"],
           "unit": "ratio",
           "value": 0.7768643386238205
         },
         {
           "metric": "futureConstituentCount",
-          "sourceRefs": [
-            "artifact:data-availability/pit-audit"
-          ],
+          "sourceRefs": ["artifact:data-availability/pit-audit"],
           "unit": "count",
           "value": 76
         },
         {
           "metric": "untradableTargets",
-          "sourceRefs": [
-            "artifact:data-availability/pit-audit"
-          ],
+          "sourceRefs": ["artifact:data-availability/pit-audit"],
           "unit": "count",
           "value": 4
         }
@@ -627,41 +603,31 @@
       "numericEvidence": [
         {
           "metric": "annualReturn erosion (standard to pessimistic)",
-          "sourceRefs": [
-            "artifact:backtest/cost-stress"
-          ],
+          "sourceRefs": ["artifact:backtest/cost-stress"],
           "unit": "ratio",
           "value": 0.0389
         },
         {
           "metric": "baseline annualReturn (standard costs)",
-          "sourceRefs": [
-            "artifact:backtest/cost-stress"
-          ],
+          "sourceRefs": ["artifact:backtest/cost-stress"],
           "unit": "ratio",
           "value": 0.2818
         },
         {
           "metric": "pessimistic annualReturn",
-          "sourceRefs": [
-            "artifact:backtest/cost-stress"
-          ],
+          "sourceRefs": ["artifact:backtest/cost-stress"],
           "unit": "ratio",
           "value": 0.2429
         },
         {
           "metric": "realistic annualReturn",
-          "sourceRefs": [
-            "artifact:backtest/cost-stress"
-          ],
+          "sourceRefs": ["artifact:backtest/cost-stress"],
           "unit": "ratio",
           "value": 0.2594
         },
         {
           "metric": "realistic annualTurnover",
-          "sourceRefs": [
-            "artifact:backtest/cost-stress"
-          ],
+          "sourceRefs": ["artifact:backtest/cost-stress"],
           "unit": "ratio",
           "value": 11.0522
         }
@@ -674,160 +640,120 @@
         {
           "reason": "A return dated t is classified only with index information available through t-1. Trend uses a 200-trading-day moving average; volatility uses 60 trading days and an expanding historical two-thirds quantile. The prepared index-daily cache was unavailable; the cached assay-v9-p1-v1 PIT constituent timeline's equal-weight return was used as the authorized deterministic proxy. A snapshot becomes eligible only after its effective date, so future constituents cannot enter earlier proxy returns. Days before the first cached PIT snapshot remain unlabeled. 79 PIT member(s) absent from the frozen price panel were omitted under the authorized remove-only degradation; each proxy day uses the intersection of its as-of PIT membership and the frozen panel. 176 nonzero-return strategy day(s) preceded the first usable regime label and are excluded from slice metrics. Each reported pnlShare remains its additive contribution divided by full-period P&L, so the reported shares need not sum to 1.",
           "requirement": "disclose constituent_proxy regime-split assumptions",
-          "sourceRefs": [
-            "artifact:regime-dependency/regime-split"
-          ]
+          "sourceRefs": ["artifact:regime-dependency/regime-split"]
         },
         {
           "reason": "down-high has 11 trading days and cannot support a strong regime conclusion.",
           "requirement": "down-high must have at least 60 trading days",
-          "sourceRefs": [
-            "artifact:regime-dependency/regime-split"
-          ]
+          "sourceRefs": ["artifact:regime-dependency/regime-split"]
         },
         {
           "reason": "down-normal has 57 trading days and cannot support a strong regime conclusion.",
           "requirement": "down-normal must have at least 60 trading days",
-          "sourceRefs": [
-            "artifact:regime-dependency/regime-split"
-          ]
+          "sourceRefs": ["artifact:regime-dependency/regime-split"]
         }
       ],
       "moireRefinement": null,
       "numericEvidence": [
         {
           "metric": "dominantEnvironment.pnlShare",
-          "sourceRefs": [
-            "artifact:regime-dependency/regime-split"
-          ],
+          "sourceRefs": ["artifact:regime-dependency/regime-split"],
           "unit": "fraction_of_total_pnl",
           "value": 0.7763375737470796
         },
         {
           "metric": "down-high.annualReturn",
-          "sourceRefs": [
-            "artifact:regime-dependency/regime-split"
-          ],
+          "sourceRefs": ["artifact:regime-dependency/regime-split"],
           "unit": "annualized_decimal",
           "value": 105.74782414689032
         },
         {
           "metric": "down-high.days",
-          "sourceRefs": [
-            "artifact:regime-dependency/regime-split"
-          ],
+          "sourceRefs": ["artifact:regime-dependency/regime-split"],
           "unit": "trading_days",
           "value": 11
         },
         {
           "metric": "down-high.pnlShare",
-          "sourceRefs": [
-            "artifact:regime-dependency/regime-split"
-          ],
+          "sourceRefs": ["artifact:regime-dependency/regime-split"],
           "unit": "fraction_of_total_pnl",
           "value": 0.4086663058233876
         },
         {
           "metric": "down-high.sharpe",
-          "sourceRefs": [
-            "artifact:regime-dependency/regime-split"
-          ],
+          "sourceRefs": ["artifact:regime-dependency/regime-split"],
           "unit": "ratio",
           "value": 10.254344845075241
         },
         {
           "metric": "down-normal.annualReturn",
-          "sourceRefs": [
-            "artifact:regime-dependency/regime-split"
-          ],
+          "sourceRefs": ["artifact:regime-dependency/regime-split"],
           "unit": "annualized_decimal",
           "value": -0.6042854116716305
         },
         {
           "metric": "down-normal.days",
-          "sourceRefs": [
-            "artifact:regime-dependency/regime-split"
-          ],
+          "sourceRefs": ["artifact:regime-dependency/regime-split"],
           "unit": "trading_days",
           "value": 57
         },
         {
           "metric": "down-normal.pnlShare",
-          "sourceRefs": [
-            "artifact:regime-dependency/regime-split"
-          ],
+          "sourceRefs": ["artifact:regime-dependency/regime-split"],
           "unit": "fraction_of_total_pnl",
           "value": -0.47797366010334297
         },
         {
           "metric": "down-normal.sharpe",
-          "sourceRefs": [
-            "artifact:regime-dependency/regime-split"
-          ],
+          "sourceRefs": ["artifact:regime-dependency/regime-split"],
           "unit": "ratio",
           "value": -2.362687052468397
         },
         {
           "metric": "up-high.annualReturn",
-          "sourceRefs": [
-            "artifact:regime-dependency/regime-split"
-          ],
+          "sourceRefs": ["artifact:regime-dependency/regime-split"],
           "unit": "annualized_decimal",
           "value": 0.495527939546929
         },
         {
           "metric": "up-high.days",
-          "sourceRefs": [
-            "artifact:regime-dependency/regime-split"
-          ],
+          "sourceRefs": ["artifact:regime-dependency/regime-split"],
           "unit": "trading_days",
           "value": 122
         },
         {
           "metric": "up-high.pnlShare",
-          "sourceRefs": [
-            "artifact:regime-dependency/regime-split"
-          ],
+          "sourceRefs": ["artifact:regime-dependency/regime-split"],
           "unit": "fraction_of_total_pnl",
           "value": 0.2503101258897003
         },
         {
           "metric": "up-high.sharpe",
-          "sourceRefs": [
-            "artifact:regime-dependency/regime-split"
-          ],
+          "sourceRefs": ["artifact:regime-dependency/regime-split"],
           "unit": "ratio",
           "value": 1.3467328386405373
         },
         {
           "metric": "up-normal.annualReturn",
-          "sourceRefs": [
-            "artifact:regime-dependency/regime-split"
-          ],
+          "sourceRefs": ["artifact:regime-dependency/regime-split"],
           "unit": "annualized_decimal",
           "value": 0.44236709600268975
         },
         {
           "metric": "up-normal.days",
-          "sourceRefs": [
-            "artifact:regime-dependency/regime-split"
-          ],
+          "sourceRefs": ["artifact:regime-dependency/regime-split"],
           "unit": "trading_days",
           "value": 332
         },
         {
           "metric": "up-normal.pnlShare",
-          "sourceRefs": [
-            "artifact:regime-dependency/regime-split"
-          ],
+          "sourceRefs": ["artifact:regime-dependency/regime-split"],
           "unit": "fraction_of_total_pnl",
           "value": 0.7763375737470796
         },
         {
           "metric": "up-normal.sharpe",
-          "sourceRefs": [
-            "artifact:regime-dependency/regime-split"
-          ],
+          "sourceRefs": ["artifact:regime-dependency/regime-split"],
           "unit": "ratio",
           "value": 1.4911497299933387
         }
@@ -841,169 +767,127 @@
       "numericEvidence": [
         {
           "metric": "maxAbsMeanSpearman",
-          "sourceRefs": [
-            "artifact:homogeneity-decay/spearman-ic"
-          ],
+          "sourceRefs": ["artifact:homogeneity-decay/spearman-ic"],
           "unit": "spearman_rho",
           "value": 1
         },
         {
           "metric": "meanSpearman_momentum_20",
-          "sourceRefs": [
-            "artifact:homogeneity-decay/spearman-ic"
-          ],
+          "sourceRefs": ["artifact:homogeneity-decay/spearman-ic"],
           "unit": "spearman_rho",
           "value": 1
         },
         {
           "metric": "meanSpearman_reversal_5",
-          "sourceRefs": [
-            "artifact:homogeneity-decay/spearman-ic"
-          ],
+          "sourceRefs": ["artifact:homogeneity-decay/spearman-ic"],
           "unit": "spearman_rho",
           "value": -0.4337103899333862
         },
         {
           "metric": "meanSpearman_volatility_20",
-          "sourceRefs": [
-            "artifact:homogeneity-decay/spearman-ic"
-          ],
+          "sourceRefs": ["artifact:homogeneity-decay/spearman-ic"],
           "unit": "spearman_rho",
           "value": 0.21197338713499114
         },
         {
           "metric": "observations_2023",
-          "sourceRefs": [
-            "artifact:homogeneity-decay/spearman-ic"
-          ],
+          "sourceRefs": ["artifact:homogeneity-decay/spearman-ic"],
           "unit": "count",
           "value": 5
         },
         {
           "metric": "observations_2024",
-          "sourceRefs": [
-            "artifact:homogeneity-decay/spearman-ic"
-          ],
+          "sourceRefs": ["artifact:homogeneity-decay/spearman-ic"],
           "unit": "count",
           "value": 12
         },
         {
           "metric": "observations_2025",
-          "sourceRefs": [
-            "artifact:homogeneity-decay/spearman-ic"
-          ],
+          "sourceRefs": ["artifact:homogeneity-decay/spearman-ic"],
           "unit": "count",
           "value": 12
         },
         {
           "metric": "observations_2026",
-          "sourceRefs": [
-            "artifact:homogeneity-decay/spearman-ic"
-          ],
+          "sourceRefs": ["artifact:homogeneity-decay/spearman-ic"],
           "unit": "count",
           "value": 5
         },
         {
           "metric": "pearsonIc_2023",
-          "sourceRefs": [
-            "artifact:homogeneity-decay/spearman-ic"
-          ],
+          "sourceRefs": ["artifact:homogeneity-decay/spearman-ic"],
           "unit": "ic",
           "value": 0.030969232887227055
         },
         {
           "metric": "pearsonIc_2024",
-          "sourceRefs": [
-            "artifact:homogeneity-decay/spearman-ic"
-          ],
+          "sourceRefs": ["artifact:homogeneity-decay/spearman-ic"],
           "unit": "ic",
           "value": -0.007439887021574512
         },
         {
           "metric": "pearsonIc_2025",
-          "sourceRefs": [
-            "artifact:homogeneity-decay/spearman-ic"
-          ],
+          "sourceRefs": ["artifact:homogeneity-decay/spearman-ic"],
           "unit": "ic",
           "value": 0.09622988036821528
         },
         {
           "metric": "pearsonIc_2026",
-          "sourceRefs": [
-            "artifact:homogeneity-decay/spearman-ic"
-          ],
+          "sourceRefs": ["artifact:homogeneity-decay/spearman-ic"],
           "unit": "ic",
           "value": 0.20762364973948869
         },
         {
           "metric": "rankIcSlope",
-          "sourceRefs": [
-            "artifact:homogeneity-decay/spearman-ic"
-          ],
+          "sourceRefs": ["artifact:homogeneity-decay/spearman-ic"],
           "unit": "rankIc_per_year",
           "value": 0.023622446327996465
         },
         {
           "metric": "rankIc_2023",
-          "sourceRefs": [
-            "artifact:homogeneity-decay/spearman-ic"
-          ],
+          "sourceRefs": ["artifact:homogeneity-decay/spearman-ic"],
           "unit": "rankIc",
           "value": 0.0386705070467836
         },
         {
           "metric": "rankIc_2024",
-          "sourceRefs": [
-            "artifact:homogeneity-decay/spearman-ic"
-          ],
+          "sourceRefs": ["artifact:homogeneity-decay/spearman-ic"],
           "unit": "rankIc",
           "value": -0.023133672096820036
         },
         {
           "metric": "rankIc_2025",
-          "sourceRefs": [
-            "artifact:homogeneity-decay/spearman-ic"
-          ],
+          "sourceRefs": ["artifact:homogeneity-decay/spearman-ic"],
           "unit": "rankIc",
           "value": 0.040212371024477805
         },
         {
           "metric": "rankIc_2026",
-          "sourceRefs": [
-            "artifact:homogeneity-decay/spearman-ic"
-          ],
+          "sourceRefs": ["artifact:homogeneity-decay/spearman-ic"],
           "unit": "rankIc",
           "value": 0.09629664709961863
         },
         {
           "metric": "rebalanceObservations_momentum_20",
-          "sourceRefs": [
-            "artifact:homogeneity-decay/spearman-ic"
-          ],
+          "sourceRefs": ["artifact:homogeneity-decay/spearman-ic"],
           "unit": "count",
           "value": 35
         },
         {
           "metric": "rebalanceObservations_reversal_5",
-          "sourceRefs": [
-            "artifact:homogeneity-decay/spearman-ic"
-          ],
+          "sourceRefs": ["artifact:homogeneity-decay/spearman-ic"],
           "unit": "count",
           "value": 35
         },
         {
           "metric": "rebalanceObservations_volatility_20",
-          "sourceRefs": [
-            "artifact:homogeneity-decay/spearman-ic"
-          ],
+          "sourceRefs": ["artifact:homogeneity-decay/spearman-ic"],
           "unit": "count",
           "value": 35
         },
         {
           "metric": "yearsCovered",
-          "sourceRefs": [
-            "artifact:homogeneity-decay/spearman-ic"
-          ],
+          "sourceRefs": ["artifact:homogeneity-decay/spearman-ic"],
           "unit": "years",
           "value": 2
         }

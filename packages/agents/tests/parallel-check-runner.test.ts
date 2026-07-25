@@ -181,36 +181,25 @@ describe("ParallelAuditCheckRunner", () => {
     ]);
   });
 
-  test("ignores a valid-looking result wrapped in free-form Markdown", async () => {
+  test("does not promote a valid-looking free-form result into the structured channel", async () => {
     const taskRunner: AuditCheckTaskRunner = {
       async run(request) {
         const output = JSON.stringify(checkResult(request.agentId as AuditCheckId));
-        return runtimeResult(request, `\`\`\`json\n${output}\n\`\`\``);
+        return runtimeResult(request, `Bearer sensitive-token\n\`\`\`json\n${output}\n\`\`\``);
       },
     };
 
     const result = await new ParallelAuditCheckRunner(taskRunner).run(strategyRequest());
 
+    expect(result.checks.every((check) => check.conclusion === "insufficient_evidence")).toBe(true);
     expect(
-      result.checks.every((check) => check.conclusion === "insufficient_evidence"),
+      result.checks.every(
+        (check) =>
+          check.missingEvidence[0]?.reason ===
+          "Check agent did not complete one valid submit_check_result call within two attempts.",
+      ),
     ).toBe(true);
-  });
-
-  test("extracts one valid result after a separate calculation object", async () => {
-    const taskRunner: AuditCheckTaskRunner = {
-      async run(request) {
-        const calculation = JSON.stringify({
-          medianVariantSharpe: 1.0763,
-          neighborhoodSharpeRetention: 1.0304,
-        });
-        const finalResult = JSON.stringify(checkResult(request.agentId as AuditCheckId));
-        return runtimeResult(request, `calculation=${calculation}\nfinal=${finalResult}`);
-      },
-    };
-
-    const result = await new ParallelAuditCheckRunner(taskRunner).run(strategyRequest());
-
-    expect(result.checks.every((check) => check.conclusion === "pass")).toBe(true);
+    expect(JSON.stringify(result)).not.toContain("sensitive-token");
   });
 
   test("classifies composite evidence values as a safe frozen-schema failure", async () => {
@@ -238,41 +227,6 @@ describe("ParallelAuditCheckRunner", () => {
         (check) =>
           check.missingEvidence[0]?.reason ===
           "Check agent completed but its JSON did not satisfy the frozen check-result schema.",
-      ),
-    ).toBe(true);
-  });
-
-  test("distinguishes invalid JSON and ambiguous valid results without retaining raw output", async () => {
-    const invalidJsonRunner: AuditCheckTaskRunner = {
-      async run(request) {
-        return runtimeResult(request, "not-json Bearer sensitive-token /Users/private/output");
-      },
-    };
-    const invalidJson = await new ParallelAuditCheckRunner(invalidJsonRunner).run(
-      strategyRequest(),
-    );
-    expect(
-      invalidJson.checks.every(
-        (check) =>
-          check.missingEvidence[0]?.reason ===
-          "Check agent completed but did not return one parseable JSON object.",
-      ),
-    ).toBe(true);
-    expect(JSON.stringify(invalidJson)).not.toMatch(/sensitive-token|\/Users\/private/u);
-
-    const ambiguousRunner: AuditCheckTaskRunner = {
-      async run(request) {
-        const first = JSON.stringify(checkResult(request.agentId as AuditCheckId));
-        const second = JSON.stringify(checkResult(request.agentId as AuditCheckId));
-        return runtimeResult(request, `${first}\n${second}`);
-      },
-    };
-    const ambiguous = await new ParallelAuditCheckRunner(ambiguousRunner).run(strategyRequest());
-    expect(
-      ambiguous.checks.every(
-        (check) =>
-          check.missingEvidence[0]?.reason ===
-          "Check agent completed but returned multiple valid check-result objects.",
       ),
     ).toBe(true);
   });

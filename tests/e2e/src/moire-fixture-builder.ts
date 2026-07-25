@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   planDiscriminativeMoireExperiments,
@@ -40,7 +40,10 @@ const PREPARATION_SCRIPT = fileURLToPath(
     import.meta.url,
   ),
 );
-const DEFAULT_PYTHON = join(ADAPTER_ROOT, ".venv", "bin", "python");
+const DEFAULT_PYTHON =
+  process.platform === "win32"
+    ? join(ADAPTER_ROOT, ".venv", "Scripts", "python.exe")
+    : join(ADAPTER_ROOT, ".venv", "bin", "python");
 
 const FIXTURE_SPEC = {
   specVersion: "1",

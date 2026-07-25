@@ -1,7 +1,5 @@
 import { parseAuditArtifact, type AuditArtifact } from "@assay/contracts/audit-artifact";
 
-const STORAGE_KEY = "assay.audit-history.v1";
-const STORAGE_VERSION = 1;
 const MAX_HISTORY_ITEMS = 25;
 
 export interface StoredAudit {
@@ -10,11 +8,6 @@ export interface StoredAudit {
   savedAt: string;
   artifact: AuditArtifact;
   markdown: string;
-}
-
-interface StoredAuditEnvelope {
-  version: typeof STORAGE_VERSION;
-  items: StoredAudit[];
 }
 
 function parseStoredAudit(value: unknown): StoredAudit {
@@ -39,36 +32,58 @@ function parseStoredAudit(value: unknown): StoredAudit {
   };
 }
 
-export function loadAuditHistory(): StoredAudit[] {
-  try {
-    const serialized = window.localStorage.getItem(STORAGE_KEY);
-    if (!serialized) {
-      return [];
-    }
-    const value: unknown = JSON.parse(serialized);
-    if (typeof value !== "object" || value === null) {
-      return [];
-    }
-    const envelope = value as Record<string, unknown>;
-    if (envelope.version !== STORAGE_VERSION || !Array.isArray(envelope.items)) {
-      return [];
-    }
-    return envelope.items.map(parseStoredAudit).slice(0, MAX_HISTORY_ITEMS);
-  } catch {
-    return [];
+async function requireOk(response: Response): Promise<Response> {
+  if (response.status === 401) {
+    window.location.reload();
+    throw new Error("Authentication required");
   }
+  if (!response.ok) {
+    throw new Error(`Audit history request failed with status ${response.status}`);
+  }
+  return response;
 }
 
-export function saveAuditHistory(items: readonly StoredAudit[]): void {
-  try {
-    const envelope: StoredAuditEnvelope = {
-      version: STORAGE_VERSION,
-      items: items.slice(0, MAX_HISTORY_ITEMS),
-    };
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(envelope));
-  } catch {
-    // Storage can be unavailable in private browsing or when the quota is full.
+export async function loadAuditHistory(signal?: AbortSignal): Promise<StoredAudit[]> {
+  const response = await requireOk(
+    await fetch("/api/audits", {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+      signal,
+    }),
+  );
+  const value: unknown = await response.json();
+  if (typeof value !== "object" || value === null) {
+    throw new Error("Audit history response must be an object");
   }
+  const items = (value as Record<string, unknown>).items;
+  if (!Array.isArray(items)) {
+    throw new Error("Audit history response must contain items");
+  }
+  return items.map(parseStoredAudit).slice(0, MAX_HISTORY_ITEMS);
+}
+
+export async function saveAudit(audit: StoredAudit): Promise<StoredAudit> {
+  const response = await requireOk(
+    await fetch("/api/audits", {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(audit),
+    }),
+  );
+  return parseStoredAudit(await response.json());
+}
+
+export async function deleteAudit(auditId: string): Promise<void> {
+  await requireOk(
+    await fetch(`/api/audits/${encodeURIComponent(auditId)}`, {
+      method: "DELETE",
+      credentials: "include",
+    }),
+  );
 }
 
 export function upsertAuditHistory(

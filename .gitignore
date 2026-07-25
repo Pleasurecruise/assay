@@ -13,6 +13,7 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .cache/
+data/
 services/panda-adapter/user.json
 scripts/probe_results.json
 scripts/probe_results.md

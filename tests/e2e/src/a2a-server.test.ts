@@ -310,6 +310,7 @@ describe("Assay A2A Skeleton over shared HTTP transports", () => {
       expect(response.headers.get("access-control-allow-methods")?.split(/,\s*/)).toEqual([
         "GET",
         "POST",
+        "DELETE",
         "OPTIONS",
       ]);
       expect(

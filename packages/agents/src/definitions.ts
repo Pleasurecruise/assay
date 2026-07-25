@@ -227,7 +227,3 @@ export function createAuditCheckAgentDefinitions(
     };
   });
 }
-
-export const auditCheckAgentDefinitions = createAuditCheckAgentDefinitions();
-
-export const agentDefinitions = auditCheckAgentDefinitions;

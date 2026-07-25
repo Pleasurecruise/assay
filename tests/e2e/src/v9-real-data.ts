@@ -1483,7 +1483,7 @@ export async function runV9RealAcceptance(): Promise<string> {
   process.env.ASSAY_EXPERIMENT_PYTHON = resolve("services/panda-adapter/.venv/bin/python");
 
   const { createProductionA2AApp } = await import("../../../apps/a2a-server/src/production");
-  const { app } = createProductionA2AApp({
+  const { app } = await createProductionA2AApp({
     arkApiKey: apiKey,
     arkApiKeys: supplementalApiKeys,
     arkBaseUrl: process.env.ARK_BASE_URL?.trim() || "https://ark.cn-beijing.volces.com/api/v3",

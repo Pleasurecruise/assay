@@ -4,10 +4,12 @@ import { useState } from "react";
 import type { AuditArtifact, AuditArtifactResult } from "@assay/contracts/audit-artifact";
 
 import { CHECK_DEFINITIONS } from "@/features/audit/config";
-import { conclusionLabel, confidenceLabel } from "@/features/audit/task-utils";
+import { confidenceLabel } from "@/features/audit/task-utils";
+import { checkLabel, conclusionLabel, useI18n } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 export function AuditReport({ artifact, markdown }: { artifact: AuditArtifact; markdown: string }) {
+  const { t } = useI18n();
   const result = artifact.results[0];
   if (!result) {
     return null;
@@ -18,21 +20,23 @@ export function AuditReport({ artifact, markdown }: { artifact: AuditArtifact; m
       <div className="assistant-meta">
         <span className="assistant-mark">A</span>
         <span>ASSAY</span>
-        <span>COMPLETE</span>
+        <span>{t("report.complete")}</span>
       </div>
 
       <header className="report-heading">
         <div>
-          <p>AUDIT ARTIFACT / {artifact.schemaVersion}</p>
+          <p>
+            {t("report.artifact")} / {artifact.schemaVersion}
+          </p>
           <h2>{result.summary}</h2>
         </div>
         <span className="verdict-stamp">{result.verdict}</span>
       </header>
 
       <div className="report-metrics">
-        <ReportMetric label="Confidence" value={confidenceLabel(result.confidence)} />
-        <ReportMetric label="Audit ID" value={artifact.auditId} />
-        <ReportMetric label="Data as of" value={artifact.provenance.dataAsOf} />
+        <ReportMetric label={t("report.confidence")} value={confidenceLabel(result.confidence)} />
+        <ReportMetric label={t("report.auditId")} value={artifact.auditId} />
+        <ReportMetric label={t("report.dataAsOf")} value={artifact.provenance.dataAsOf} />
       </div>
 
       {result.reasonCode ? <AuditEarlyExit result={result} /> : null}
@@ -40,7 +44,7 @@ export function AuditReport({ artifact, markdown }: { artifact: AuditArtifact; m
 
       {result.recoveryConditions.length > 0 ? (
         <section className="report-notes">
-          <h3>Recovery conditions</h3>
+          <h3>{t("report.recovery")}</h3>
           <ul>
             {result.recoveryConditions.map((condition, index) => (
               <li key={`${condition.scope}-${index}`}>
@@ -53,7 +57,7 @@ export function AuditReport({ artifact, markdown }: { artifact: AuditArtifact; m
       ) : null}
 
       <section className="report-notes">
-        <h3>Assumptions and limits</h3>
+        <h3>{t("report.assumptions")}</h3>
         <ul>
           {result.assumptionsAndLimits.map((assumption) => (
             <li key={assumption}>{assumption}</li>
@@ -63,7 +67,7 @@ export function AuditReport({ artifact, markdown }: { artifact: AuditArtifact; m
 
       {markdown ? (
         <details className="full-report">
-          <summary>View full report</summary>
+          <summary>{t("report.full")}</summary>
           <pre>{markdown}</pre>
         </details>
       ) : null}
@@ -85,10 +89,13 @@ function ReportMetric({ label, value }: { label: string; value: string }) {
 }
 
 function AuditEarlyExit({ result }: { result: AuditArtifactResult }) {
+  const { t } = useI18n();
   return (
     <section className="early-exit">
-      <p>HONEST EARLY EXIT / {result.reasonCode}</p>
-      <h3>The request completed without unsupported assumptions.</h3>
+      <p>
+        {t("report.earlyExit")} / {result.reasonCode}
+      </p>
+      <h3>{t("report.earlyExitBody")}</h3>
       {result.missingInformation?.length ? (
         <ul>
           {result.missingInformation.map((missing, index) => (
@@ -104,12 +111,15 @@ function AuditEarlyExit({ result }: { result: AuditArtifactResult }) {
 }
 
 function AuditCheckResults({ result }: { result: AuditArtifactResult }) {
+  const { t } = useI18n();
   return (
     <section className="check-results" aria-labelledby="check-results-title">
       <div className="section-title">
-        <span>FIVE INDEPENDENT CHECKS</span>
+        <span>{t("report.checks")}</span>
         <b id="check-results-title">
-          {result.checks.filter((check) => check.conclusion === "pass").length}/5 clear
+          {t("report.clear", {
+            count: result.checks.filter((check) => check.conclusion === "pass").length,
+          })}
         </b>
       </div>
       {result.checks.map((check, index) => {
@@ -122,9 +132,9 @@ function AuditCheckResults({ result }: { result: AuditArtifactResult }) {
             <span className="check-icon">{CheckIcon ? <CheckIcon /> : null}</span>
             <div className="check-result__copy">
               <div>
-                <h3>{definition?.label ?? check.id}</h3>
+                <h3>{definition ? checkLabel(t, definition.id) : check.id}</h3>
                 <span className={cn("conclusion", `conclusion--${check.conclusion}`)}>
-                  {conclusionLabel(check.conclusion)}
+                  {conclusionLabel(t, check.conclusion)}
                 </span>
               </div>
               {check.evidence.length > 0 ? (
@@ -139,10 +149,7 @@ function AuditCheckResults({ result }: { result: AuditArtifactResult }) {
                   ))}
                 </ul>
               ) : (
-                <p>
-                  {check.missingEvidence[0]?.reason ??
-                    "No reproducible evidence was returned for this check."}
-                </p>
+                <p>{check.missingEvidence[0]?.reason ?? t("report.noEvidence")}</p>
               )}
             </div>
             <b className="check-confidence">{confidenceLabel(check.confidence)}</b>
@@ -154,6 +161,7 @@ function AuditCheckResults({ result }: { result: AuditArtifactResult }) {
 }
 
 function CopyReportButton({ value }: { value: string }) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
 
   const copy = async () => {
@@ -164,7 +172,7 @@ function CopyReportButton({ value }: { value: string }) {
 
   return (
     <button
-      aria-label="Copy report"
+      aria-label={t("report.copy")}
       className="icon-button"
       onClick={() => void copy()}
       type="button"
