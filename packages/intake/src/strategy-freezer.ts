@@ -1,5 +1,6 @@
 import {
   AUDIT_ARTIFACT_SCHEMA_VERSION,
+  AUDIT_CHECK_HARD_DEADLINE_MS,
   AUDIT_CHECK_IDS,
   type AuditCheckId,
   type CanonicalStrategySpec,
@@ -39,7 +40,7 @@ export interface FreezeStrategyOptions {
 }
 
 const DEFAULT_CHECK_BUDGET: Readonly<CheckBudget> = Object.freeze({
-  timeoutMs: 120_000,
+  timeoutMs: AUDIT_CHECK_HARD_DEADLINE_MS,
   maxVariants: 8,
 });
 
@@ -48,11 +49,11 @@ export const SKELETON_CHECK_PLAN: CheckPlan = Object.freeze({
     ...Object.fromEntries(AUDIT_CHECK_IDS.map((checkId) => [checkId, DEFAULT_CHECK_BUDGET])),
     // Sprint S1b only: these values mirror the deterministic stdio experiments.
     "param-robustness": Object.freeze({
-      timeoutMs: 120_000,
+      timeoutMs: AUDIT_CHECK_HARD_DEADLINE_MS,
       maxVariants: 15,
     }),
     "cost-stress": Object.freeze({
-      timeoutMs: 120_000,
+      timeoutMs: AUDIT_CHECK_HARD_DEADLINE_MS,
       maxVariants: 3,
     }),
   }) as Readonly<Record<AuditCheckId, CheckBudget>>,

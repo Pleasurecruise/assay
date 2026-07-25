@@ -33,11 +33,16 @@ import { ModelCallGate } from "./model-call-gate";
 
 const DEFAULT_MAX_RUN_MS = 19 * 60 * 1_000;
 const DEFAULT_MAX_CONCURRENT_MODEL_CALLS = 3;
+const AUDIT_SUBMISSION_REMINDER =
+  "The required structured submission is still missing. Use only the evidence already returned " +
+  "by your approved tool. Call submit_check_result now; do not emit ordinary text or call " +
+  "another evidence tool.";
 
 export interface AgentRuntimeOptions {
   model: Model;
   registry: AgentRegistry;
   getApiKey?: AgentOptions["getApiKey"];
+  modelApiKeys?: readonly string[];
   toolPolicy?: ToolPolicy;
   maxRunMs?: number;
   maxConcurrentModelCalls?: number;
@@ -125,12 +130,26 @@ function safeSubmissionDiagnostic(value: unknown, depth = 0): unknown {
   return `[${typeof value}]`;
 }
 
-function createGatedStream(gate: ModelCallGate): StreamFn {
+function createGatedStream(
+  gate: ModelCallGate,
+  modelApiKeys: readonly string[] | undefined,
+): StreamFn {
   return async (...arguments_) => {
-    const release = await gate.acquire();
+    const lease = await gate.acquire();
     const outer = createAssistantMessageEventStream();
     try {
-      const inner = streamSimple(...arguments_);
+      const streamArguments: Parameters<typeof streamSimple> =
+        modelApiKeys === undefined
+          ? arguments_
+          : [
+              arguments_[0],
+              arguments_[1],
+              {
+                ...arguments_[2],
+                apiKey: modelApiKeys[lease.slotId],
+              },
+            ];
+      const inner = streamSimple(...streamArguments);
       void (async () => {
         try {
           for await (const event of inner) {
@@ -142,12 +161,12 @@ function createGatedStream(gate: ModelCallGate): StreamFn {
         } catch (error) {
           outer.fail(error);
         } finally {
-          release();
+          lease.release();
         }
       })();
       return outer;
     } catch (error) {
-      release();
+      lease.release();
       throw error;
     }
   };
@@ -157,6 +176,7 @@ export class AgentRuntime {
   readonly #model: Model;
   readonly #registry: AgentRegistry;
   readonly #getApiKey?: AgentOptions["getApiKey"];
+  readonly #modelApiKeys?: readonly string[];
   readonly #toolPolicy: ToolPolicy;
   readonly #maxRunMs: number;
   readonly #modelCallGate: ModelCallGate;
@@ -165,11 +185,35 @@ export class AgentRuntime {
   constructor(options: AgentRuntimeOptions) {
     this.#model = options.model;
     this.#registry = options.registry;
+    const modelApiKeys =
+      options.modelApiKeys === undefined
+        ? undefined
+        : [
+            ...new Set(
+              options.modelApiKeys.map((apiKey) => apiKey.trim()).filter((apiKey) => apiKey.length > 0),
+            ),
+          ];
+    if (modelApiKeys !== undefined && modelApiKeys.length === 0) {
+      throw new Error("modelApiKeys must contain at least one non-empty API key");
+    }
+    if (modelApiKeys !== undefined && options.getApiKey !== undefined) {
+      throw new Error("modelApiKeys and getApiKey cannot be configured together");
+    }
+    if (
+      modelApiKeys !== undefined &&
+      options.maxConcurrentModelCalls !== undefined &&
+      options.maxConcurrentModelCalls !== modelApiKeys.length
+    ) {
+      throw new Error("maxConcurrentModelCalls must equal the modelApiKeys length");
+    }
     this.#getApiKey = options.getApiKey;
+    this.#modelApiKeys = modelApiKeys;
     this.#toolPolicy = options.toolPolicy ?? new ToolPolicy();
     this.#maxRunMs = options.maxRunMs ?? DEFAULT_MAX_RUN_MS;
     this.#modelCallGate = new ModelCallGate(
-      options.maxConcurrentModelCalls ?? DEFAULT_MAX_CONCURRENT_MODEL_CALLS,
+      modelApiKeys?.length ??
+        options.maxConcurrentModelCalls ??
+        DEFAULT_MAX_CONCURRENT_MODEL_CALLS,
     );
     this.#onEvent = options.onEvent;
 
@@ -222,7 +266,13 @@ export class AgentRuntime {
     const auditSubmissionTool = tools.find(
       (tool) => tool.name === AUDIT_CHECK_SUBMISSION_TOOL_NAME,
     )?.name;
-    const agent = new Agent({
+    const auditSubmissionReminder: AgentMessage = {
+      role: "user",
+      content: [{ type: "text", text: AUDIT_SUBMISSION_REMINDER }],
+      timestamp: Date.now(),
+    };
+    let agent: Agent;
+    agent = new Agent({
       initialState: {
         systemPrompt: [...definition.systemPrompt],
         model: this.#model,
@@ -234,14 +284,48 @@ export class AgentRuntime {
       // OpenAI's optional reasoning.summary request field.
       hideThinkingSummary: true,
       getApiKey: this.#getApiKey,
-      streamFn: createGatedStream(this.#modelCallGate),
+      streamFn: createGatedStream(this.#modelCallGate, this.#modelApiKeys),
       getToolChoice: () =>
         auditSubmissionTool !== undefined &&
         successfulRunExperimentCallCount === 1 &&
         successfulAuditSubmissionCount === 0 &&
         auditSubmissionAttemptCount < MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS
-          ? { type: "tool", name: auditSubmissionTool }
+          ? {
+              soft: true,
+              id: `audit-submission:${taskId}`,
+              toolName: auditSubmissionTool,
+              reminder: [auditSubmissionReminder],
+            }
           : undefined,
+      // Advance the protocol state inside the agent loop, before the framework
+      // emits tool_execution_end. Event subscribers consume a separate async
+      // stream and can otherwise lose a race with the next getToolChoice call.
+      afterToolCall: ({ toolCall, isError }) => {
+        if (toolCall.name === AUDIT_CHECK_SUBMISSION_TOOL_NAME) {
+          const pending = pendingAuditSubmissions.get(toolCall.id);
+          if (
+            isError !== true &&
+            pending !== undefined &&
+            submittedAuditResult === undefined
+          ) {
+            submittedAuditResult = pending;
+            successfulAuditSubmissionCount += 1;
+          }
+          pendingAuditSubmissions.delete(toolCall.id);
+          if (
+            successfulAuditSubmissionCount === 1 ||
+            (isError === true &&
+              auditSubmissionAttemptCount >= MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS)
+          ) {
+            agent.abort(TERMINAL_TOOL_RESULT_ABORT_REASON);
+          }
+        } else if (
+          TRUSTED_SPEC_TOOL_NAMES.some((name) => name === toolCall.name) &&
+          isError !== true
+        ) {
+          successfulRunExperimentCallCount += 1;
+        }
+      },
       beforeToolCall: async ({ toolCall, args }) => {
         if (toolCall.name === AUDIT_CHECK_SUBMISSION_TOOL_NAME) {
           auditSubmissionAttemptCount += 1;
@@ -359,30 +443,6 @@ export class AgentRuntime {
           });
           break;
         case "tool_execution_end":
-          if (event.toolName === AUDIT_CHECK_SUBMISSION_TOOL_NAME) {
-            const pending = pendingAuditSubmissions.get(event.toolCallId);
-            if (
-              event.isError !== true &&
-              pending !== undefined &&
-              submittedAuditResult === undefined
-            ) {
-              submittedAuditResult = pending;
-              successfulAuditSubmissionCount += 1;
-            }
-            pendingAuditSubmissions.delete(event.toolCallId);
-            if (
-              successfulAuditSubmissionCount === 1 ||
-              (event.isError === true &&
-                auditSubmissionAttemptCount >= MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS)
-            ) {
-              agent.abort(TERMINAL_TOOL_RESULT_ABORT_REASON);
-            }
-          } else if (
-            TRUSTED_SPEC_TOOL_NAMES.some((name) => name === event.toolName) &&
-            event.isError !== true
-          ) {
-            successfulRunExperimentCallCount += 1;
-          }
           void emit({
             type: "tool.completed",
             agentId: definition.id,

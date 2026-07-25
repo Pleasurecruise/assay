@@ -66,6 +66,10 @@ export function createSubmitCheckResultTool(): AgentTool {
     lenientArgValidation: true,
     approval: "read",
     intent: "omit",
+    // A model may emit more than one finalizer call in one assistant message.
+    // Serialize the batch so the first accepted call reserves the only result
+    // slot before a sibling call reaches the runtime guard.
+    concurrency: "exclusive",
     async execute() {
       return {
         content: [
