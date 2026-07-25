@@ -20,6 +20,7 @@ import {
   type ExecutionErrorLogEntry,
 } from "../src/executor";
 import type { ExecutionTimelineEvent, ExecutionTimelineStage } from "../src/execution-timeline";
+import { LocalDataPackageError } from "../src/local-data-package";
 
 const TEST_DATA_REF =
   "assay-local-data-v1:audit_test:g01:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -559,6 +560,46 @@ describe("AssayAgentExecutor", () => {
           check.missingEvidence.length === 0,
       ),
     ).toBe(true);
+  });
+
+  test("fails the Task without an Artifact when local package resolution fails", async () => {
+    const packageError = new LocalDataPackageError("registry_unavailable");
+    const events: AgentExecutionEvent[] = [];
+    const logs: ExecutionErrorLogEntry[] = [];
+    let runnerCalled = false;
+    const intake = new StrategyIntake({
+      parser: { parse: async () => completeCandidate },
+      dataAsOf: "2026-07-23",
+      capabilitySnapshotId: "local-data-package:test",
+      codeRevision: "test-revision",
+    });
+    const executor = new AssayAgentExecutor({
+      intake,
+      dataResolver: {
+        resolve: async () => {
+          throw packageError;
+        },
+      },
+      runner: {
+        run: async () => {
+          runnerCalled = true;
+          throw new Error("Runner must not execute without a verified local package");
+        },
+      },
+      artifactStore: new InMemoryAuditArtifactStore(),
+      dataAsOf: "2026-07-23",
+      codeRevision: "test-revision",
+      now: () => new Date("2026-07-24T00:00:00Z"),
+      executionErrorLogger: (entry) => logs.push(entry),
+    });
+
+    await executor.execute(
+      requestContext(userMessage("Audit the complete strategy")),
+      recordingEventBus(events, []),
+    );
+
+    expect(runnerCalled).toBe(false);
+    expectSafeFailedTerminalState(events, logs, packageError, "local_data_resolve");
   });
 
   test("publishes a credential-safe FAILED terminal status when intake throws", async () => {

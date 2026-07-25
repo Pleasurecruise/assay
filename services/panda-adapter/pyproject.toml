@@ -1,7 +1,7 @@
 [project]
 name = "assay-panda-adapter"
 version = "0.1.0"
-description = "Guarded PandaData SDK boundary for Assay"
+description = "Offline PandaData preparation and local audit-computation boundary for Assay"
 requires-python = ">=3.12,<3.13"
 dependencies = ["panda_data==0.0.12"]
 

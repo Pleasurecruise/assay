@@ -15,8 +15,6 @@ __pycache__/
 .cache/
 data/
 services/panda-adapter/user.json
-scripts/probe_results.json
-scripts/probe_results.md
 
 # Local-only competition reference material (contains plaintext event tokens) — never commit
 reference/

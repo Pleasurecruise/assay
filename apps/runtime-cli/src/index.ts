@@ -8,56 +8,40 @@ import {
   parseStrategySpec,
   type AuditCheckId,
 } from "@assay/contracts";
-import { type GeneratedProvider, getBundledModels } from "@oh-my-pi/pi-catalog";
 import { buildModel } from "@oh-my-pi/pi-catalog/build";
 
-const provider = process.env.ASSAY_MODEL_PROVIDER ?? "deepseek";
-const modelId =
-  process.env.ASSAY_MODEL_ID ??
-  (provider === "volcengine-ark" ? process.env.ARK_MODEL_DEEPSEEK : undefined) ??
-  "deepseek-chat";
-const apiKey =
-  process.env.ASSAY_MODEL_API_KEY ??
-  (provider === "deepseek"
-    ? process.env.DEEPSEEK_API_KEY
-    : provider === "volcengine-ark"
-      ? process.env.ARK_API_KEY
-      : undefined);
+const modelId = process.env.ARK_MODEL_DEEPSEEK?.trim();
+const apiKey = process.env.ARK_API_KEY?.trim();
 const input = process.argv.slice(2).join(" ").trim();
 
 if (!input) {
   throw new Error('Usage: bun run runtime -- "your research task"');
 }
 if (!apiKey) {
-  throw new Error(
-    "Missing ASSAY_MODEL_API_KEY (the selected provider's standard key is also accepted)",
-  );
+  throw new Error("ARK_API_KEY is required");
+}
+if (!modelId) {
+  throw new Error("ARK_MODEL_DEEPSEEK is required");
 }
 
-const model =
-  provider === "volcengine-ark"
-    ? buildModel({
-        id: modelId,
-        requestModelId: modelId,
-        name: "Volcano Ark smoke model",
-        api: "openai-responses",
-        provider: "volcengine-ark",
-        baseUrl: process.env.ARK_BASE_URL ?? "https://ark.cn-beijing.volces.com/api/v3",
-        reasoning: true,
-        input: ["text"],
-        cost: {
-          input: 0,
-          output: 0,
-          cacheRead: 0,
-          cacheWrite: 0,
-        },
-        contextWindow: 64_000,
-        maxTokens: 8_192,
-      })
-    : getBundledModels(provider as GeneratedProvider).find((candidate) => candidate.id === modelId);
-if (model === undefined) {
-  throw new Error(`Model "${provider}/${modelId}" is not available to the runtime CLI`);
-}
+const model = buildModel({
+  id: modelId,
+  requestModelId: modelId,
+  name: "Volcano Ark smoke model",
+  api: "openai-responses",
+  provider: "volcengine-ark",
+  baseUrl: process.env.ARK_BASE_URL ?? "https://ark.cn-beijing.volces.com/api/v3",
+  reasoning: true,
+  input: ["text"],
+  cost: {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+  },
+  contextWindow: 64_000,
+  maxTokens: 8_192,
+});
 
 const agentId = process.env.ASSAY_AGENT_ID ?? "param-robustness";
 if (!AUDIT_CHECK_IDS.some((candidate) => candidate === agentId)) {

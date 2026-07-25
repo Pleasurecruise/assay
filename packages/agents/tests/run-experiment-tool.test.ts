@@ -1,10 +1,12 @@
 import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import type { AgentTool } from "@assay/agent-runtime";
 import { COST_STRESS_SOURCE_REF, PARAMETER_GRID_SOURCE_REF } from "@assay/contracts";
 import { describe, expect, test } from "vitest";
 import { createAuditCheckAgentDefinitions } from "../src/definitions";
 import {
   createRunExperimentTool,
+  pythonModuleProcessConfig,
   runExperimentSubprocess,
   type ExperimentProcessConfig,
   type RunExperimentRequest,
@@ -28,6 +30,28 @@ function contentText(
 }
 
 describe("run_experiment tool", () => {
+  test("uses cross-platform uv project execution unless an interpreter is pinned", () => {
+    expect(pythonModuleProcessConfig("panda_adapter.experiment_stdio", {})).toEqual({
+      command: "uv",
+      args: [
+        "run",
+        "--project",
+        resolve("services/panda-adapter"),
+        "python",
+        "-m",
+        "panda_adapter.experiment_stdio",
+      ],
+    });
+    expect(
+      pythonModuleProcessConfig("panda_adapter.experiment_stdio", {
+        ASSAY_EXPERIMENT_PYTHON: "C:\\Python\\python.exe",
+      }),
+    ).toEqual({
+      command: "C:\\Python\\python.exe",
+      args: ["-m", "panda_adapter.experiment_stdio"],
+    });
+  });
+
   test("runs the host-only as-of, no-cost claim baseline without variants", async () => {
     const result = await runExperimentSubprocess(mockProcess, {
       kind: "baseline",

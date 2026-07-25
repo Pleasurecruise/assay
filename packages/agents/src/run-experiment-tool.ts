@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { resolve } from "node:path";
 import type { AgentDefinition } from "@assay/agent-runtime";
 import { COST_STRESS_SOURCE_REF, PARAMETER_GRID_SOURCE_REF } from "@assay/contracts";
 import { assertHostDataRef, type HostDataRefRequest } from "./data-ref";
@@ -380,11 +381,34 @@ export async function runExperimentSubprocess(
   });
 }
 
-export function defaultExperimentProcessConfig(): ExperimentProcessConfig {
+export function pythonModuleProcessConfig(
+  moduleName: string,
+  environment: NodeJS.ProcessEnv = process.env,
+): ExperimentProcessConfig {
+  const configuredPython = environment.ASSAY_EXPERIMENT_PYTHON?.trim();
+  if (configuredPython !== undefined && configuredPython.length > 0) {
+    return {
+      command: configuredPython,
+      args: ["-m", moduleName],
+    };
+  }
   return {
-    command: process.env.ASSAY_EXPERIMENT_PYTHON ?? "python3",
-    args: ["-m", process.env.ASSAY_EXPERIMENT_MODULE ?? "panda_adapter.experiment_stdio"],
+    command: environment.ASSAY_UV_COMMAND?.trim() || "uv",
+    args: [
+      "run",
+      "--project",
+      resolve(environment.ASSAY_PANDA_ADAPTER_PROJECT?.trim() || "services/panda-adapter"),
+      "python",
+      "-m",
+      moduleName,
+    ],
   };
+}
+
+export function defaultExperimentProcessConfig(): ExperimentProcessConfig {
+  return pythonModuleProcessConfig(
+    process.env.ASSAY_EXPERIMENT_MODULE ?? "panda_adapter.experiment_stdio",
+  );
 }
 
 function parametersFor(kind: AgentExperimentKind): AgentTool["parameters"] {

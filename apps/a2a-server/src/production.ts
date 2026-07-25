@@ -16,7 +16,7 @@ import { InMemoryAuditArtifactStore } from "./artifact-store";
 import { createAssayAuth } from "./auth";
 import { SubprocessClaimReproducer } from "./claim-reproducer";
 import { AssayDatabase } from "./database";
-import { LocalDataPackageResolver } from "./local-data-package";
+import { LocalDataPackageError, LocalDataPackageResolver } from "./local-data-package";
 import { createAssayA2AApp, type AssayA2AApp } from "./server";
 
 export { readProductionConfig, type ProductionA2AConfig } from "./configuration";
@@ -125,16 +125,9 @@ export async function createProductionA2AApp(config: ProductionA2AConfig): Promi
     config.auditOutputRoot,
     config.localDataPackageRoot,
   );
-  const auditApiKeys = [
-    ...new Set(
-      [config.arkApiKey, ...(config.arkApiKeys ?? [])]
-        .map((apiKey) => apiKey.trim())
-        .filter((apiKey) => apiKey.length > 0),
-    ),
-  ].slice(0, 4);
   const runtime = new AgentRuntime({
     model,
-    modelApiKeys: auditApiKeys,
+    modelApiKeys: [config.arkApiKey],
     registry: new AgentRegistry(
       createAuditCheckAgentDefinitions({
         experimentProcess,
@@ -156,7 +149,15 @@ export async function createProductionA2AApp(config: ProductionA2AConfig): Promi
   const dataResolver = new LocalDataPackageResolver({
     root: config.localDataPackageRoot,
   });
-  await dataResolver.validateRegistry();
+  let dataPackagesConfigured = false;
+  try {
+    await dataResolver.validateRegistry();
+    dataPackagesConfigured = true;
+  } catch (error) {
+    if (!(error instanceof LocalDataPackageError)) {
+      throw error;
+    }
+  }
   const executor = new AssayAgentExecutor({
     intake,
     runner,
@@ -179,7 +180,7 @@ export async function createProductionA2AApp(config: ProductionA2AConfig): Promi
       dataProvider: "LocalDataPackage",
       dataTools: [],
       backtester: "assay-backtester@1",
-      dataPackagesConfigured: true,
+      dataPackagesConfigured,
     },
   });
 }

@@ -11,10 +11,7 @@ import type {
   MoireExperimentExecutionContext,
   MoireExperimentExecutor,
 } from "./parallel-check-runner";
-import {
-  defaultExperimentProcessConfig,
-  type ExperimentProcessConfig,
-} from "./run-experiment-tool";
+import { pythonModuleProcessConfig, type ExperimentProcessConfig } from "./run-experiment-tool";
 
 const DEFAULT_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
 const M1_RESULT_KEYS = [
@@ -177,11 +174,7 @@ function trustedSpec(context: MoireExperimentExecutionContext): StrategySpec {
 }
 
 export function defaultMoireProcessConfig(): ExperimentProcessConfig {
-  const experiment = defaultExperimentProcessConfig();
-  return {
-    ...experiment,
-    args: ["-m", process.env.ASSAY_MOIRE_MODULE ?? "panda_adapter.moire_stdio"],
-  };
+  return pythonModuleProcessConfig(process.env.ASSAY_MOIRE_MODULE ?? "panda_adapter.moire_stdio");
 }
 
 export class SubprocessMoireExperimentExecutor implements MoireExperimentExecutor {

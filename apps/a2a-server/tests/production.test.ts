@@ -1,6 +1,10 @@
-import { resolve } from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import type { Server } from "node:http";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 import { DEFAULT_ASSAY_A2A_CORS_ORIGINS, readProductionConfig } from "../src/configuration";
+import { createProductionA2AApp } from "../src/production";
 
 const BASE_ENVIRONMENT: NodeJS.ProcessEnv = {
   ARK_API_KEY: "test-key",
@@ -72,16 +76,6 @@ describe("readProductionConfig", () => {
     ).toThrow("ASSAY_A2A_BEARER_TOKEN must contain at least 32 characters");
   });
 
-  test("accepts a deduplicated supplemental Ark credential pool", () => {
-    const config = readProductionConfig({
-      ...BASE_ENVIRONMENT,
-      ARK_API_KEYS: "second-key, third-key, second-key",
-    });
-
-    expect(config.arkApiKey).toBe("test-key");
-    expect(config.arkApiKeys).toEqual(["second-key", "third-key"]);
-  });
-
   test("requires a fixed data snapshot date", () => {
     const environment = { ...BASE_ENVIRONMENT };
     delete environment.ASSAY_DATA_AS_OF;
@@ -109,5 +103,61 @@ describe("readProductionConfig", () => {
         ASSAY_A2A_CORS_ORIGIN: "https://assay.example.com/app",
       }),
     ).toThrow("ASSAY_A2A_CORS_ORIGIN must contain only scheme, host, and optional port");
+  });
+
+  test("starts the A2A transport when the local package registry is absent", async () => {
+    const root = await mkdtemp(join(tmpdir(), "assay-missing-registry-"));
+    let server: Server | undefined;
+    try {
+      const service = await createProductionA2AApp({
+        arkApiKey: "test-key",
+        arkBaseUrl: "https://ark.example.test/api/v3",
+        arkModel: "ep-test-deepseek",
+        dataAsOf: "2026-07-23",
+        capabilitySnapshotId: "local-data-package:test",
+        codeRevision: "test-revision",
+        publicUrl: "http://127.0.0.1:3001",
+        corsOrigins: ["http://localhost:5173"],
+        localDataPackageRoot: join(root, "missing-registry"),
+        auditOutputRoot: join(root, "audit-output"),
+      });
+      server = service.app.listen(0, "127.0.0.1");
+      await new Promise<void>((resolveListen, rejectListen) => {
+        server?.once("listening", resolveListen);
+        server?.once("error", rejectListen);
+      });
+      const address = server.address();
+      if (address === null || typeof address === "string") {
+        throw new Error("test server did not expose a TCP port");
+      }
+      const origin = `http://127.0.0.1:${String(address.port)}`;
+      const [health, readiness, capabilities, card] = await Promise.all([
+        fetch(`${origin}/healthz`),
+        fetch(`${origin}/readyz`),
+        fetch(`${origin}/capabilities`),
+        fetch(`${origin}/.well-known/agent-card.json`),
+      ]);
+
+      expect(health.status).toBe(200);
+      expect(await health.json()).toEqual({ status: "ok" });
+      expect(readiness.status).toBe(503);
+      expect(await readiness.json()).toMatchObject({
+        status: "not_ready",
+        checks: { a2a: true, model: true, localDataPackages: false },
+      });
+      expect(capabilities.status).toBe(200);
+      expect(await capabilities.json()).toMatchObject({
+        dataProvider: "LocalDataPackage",
+        dataPackagesConfigured: false,
+      });
+      expect(card.status).toBe(200);
+    } finally {
+      if (server?.listening) {
+        await new Promise<void>((resolveClose, rejectClose) => {
+          server?.close((error) => (error ? rejectClose(error) : resolveClose()));
+        });
+      }
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
