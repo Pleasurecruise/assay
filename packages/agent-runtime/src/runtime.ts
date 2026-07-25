@@ -33,7 +33,7 @@ import { ModelCallGate } from "./model-call-gate";
 
 const DEFAULT_MAX_RUN_MS = 19 * 60 * 1_000;
 const DEFAULT_MAX_CONCURRENT_MODEL_CALLS = 3;
-const AUDIT_SUBMISSION_RECOVERY_PROMPT =
+const AUDIT_SUBMISSION_REMINDER =
   "The required structured submission is still missing. Use only the evidence already returned " +
   "by your approved tool. Call submit_check_result now; do not emit ordinary text or call " +
   "another evidence tool.";
@@ -266,6 +266,11 @@ export class AgentRuntime {
     const auditSubmissionTool = tools.find(
       (tool) => tool.name === AUDIT_CHECK_SUBMISSION_TOOL_NAME,
     )?.name;
+    const auditSubmissionReminder: AgentMessage = {
+      role: "user",
+      content: [{ type: "text", text: AUDIT_SUBMISSION_REMINDER }],
+      timestamp: Date.now(),
+    };
     let agent: Agent;
     agent = new Agent({
       initialState: {
@@ -285,7 +290,12 @@ export class AgentRuntime {
         successfulRunExperimentCallCount === 1 &&
         successfulAuditSubmissionCount === 0 &&
         auditSubmissionAttemptCount < MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS
-          ? { type: "tool", name: auditSubmissionTool }
+          ? {
+              soft: true,
+              id: `audit-submission:${taskId}`,
+              toolName: auditSubmissionTool,
+              reminder: [auditSubmissionReminder],
+            }
           : undefined,
       // Advance the protocol state inside the agent loop, before the framework
       // emits tool_execution_end. Event subscribers consume a separate async
@@ -403,14 +413,10 @@ export class AgentRuntime {
       },
     });
 
-    let agentStartedEventEmitted = false;
     const unsubscribe = agent.subscribe((event) => {
       switch (event.type) {
         case "agent_start":
-          if (!agentStartedEventEmitted) {
-            agentStartedEventEmitted = true;
-            void emit({ type: "agent.started", agentId: definition.id });
-          }
+          void emit({ type: "agent.started", agentId: definition.id });
           break;
         case "message_update":
           if (event.assistantMessageEvent.type === "text_delta") {
@@ -469,24 +475,7 @@ export class AgentRuntime {
     });
 
     try {
-      const runAgentProtocol = async (): Promise<void> => {
-        await agent.prompt(request.input);
-        if (
-          auditSubmissionTool !== undefined &&
-          agent.state.error === undefined &&
-          successfulRunExperimentCallCount === 1 &&
-          successfulAuditSubmissionCount === 0 &&
-          auditSubmissionAttemptCount < MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS &&
-          options.signal?.aborted !== true
-        ) {
-          // Some OpenAI-compatible providers occasionally finish a text turn
-          // even when a hard tool choice was requested. Give the same agent one
-          // bounded protocol-recovery turn; the model still owns every result
-          // field and the two-attempt tool limit remains unchanged.
-          await agent.prompt(AUDIT_SUBMISSION_RECOVERY_PROMPT);
-        }
-      };
-      await Promise.race([runAgentProtocol(), deadline]);
+      await Promise.race([agent.prompt(request.input), deadline]);
       output ||= lastAssistantText(agent.state.messages);
 
       if (agent.state.error) {
