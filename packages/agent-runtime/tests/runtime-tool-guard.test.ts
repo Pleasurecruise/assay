@@ -18,7 +18,7 @@ const strategySpec = {
   window: { start: "20230101", end: "20251231" },
 } as const satisfies StrategySpec;
 const dataRef =
-  "assay-local-data-v1:audit_test:g01:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  "assay-local-data-v1:audit_test:test-package:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 function specHash(value: StrategySpec): string {
   return hashStrategySpec(canonicalizeStrategySpec(value));

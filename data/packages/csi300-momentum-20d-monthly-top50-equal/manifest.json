@@ -1,0 +1,150 @@
+{
+  "schemaVersion": "assay-case-data-package-v1",
+  "packageId": "csi300-momentum-20d-monthly-top50-equal",
+  "generatedAt": "2026-07-24T17:32:38.316413+00:00",
+  "strategyKey": "sha256-a9d796047db6ccb208f3d82df70287afbb50ddca1fd544f67718155a4dc1bddb",
+  "universe": {
+    "indexSymbol": "000300.SH",
+    "membershipMode": "point_in_time"
+  },
+  "window": {
+    "start": "20230723",
+    "end": "20260723"
+  },
+  "coverage": {
+    "start": "2023-07-23",
+    "end": "2026-07-23",
+    "asOf": "2026-07-23"
+  },
+  "state": "degraded",
+  "assumptions": [
+    "111 identity-bound single-key get_factor(close) gaps were filled from get_stock_daily_post(close) only after both adjacent trading-date prices matched the primary source.",
+    "The final PIT observation is a terminal as-of point, not a completed month-end rebalance signal.",
+    "Historical constituents could not be fully cached within the stage budget; availability correction must use remove-only mode.",
+    "CSI 300 index daily data is unavailable; regime analysis must use the disclosed constituent equal-weight proxy.",
+    "ratio_pe_ttm and market_cap are unavailable; homogeneity analysis must use only the three self-built classic factors."
+  ],
+  "datasets": {
+    "equityDaily": {
+      "status": "ready",
+      "path": "datasets/equity-daily.csv",
+      "mode": "factor-close-with-validated-official-post-fallback",
+      "reasonCode": null,
+      "assumptions": [
+        "111 identity-bound single-key get_factor(close) gaps were filled from get_stock_daily_post(close) only after both adjacent trading-date prices matched the primary source."
+      ],
+      "statistics": {
+        "rowCount": 216688,
+        "symbols": 300,
+        "tradingDates": 727
+      },
+      "integrity": {
+        "kind": "file",
+        "sha256": "sha256-27779f08aac594467eb16be723a2ac0e743042fddb078e4ca704ea6484dd9382",
+        "files": 1,
+        "bytes": 7548240
+      }
+    },
+    "indexMembership": {
+      "status": "ready",
+      "path": "datasets/index-membership/000300.SH",
+      "mode": "point_in_time",
+      "reasonCode": null,
+      "assumptions": [],
+      "statistics": {
+        "rowCount": 11112,
+        "symbols": 379,
+        "tradingDates": 37
+      },
+      "integrity": {
+        "kind": "tree",
+        "sha256": "sha256-526c31d78f1d28b5fd0e8cbb5e76c5a900a0647dd9974732b104051ddc87cb7d",
+        "files": 37,
+        "bytes": 143700
+      }
+    },
+    "historicalMemberDaily": {
+      "status": "degraded",
+      "path": null,
+      "mode": "remove_only",
+      "reasonCode": "HISTORICAL_MEMBER_DATA_UNAVAILABLE",
+      "assumptions": [
+        "Historical constituents could not be fully cached within the stage budget; availability correction must use remove-only mode."
+      ],
+      "statistics": {
+        "rowCount": 0,
+        "symbols": 0,
+        "tradingDates": 0
+      },
+      "integrity": null
+    },
+    "indexDaily": {
+      "status": "degraded",
+      "path": null,
+      "mode": "constituent_proxy",
+      "reasonCode": "INDEX_DAILY_UNAVAILABLE",
+      "assumptions": [
+        "CSI 300 index daily data is unavailable; regime analysis must use the disclosed constituent equal-weight proxy."
+      ],
+      "statistics": {
+        "rowCount": 0,
+        "symbols": 0,
+        "tradingDates": 0
+      },
+      "integrity": null
+    },
+    "comparatorFactors": {
+      "status": "degraded",
+      "path": null,
+      "mode": "classic_only",
+      "reasonCode": "COMPARATOR_FACTORS_UNAVAILABLE",
+      "assumptions": [
+        "ratio_pe_ttm and market_cap are unavailable; homogeneity analysis must use only the three self-built classic factors."
+      ],
+      "statistics": {
+        "rowCount": 0,
+        "symbols": 0,
+        "tradingDates": 0
+      },
+      "integrity": null
+    }
+  },
+  "provenance": {
+    "sourceSummary": {
+      "path": "provenance/source-summary.json",
+      "integrity": {
+        "kind": "file",
+        "sha256": "sha256-ed1decbd871133e83649ce35f3c4949a0b5486be37fcf48ae784d96d4553518e",
+        "files": 1,
+        "bytes": 1845
+      }
+    },
+    "fallbackRecords": {
+      "path": "provenance/fallback-records",
+      "integrity": {
+        "kind": "tree",
+        "sha256": "sha256-3d44f975b195720e7cb70229aa71ef4017f532d9938eca0c1345bf939da321e9",
+        "files": 112,
+        "bytes": 221599
+      }
+    },
+    "preparationReport": {
+      "path": "provenance/preparation-report.json",
+      "integrity": {
+        "kind": "file",
+        "sha256": "sha256-d861b01ebb2d8dd944b8f7c7b964fa3fc1592a9478889be6bbacf1c403d5500f",
+        "files": 1,
+        "bytes": 16665
+      }
+    },
+    "incompleteAttempts": {
+      "path": "provenance/incomplete-attempts",
+      "integrity": {
+        "kind": "tree",
+        "sha256": "sha256-ba005038c426aadc501921e7a1661a8dd1f0c13d6b3f4da948c3db84a1c18eec",
+        "files": 371,
+        "bytes": 1715283
+      }
+    }
+  }
+}

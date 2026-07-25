@@ -67,7 +67,7 @@ test("freezes 36 completed month ends plus one terminal PIT observation", () => 
   memberCounts[dataAsOf] = 300;
   const timeline = {
     status: "ready",
-    path: "pit-availability-v1/index-weights/000300_SH",
+    path: "pit-membership/index-weights/000300_SH",
     completedMonthEnds: 36,
     terminalAsOf: [dataAsOf],
     quality: {

@@ -7,7 +7,7 @@ const request = JSON.parse(Buffer.concat(chunks).toString("utf8"));
 if (
   request?.kind !== "regime_split" ||
   request.dataRef !==
-    "assay-local-data-v1:audit_test:g01:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" ||
+    "assay-local-data-v1:audit_test:test-package:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" ||
   typeof request.spec !== "object" ||
   request.budget?.maxVariants !== 1
 ) {

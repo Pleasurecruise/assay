@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "assay-incomplete-attempt-summary-v1",
+  "promotionStatus": "not_promoted",
+  "runtimeEligible": false,
+  "historicalMemberDaily": {
+    "symbolsWithoutPromotedDailyHistory": 79,
+    "attemptedSymbols": 25,
+    "unattemptedSymbols": 54,
+    "factorClosePayloadFiles": 157,
+    "factorCloseRows": 18150,
+    "factorCloseTradingDates": 726,
+    "tradeStatusPayloadFiles": 209,
+    "tradeStatusRows": 5225,
+    "tradeStatusTradingDates": 209,
+    "reason": "Incomplete coverage; these payloads cannot be promoted as a dataset."
+  },
+  "comparatorFactors": {
+    "payloadFiles": 4,
+    "rows": 33,
+    "tradingDates": 1,
+    "reason": "Only one trading date was obtained."
+  },
+  "indexDaily": {
+    "payloadFiles": 0,
+    "reason": "No index-daily payload was obtained."
+  },
+  "excludedProcessRecords": {
+    "comparatorSplitRequestRecords": 11
+  }
+}

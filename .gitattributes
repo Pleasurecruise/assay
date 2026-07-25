@@ -1,0 +1,3 @@
+# Runtime package manifests bind exact file bytes. Never let checkout settings
+# rewrite line endings inside the committed immutable package.
+data/packages/** -text

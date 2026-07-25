@@ -23,7 +23,7 @@ const GENERATED_AT = "2026-07-24T04:00:00.000Z";
 const DATA_AS_OF = "2026-07-24";
 const CORS_ORIGIN = "http://localhost:5173";
 const TEST_DATA_REF =
-  "assay-local-data-v1:audit_e2e:g01:sha256-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  "assay-local-data-v1:audit_e2e:test-package:sha256-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
 const COMPLETE_SPEC = {
   specVersion: "1",

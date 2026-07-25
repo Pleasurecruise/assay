@@ -11,7 +11,7 @@ const mockProcess = {
   args: [fileURLToPath(new URL("./fixtures/mock-availability-runner.mjs", import.meta.url))],
 };
 const dataRef =
-  "assay-local-data-v1:audit_test:g01:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  "assay-local-data-v1:audit_test:test-package:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 describe("run_availability_audit tool", () => {
   test("accepts the bounded PIT correction response", async () => {

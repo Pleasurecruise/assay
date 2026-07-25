@@ -33,7 +33,7 @@ describe("readProductionConfig", () => {
     expect(config.authBaseUrl).toBe("http://localhost:5173");
     expect(config.databasePath).toBe("data/assay.sqlite");
     expect(config.googleClientId).toBe("google-test-client-id");
-    expect(config.localDataPackageRoot).toBe(resolve(".cache/assay"));
+    expect(config.localDataPackageRoot).toBe(resolve(".cache/assay/local-packages"));
     expect(config.auditOutputRoot).toBe(resolve(".cache/assay/audit-output"));
   });
 

@@ -13,7 +13,9 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .cache/
-data/
+data/*
+!data/packages/
+!data/packages/**
 services/panda-adapter/user.json
 
 # Local-only competition reference material (contains plaintext event tokens) — never commit
