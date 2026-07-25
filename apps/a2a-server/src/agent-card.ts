@@ -68,7 +68,9 @@ export function createAssayAgentCard(
           `The request schema is ${AUDIT_REQUEST_SCHEMA_VERSION}; output is application/json plus text/markdown. ` +
           "Missing or unsupported input completes with an UNVERIFIABLE Artifact; complete input is validated, frozen, and sent to five independent checks. This is a technical audit, not investment advice.",
         tags: ["strategy", "audit", "robustness"],
-        examples: ["Audit a CSI 300 monthly momentum strategy from 2021-01-01 to 2025-12-31."],
+        examples: [
+          "Audit a CSI 300 20-day momentum strategy from 2023-07-23 to 2026-07-23, holding the top 50 stocks with equal weights and rebalancing monthly at market close.",
+        ],
         inputModes: ["text/plain"],
         outputModes: ["application/json", "text/markdown"],
         securityRequirements,

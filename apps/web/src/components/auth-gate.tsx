@@ -11,7 +11,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [error, setError] = useState("");
 
   const toggleLanguage = () => {
-    setLanguage(language === "en" ? "zh-CN" : "en");
+    setLanguage(language === "en-US" ? "zh-CN" : "en-US");
   };
 
   const signIn = async () => {
@@ -57,7 +57,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
         type="button"
       >
         <Languages />
-        {language === "en" ? t("language.zh") : t("language.en")}
+        {language === "en-US" ? t("language.zh") : t("language.en")}
       </button>
       <section className="auth-card">
         <div className="auth-card__mark">

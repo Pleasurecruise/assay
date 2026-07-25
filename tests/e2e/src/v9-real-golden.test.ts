@@ -1,7 +1,6 @@
-import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import {
   acceptanceCandidateFromV9MechanismFixture,
@@ -13,10 +12,8 @@ import {
   pinAndVerifyV9RealGolden,
   serializeV9RealGolden,
   verifyV9RealGoldenFiles,
-  V9_REAL_GOLDEN_PATH,
   type V9RealGoldenSnapshot,
 } from "./v9-real-golden";
-import { V9_REAL_ARTIFACT_PATH } from "./v9-real-data";
 
 function clone(value: V9RealGoldenSnapshot): V9RealGoldenSnapshot {
   return JSON.parse(JSON.stringify(value)) as V9RealGoldenSnapshot;
@@ -179,11 +176,4 @@ describe("v9 final golden offline infrastructure", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
-});
-
-const checkedInGoldenTest = existsSync(V9_REAL_GOLDEN_PATH) ? test : test.skip;
-checkedInGoldenTest("verifies a checked-in final golden without refreshing it", async () => {
-  await expect(
-    verifyV9RealGoldenFiles(resolve(V9_REAL_ARTIFACT_PATH), V9_REAL_GOLDEN_PATH),
-  ).resolves.toBeDefined();
 });

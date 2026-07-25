@@ -55,10 +55,10 @@ export interface PollTaskOptions extends GetTaskOptions {
 
 export interface AssayServiceCapabilities {
   skill: "audit_strategy";
-  dataProvider: "PandaData";
+  dataProvider: "LocalDataPackage";
   dataTools: readonly string[];
   backtester: "assay-backtester@1";
-  dataCredentialsConfigured: boolean;
+  dataPackagesConfigured: boolean;
 }
 
 export function a2aUrlForHostname(hostname: string): string {
@@ -101,9 +101,9 @@ function parseServiceCapabilities(value: unknown): AssayServiceCapabilities {
   const capabilities = value as Record<string, unknown>;
   if (
     capabilities.skill !== "audit_strategy" ||
-    capabilities.dataProvider !== "PandaData" ||
+    capabilities.dataProvider !== "LocalDataPackage" ||
     capabilities.backtester !== "assay-backtester@1" ||
-    typeof capabilities.dataCredentialsConfigured !== "boolean" ||
+    typeof capabilities.dataPackagesConfigured !== "boolean" ||
     !Array.isArray(capabilities.dataTools) ||
     !capabilities.dataTools.every((tool) => typeof tool === "string" && tool.length > 0)
   ) {
@@ -114,7 +114,7 @@ function parseServiceCapabilities(value: unknown): AssayServiceCapabilities {
     dataProvider: capabilities.dataProvider,
     dataTools: capabilities.dataTools,
     backtester: capabilities.backtester,
-    dataCredentialsConfigured: capabilities.dataCredentialsConfigured,
+    dataPackagesConfigured: capabilities.dataPackagesConfigured,
   };
 }
 

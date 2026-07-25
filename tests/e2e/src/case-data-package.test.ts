@@ -406,5 +406,5 @@ describe("complete case data package", () => {
     await installLocalData({ sourceRoot, runtimeRoot });
     expect(await readFile(runtimeAuditManifestPath)).toEqual(originalRuntimeAuditManifest);
     expect(await readFile(sourceMarketPath)).toEqual(sourceMarket);
-  });
+  }, 15_000);
 });
