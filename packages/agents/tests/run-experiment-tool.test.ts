@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import type { AgentTool } from "@assay/agent-runtime";
+import { COST_STRESS_SOURCE_REF, PARAMETER_GRID_SOURCE_REF } from "@assay/contracts";
 import { describe, expect, test } from "vitest";
 import { createAuditCheckAgentDefinitions } from "../src/definitions";
 import {
@@ -38,6 +39,7 @@ describe("run_experiment tool", () => {
 
     expect(result.baseline.params.costModel).toBe("none");
     expect(result.variants).toEqual([]);
+    expect(result.summaryRef).toBeUndefined();
   });
 
   test("requires the frozen host baseline convention", async () => {
@@ -77,6 +79,7 @@ describe("run_experiment tool", () => {
         window: 14,
         topN: 30,
         costModel: "standard",
+        dailyReturnsRef: "artifact:backtest/parameter-grid/14-30/daily-returns",
       },
       annualReturn: 0.1,
       sharpe: 1.2,
@@ -84,6 +87,7 @@ describe("run_experiment tool", () => {
       annualTurnover: 2,
     });
     expect(result.engineVersion).toBe("mock-v1");
+    expect(result.summaryRef).toBe(PARAMETER_GRID_SOURCE_REF);
   });
 
   test("surfaces a nonzero engine exit and stderr without inventing a result", async () => {
@@ -104,6 +108,7 @@ describe("run_experiment tool", () => {
     ["baseline-missing-metric", "response.baseline must contain exactly"],
     ["variant-invalid-metric", "response.variants[0].sharpe must be a finite number"],
     ["extra-top-level-field", "response must contain exactly"],
+    ["wrong-summary-ref", "response.summaryRef is invalid"],
   ])("rejects malformed engine result shape: %s", async (mockResponseShape, message) => {
     await expect(
       runExperimentSubprocess(mockProcess, {
@@ -134,12 +139,23 @@ describe("run_experiment tool", () => {
     );
 
     expect(toolsById).toEqual({
-      "param-robustness": ["run_experiment"],
-      "data-availability": ["run_availability_audit"],
-      "cost-stress": ["run_experiment"],
-      "regime-dependency": [],
-      "homogeneity-decay": [],
+      "param-robustness": ["run_experiment", "submit_check_result"],
+      "data-availability": ["run_availability_audit", "submit_check_result"],
+      "cost-stress": ["run_experiment", "submit_check_result"],
+      "regime-dependency": ["run_experiment", "submit_check_result"],
+      "homogeneity-decay": ["run_homogeneity", "submit_check_result"],
     });
+  });
+
+  test("binds every final JSON id to the canonical check rather than a tool kind", () => {
+    const definitions = createAuditCheckAgentDefinitions({ experimentProcess: mockProcess });
+
+    for (const definition of definitions) {
+      const prompt = definition.systemPrompt.join("\n");
+      expect(prompt).toContain(`"id" 必须严格等于 "${definition.id}"`);
+      expect(prompt).toContain("工具请求中的 kind");
+      expect(prompt).toContain("不得复制到最终 JSON");
+    }
   });
 
   test("pins each check to one experiment kind and rejects an over-budget grid", async () => {
@@ -195,6 +211,61 @@ describe("run_experiment tool", () => {
       ),
     ).rejects.toThrow("does not accept a caller-supplied grid");
 
+    const gridOutput = await gridTool.execute(
+      "call-grid",
+      {
+        kind: "grid",
+        spec: {
+          specVersion: "1",
+          signal: { params: { window: 20 } },
+          selection: { topN: 50 },
+        },
+        budget: { maxVariants: 15 },
+      },
+      undefined,
+    );
+    const gridAgentView = JSON.parse(contentText(gridOutput)) as {
+      parameterSummary: {
+        medianVariantSharpe: number;
+        neighborhoodSharpeRetention: number;
+      };
+    };
+    expect(gridAgentView).toMatchObject({
+      engineVersion: "mock-v1",
+      summaryRef: PARAMETER_GRID_SOURCE_REF,
+      baseline: {
+        annualReturn: 0.12,
+        sharpe: 1.3,
+        maxDrawdown: -0.09,
+        annualTurnover: 1.8,
+      },
+      parameterSummary: {
+        baselineSharpe: 1.3,
+        variantCount: 14,
+        minVariantSharpe: 1,
+        maxVariantSharpe: 1.2,
+      },
+    });
+    expect(gridAgentView.parameterSummary.medianVariantSharpe).toBeCloseTo(1.1);
+    expect(gridAgentView.parameterSummary.neighborhoodSharpeRetention).toBeCloseTo(1.1 / 1.3);
+    expect(contentText(gridOutput)).not.toContain("dailyReturnsRef");
+    expect(
+      JSON.stringify(
+        (
+          gridOutput.details as {
+            variants: readonly unknown[];
+          }
+        ).variants,
+      ),
+    ).toContain("dailyReturnsRef");
+    expect(
+      (
+        gridOutput.details as {
+          variants: readonly unknown[];
+        }
+      ).variants,
+    ).toHaveLength(15);
+
     const output = await costTool.execute(
       "call-4",
       {
@@ -206,6 +277,7 @@ describe("run_experiment tool", () => {
     );
     expect(JSON.parse(contentText(output))).toEqual({
       engineVersion: "mock-v1",
+      summaryRef: COST_STRESS_SOURCE_REF,
       baseline: {
         params: { window: 20, topN: 50, costModel: "standard" },
         annualReturn: 0.12,
@@ -287,11 +359,16 @@ describe("run_experiment tool", () => {
     expect(parameter.systemPrompt.join("\n")).toContain("<40%");
     expect(cost.systemPrompt.join("\n")).toContain("pessimistic 变体 annualReturn > 0");
     expect(cost.systemPrompt.join("\n")).toContain("normal 总成本的 1.5 倍");
-    expect(parameter.systemPrompt.join("\n")).toContain("artifact:backtest/param-grid");
-    expect(cost.systemPrompt.join("\n")).toContain("artifact:backtest/cost-ladder");
+    expect(parameter.systemPrompt.join("\n")).toContain(PARAMETER_GRID_SOURCE_REF);
+    expect(cost.systemPrompt.join("\n")).toContain(COST_STRESS_SOURCE_REF);
     expect(parameter.systemPrompt.join("\n")).not.toContain("deviatedFromGuideline");
     expect(cost.systemPrompt.join("\n")).not.toContain("deviatedFromGuideline");
     expect(parameter.systemPrompt.join("\n")).toContain("必须且只能调用一次 run_experiment");
     expect(cost.systemPrompt.join("\n")).toContain("必须且只能调用一次 run_experiment");
+    expect(parameter.systemPrompt.join("\n")).toContain("evidence.value 只能是有限数字");
+    expect(parameter.systemPrompt.join("\n")).toContain("区间和列表必须拆成多个标量 evidence");
+    expect(parameter.systemPrompt.join("\n")).toContain("parameterSummary");
+    expect(parameter.systemPrompt.join("\n")).toContain("medianVariantSharpe");
+    expect(parameter.systemPrompt.join("\n")).toContain("不得把 variants");
   });
 });

@@ -75,6 +75,7 @@ class PandaDataClient:
             raise ValueError("max_attempts must be positive")
         self._sdk_module = sdk_module
         self._is_initialized = False
+        self._settings: PandaDataSettings | None = None
         self._cache_ttl_seconds = cache_ttl_seconds
         self._max_cache_entries = max_cache_entries
         self._max_attempts = max_attempts
@@ -100,21 +101,52 @@ class PandaDataClient:
             raise PandaDataInitializationError(
                 "PandaData token initialization failed"
             ) from error
+        self._settings = settings
         self._is_initialized = True
 
     def get_market_data(self, **parameters: Any) -> Any:
         return self.query("market_data", parameters)
+
+    def get_index_daily(self, **parameters: Any) -> Any:
+        return self._query_method(
+            operation="index_daily",
+            method_name="get_index_daily",
+            parameters=parameters,
+        )
+
+    def get_stock_daily_post(self, **parameters: Any) -> Any:
+        return self._query_method(
+            operation="stock_daily_post",
+            method_name="get_stock_daily_post",
+            parameters=parameters,
+        )
 
     def query(self, operation: str, parameters: dict[str, Any]) -> Any:
         if not self._is_initialized:
             raise PandaDataNotInitializedError(
                 "PandaData must be initialized before requesting data"
             )
-
         method_name = PANDA_DATA_OPERATIONS.get(operation)
         if method_name is None:
             raise PandaDataOperationError(
                 f'PandaData operation "{operation}" is not allowed'
+            )
+        return self._query_method(
+            operation=operation,
+            method_name=method_name,
+            parameters=parameters,
+        )
+
+    def _query_method(
+        self,
+        *,
+        operation: str,
+        method_name: str,
+        parameters: dict[str, Any],
+    ) -> Any:
+        if not self._is_initialized:
+            raise PandaDataNotInitializedError(
+                "PandaData must be initialized before requesting data"
             )
         cache_key = json.dumps(
             {"operation": operation, "parameters": parameters},
@@ -131,13 +163,22 @@ class PandaDataClient:
             del self._cache[cache_key]
 
         method = getattr(self._load_sdk(), method_name)
+        authentication_refreshed = False
         for attempt in range(1, self._max_attempts + 1):
             try:
                 value = method(**parameters)
                 break
             except Exception as error:
+                if not authentication_refreshed and _is_authentication_expired(error):
+                    self._refresh_authentication()
+                    authentication_refreshed = True
+                    try:
+                        value = method(**parameters)
+                        break
+                    except Exception as replay_error:
+                        error = replay_error
                 if attempt >= self._max_attempts or not _is_retryable(error):
-                    raise
+                    raise error
                 self._sleeper(0.25 * (2 ** (attempt - 1)))
 
         if self._cache_ttl_seconds > 0:
@@ -149,6 +190,21 @@ class PandaDataClient:
             while len(self._cache) > self._max_cache_entries:
                 self._cache.popitem(last=False)
         return value
+
+    def _refresh_authentication(self) -> None:
+        if self._settings is None:
+            raise PandaDataNotInitializedError(
+                "PandaData cannot refresh before initialization"
+            )
+        try:
+            self._load_sdk().init_token(
+                username=self._settings.username,
+                password=self._settings.password,
+            )
+        except Exception as error:
+            raise PandaDataInitializationError(
+                "PandaData token refresh failed"
+            ) from error
 
     def get_factor(self, **parameters: Any) -> Any:
         return self.query("factor", parameters)
@@ -171,6 +227,22 @@ def _is_retryable(error: Exception) -> bool:
         return True
     message = str(error).lower()
     return any(marker in message for marker in ("429", "rate limit", "timeout"))
+
+
+def _is_authentication_expired(error: Exception) -> bool:
+    code = getattr(error, "code", None)
+    if code is not None and str(code) in {"200002", "200004"}:
+        return True
+    message = str(error).lower()
+    return any(
+        marker in message
+        for marker in (
+            "未登录或登录已过期",
+            "token invalid or expired",
+            "token expired",
+            "not logged in or login expired",
+        )
+    )
 
 
 def create_initialized_client(

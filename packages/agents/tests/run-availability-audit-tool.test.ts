@@ -20,6 +20,7 @@ describe("run_availability_audit tool", () => {
     });
 
     expect(result).toEqual({
+      contractVersion: "1.0.0",
       engineVersion: "mock-availability-v1",
       mode: "full_pit",
       futureConstituentCount: 12,

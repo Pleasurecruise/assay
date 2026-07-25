@@ -7,13 +7,13 @@ import sys
 from typing import Any
 
 from .engine import run_request
-from .market_panel import load_market_panel
+from .market_panel import load_cached_market_panel
 
 
 def main() -> int:
     try:
         request: Any = json.load(sys.stdin)
-        response = run_request(request, panel_loader=load_market_panel)
+        response = run_request(request, panel_loader=load_cached_market_panel)
         sys.stdout.write(
             json.dumps(response, allow_nan=False, separators=(",", ":")) + "\n"
         )

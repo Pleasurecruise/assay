@@ -1,0 +1,74 @@
+{
+  "schemaVersion": "assay-v9-agent-smoke-evidence-v1",
+  "artifactRole": "runtime-cli-single-agent-smoke-evidence",
+  "generatedAt": "2026-07-24T18:22:11Z",
+  "promptCodeRevision": "d36cbbb9001249f2d653e82dde7c050119551943",
+  "provider": "volcengine-ark",
+  "modelEndpointClass": "official DeepSeek-Pro endpoint",
+  "toolDataMode": "deterministic mechanism fixtures",
+  "callBudget": {
+    "authorizedMinimum": 3,
+    "authorizedMaximum": 5,
+    "liveModelCallsUsed": 4,
+    "successfulRequiredSmokes": 3,
+    "failedContractAttempts": 1
+  },
+  "requiredAgents": ["data-availability", "regime-dependency", "homogeneity-decay"],
+  "attempts": [
+    {
+      "callIndex": 1,
+      "agentId": "data-availability",
+      "outcome": "failed_contract_validation",
+      "outputSha256": "ccbe7d40f7d6604e2df696549ac24ab0109b5cffec6106b05bdc62e81e8df8c9",
+      "reasonCode": "NON_CANONICAL_CHECK_ID",
+      "observedId": "availability_audit",
+      "expectedId": "data-availability",
+      "remediationRevision": "d36cbbb9001249f2d653e82dde7c050119551943",
+      "stderrSanitized": true
+    },
+    {
+      "callIndex": 2,
+      "agentId": "data-availability",
+      "outcome": "passed",
+      "outputSha256": "d1a8fde17114a611f5b36adbf09a64103b74275bdca86a989cbffd67472d4743",
+      "conclusion": "fail",
+      "numericEvidenceCount": 7,
+      "missingEvidenceCount": 0,
+      "contractValidated": true,
+      "stderrBytes": 0
+    },
+    {
+      "callIndex": 3,
+      "agentId": "regime-dependency",
+      "outcome": "passed",
+      "outputSha256": "4fb3cc97fedd3ed75bd8e85f1356e101713123f148b577ee895e7c7091b87e5b",
+      "conclusion": "pass_with_reservations",
+      "numericEvidenceCount": 17,
+      "missingEvidenceCount": 0,
+      "contractValidated": true,
+      "stderrBytes": 0
+    },
+    {
+      "callIndex": 4,
+      "agentId": "homogeneity-decay",
+      "outcome": "passed",
+      "outputSha256": "be4a70342714d427f7a11ed316fc4ab2adf42ddec3b9d4ba939c184bb31c3374",
+      "conclusion": "fail",
+      "numericEvidenceCount": 22,
+      "missingEvidenceCount": 0,
+      "contractValidated": true,
+      "stderrBytes": 0
+    }
+  ],
+  "assumptionsAndLimits": [
+    "Each required new prompt was exercised through apps/runtime-cli/src/index.ts with one deterministic mock tool response, as authorized by the v9 task.",
+    "The first live call exposed a tool-kind versus canonical-check-id ambiguity; the shared prompt contract was fixed and the same agent then passed.",
+    "These isolated prompt smokes do not use real market evidence and do not replace the terminal five-check real-data E2E."
+  ],
+  "safety": {
+    "containsCredentials": false,
+    "containsPersonalContactData": false,
+    "containsAbsoluteLocalPaths": false,
+    "containsVendorRawErrors": false
+  }
+}

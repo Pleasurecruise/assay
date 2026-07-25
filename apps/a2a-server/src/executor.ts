@@ -23,6 +23,12 @@ import {
 } from "./audit-orchestrator";
 import type { AuditArtifactStore } from "./artifact-store";
 import type { ClaimReproducer } from "./claim-reproducer";
+import {
+  classifyExecutionTimelineFailure,
+  type ExecutionTimelineEvent,
+  type ExecutionTimelineLogger,
+  type ExecutionTimelineStage,
+} from "./execution-timeline";
 
 export interface StrategyIntakePort {
   intakeText(input: string, signal?: AbortSignal): Promise<StrategyIntakeResult>;
@@ -37,6 +43,7 @@ export interface AssayAgentExecutorOptions {
   codeRevision: string;
   now?: () => Date;
   executionErrorLogger?: ExecutionErrorLogger;
+  executionTimelineLogger?: ExecutionTimelineLogger;
 }
 
 export interface ExecutionErrorLogEntry {
@@ -315,6 +322,7 @@ export class AssayAgentExecutor implements AgentExecutor {
   readonly #codeRevision: string;
   readonly #now: () => Date;
   readonly #executionErrorLogger: ExecutionErrorLogger;
+  readonly #executionTimelineLogger: ExecutionTimelineLogger | undefined;
   readonly #activeExecutions = new Map<
     string,
     {
@@ -332,154 +340,236 @@ export class AssayAgentExecutor implements AgentExecutor {
     this.#codeRevision = options.codeRevision;
     this.#now = options.now ?? (() => new Date());
     this.#executionErrorLogger = options.executionErrorLogger ?? logExecutionErrorToStderr;
+    this.#executionTimelineLogger = options.executionTimelineLogger;
   }
 
   async execute(requestContext: RequestContext, eventBus: ExecutionEventBus): Promise<void> {
     const { taskId, contextId } = requestContext;
-    if (this.#activeExecutions.has(taskId)) {
-      throw new Error(`Task "${taskId}" is already executing`);
-    }
     const controller = new AbortController();
-    this.#activeExecutions.set(taskId, { contextId, controller });
     const identity: AuditExecutionIdentity = {
       auditId: `audit_${taskId}`,
       subjectId: `strategy_${taskId}`,
       traceId: crypto.randomUUID(),
     };
     const startedAt = this.#now().toISOString();
-    eventBus.publish(AgentEvent.task(initialTask(taskId, contextId, identity, startedAt)));
-    eventBus.publish(
-      AgentEvent.statusUpdate({
+    let currentStage: ExecutionTimelineStage = "a2a_acceptance";
+    const emitTimeline = (event: ExecutionTimelineEvent): void => {
+      try {
+        this.#executionTimelineLogger?.(event);
+      } catch {
+        // Timing diagnostics must never change the Task lifecycle.
+      }
+    };
+    const runStage = async <Result>(
+      stage: ExecutionTimelineStage,
+      operation: () => Result | Promise<Result>,
+    ): Promise<Result> => {
+      currentStage = stage;
+      const base = {
+        traceId: identity.traceId,
         taskId,
-        contextId,
-        status: {
-          state: TaskState.TASK_STATE_WORKING,
-          message: createStatusMessage(
-            taskId,
-            contextId,
-            "Parsing and validating the strategy input.",
-          ),
-          timestamp: startedAt,
-        },
-        metadata: {},
-      }),
-    );
+        stage,
+      };
+      emitTimeline({ ...base, type: "stage.started" });
+      try {
+        const result = await operation();
+        emitTimeline({ ...base, type: "stage.completed" });
+        return result;
+      } catch (error) {
+        emitTimeline({
+          ...base,
+          type: "stage.failed",
+          failure: classifyExecutionTimelineFailure(error),
+        });
+        throw error;
+      }
+    };
+
+    if (this.#activeExecutions.has(taskId)) {
+      const error = new Error(`Task "${taskId}" is already executing`);
+      const base = {
+        traceId: identity.traceId,
+        taskId,
+        stage: currentStage,
+      };
+      emitTimeline({ ...base, type: "stage.started" });
+      emitTimeline({
+        ...base,
+        type: "stage.failed",
+        failure: classifyExecutionTimelineFailure(error),
+      });
+      throw error;
+    }
 
     try {
-      const decoded = extractSkeletonInput(requestContext.userMessage);
-      let artifact: AuditArtifact;
+      await runStage("a2a_acceptance", () => {
+        this.#activeExecutions.set(taskId, { contextId, controller });
+        eventBus.publish(AgentEvent.task(initialTask(taskId, contextId, identity, startedAt)));
+        eventBus.publish(
+          AgentEvent.statusUpdate({
+            taskId,
+            contextId,
+            status: {
+              state: TaskState.TASK_STATE_WORKING,
+              message: createStatusMessage(
+                taskId,
+                contextId,
+                "Parsing and validating the strategy input.",
+              ),
+              timestamp: startedAt,
+            },
+            metadata: {},
+          }),
+        );
+      });
+    } catch (error) {
+      const active = this.#activeExecutions.get(taskId);
+      if (active?.controller === controller) {
+        this.#activeExecutions.delete(taskId);
+      }
+      throw error;
+    }
+
+    try {
+      const decoded = await runStage("skeleton_decode", () =>
+        extractSkeletonInput(requestContext.userMessage),
+      );
+      let validatedArtifact: AuditArtifact;
       if (decoded.kind === "early_exit") {
-        artifact = createEarlyExitAuditArtifact({
-          auditId: identity.auditId,
-          subjectId: identity.subjectId,
-          generatedAt: this.#now().toISOString(),
-          summary: decoded.summary,
-          reasonCode: decoded.reasonCode,
-          missingInformation: decoded.missingInformation,
-          riskDisclosure: [DEFAULT_RISK_DISCLOSURE],
-          recoveryConditions: [
-            {
-              scope: "intake",
-              condition: "Resubmit a supported, complete natural-language StrategySpec.",
-            },
-          ],
-          provenance: {
-            inputHash: sha256Text(decoded.inputFingerprint),
-            dataAsOf: this.#dataAsOf,
-            dataSources: [],
-            codeRevision: this.#codeRevision,
-          },
-        });
-      } else {
-        const intakeResult = await this.#intake.intakeText(decoded.text, controller.signal);
-        if (intakeResult.kind === "early_exit") {
-          artifact = createEarlyExitAuditArtifact({
-            auditId: identity.auditId,
-            subjectId: identity.subjectId,
-            generatedAt: this.#now().toISOString(),
-            summary: intakeResult.summary,
-            reasonCode: intakeResult.reasonCode,
-            missingInformation: intakeResult.missingInformation,
-            riskDisclosure: [DEFAULT_RISK_DISCLOSURE],
-            recoveryConditions: [
-              {
-                scope: "intake",
-                condition: "Resubmit a supported strategy with every required StrategySpec field.",
-              },
-            ],
-            provenance: {
-              inputHash: sha256Text(decoded.text),
-              dataAsOf: this.#dataAsOf,
-              dataSources: [],
-              codeRevision: this.#codeRevision,
-            },
-          });
-        } else {
-          const claimComparison =
-            this.#claimReproducer === undefined
-              ? null
-              : await this.#claimReproducer.reproduce(intakeResult.frozen.spec);
-          controller.signal.throwIfAborted();
-          if (intakeResult.frozen.spec.claims !== undefined && claimComparison === null) {
-            throw new Error("Claim reproduction is required when the StrategySpec has claims");
-          }
-          eventBus.publish(
-            AgentEvent.statusUpdate({
-              taskId,
-              contextId,
-              status: {
-                state: TaskState.TASK_STATE_WORKING,
-                message: createStatusMessage(
-                  taskId,
-                  contextId,
-                  "Running five independent audit checks with guarded data tools.",
-                ),
-                timestamp: this.#now().toISOString(),
-              },
-              metadata: {
-                stage: "parallel-audit-checks",
+        validatedArtifact = await runStage("artifact_finalize", () =>
+          parseAuditArtifact(
+            createEarlyExitAuditArtifact({
+              auditId: identity.auditId,
+              subjectId: identity.subjectId,
+              generatedAt: this.#now().toISOString(),
+              summary: decoded.summary,
+              reasonCode: decoded.reasonCode,
+              missingInformation: decoded.missingInformation,
+              riskDisclosure: [DEFAULT_RISK_DISCLOSURE],
+              recoveryConditions: [
+                {
+                  scope: "intake",
+                  condition: "Resubmit a supported, complete natural-language StrategySpec.",
+                },
+              ],
+              provenance: {
+                inputHash: sha256Text(decoded.inputFingerprint),
+                dataAsOf: this.#dataAsOf,
+                dataSources: [],
+                codeRevision: this.#codeRevision,
               },
             }),
+          ),
+        );
+      } else {
+        const intakeResult = await runStage("strategy_intake", () =>
+          this.#intake.intakeText(decoded.text, controller.signal),
+        );
+        if (intakeResult.kind === "early_exit") {
+          validatedArtifact = await runStage("artifact_finalize", () =>
+            parseAuditArtifact(
+              createEarlyExitAuditArtifact({
+                auditId: identity.auditId,
+                subjectId: identity.subjectId,
+                generatedAt: this.#now().toISOString(),
+                summary: intakeResult.summary,
+                reasonCode: intakeResult.reasonCode,
+                missingInformation: intakeResult.missingInformation,
+                riskDisclosure: [DEFAULT_RISK_DISCLOSURE],
+                recoveryConditions: [
+                  {
+                    scope: "intake",
+                    condition:
+                      "Resubmit a supported strategy with every required StrategySpec field.",
+                  },
+                ],
+                provenance: {
+                  inputHash: sha256Text(decoded.text),
+                  dataAsOf: this.#dataAsOf,
+                  dataSources: [],
+                  codeRevision: this.#codeRevision,
+                },
+              }),
+            ),
           );
-          const request = projectFrozenAuditInput(intakeResult.frozen, identity);
-          const result = await this.#runner.run(request, {
-            signal: controller.signal,
+        } else {
+          const claimComparison = await runStage("claim_reproduction", async () => {
+            const comparison =
+              this.#claimReproducer === undefined
+                ? null
+                : await this.#claimReproducer.reproduce(intakeResult.frozen.spec);
+            controller.signal.throwIfAborted();
+            if (intakeResult.frozen.spec.claims !== undefined && comparison === null) {
+              throw new Error("Claim reproduction is required when the StrategySpec has claims");
+            }
+            return comparison;
           });
-          artifact = buildExecutedAuditArtifact({
-            frozen: intakeResult.frozen,
-            identity,
-            result,
-            generatedAt: this.#now().toISOString(),
-            claimComparison,
+          const result = await runStage("parallel_audit_handoff", async () => {
+            eventBus.publish(
+              AgentEvent.statusUpdate({
+                taskId,
+                contextId,
+                status: {
+                  state: TaskState.TASK_STATE_WORKING,
+                  message: createStatusMessage(
+                    taskId,
+                    contextId,
+                    "Running five independent audit checks with guarded data tools.",
+                  ),
+                  timestamp: this.#now().toISOString(),
+                },
+                metadata: {
+                  stage: "parallel-audit-checks",
+                },
+              }),
+            );
+            const request = projectFrozenAuditInput(intakeResult.frozen, identity);
+            return await this.#runner.run(request, {
+              signal: controller.signal,
+            });
           });
+          validatedArtifact = await runStage("artifact_finalize", () =>
+            parseAuditArtifact(
+              buildExecutedAuditArtifact({
+                frozen: intakeResult.frozen,
+                identity,
+                result,
+                generatedAt: this.#now().toISOString(),
+                claimComparison,
+              }),
+            ),
+          );
         }
       }
 
-      controller.signal.throwIfAborted();
-      const validatedArtifact = parseAuditArtifact(artifact);
-      await this.#artifactStore.save(taskId, validatedArtifact);
-      eventBus.publish(
-        AgentEvent.artifactUpdate({
-          taskId,
-          contextId,
-          artifact: createA2AArtifact(validatedArtifact),
-          append: false,
-          lastChunk: true,
-          metadata: {},
-        }),
-      );
-      eventBus.publish(
-        AgentEvent.statusUpdate({
-          taskId,
-          contextId,
-          status: {
-            state: TaskState.TASK_STATE_COMPLETED,
-            message: createStatusMessage(taskId, contextId, "The audit Artifact is ready."),
-            timestamp: this.#now().toISOString(),
-          },
-          metadata: {},
-        }),
-      );
+      await runStage("artifact_persist", async () => {
+        controller.signal.throwIfAborted();
+        await this.#artifactStore.save(taskId, validatedArtifact);
+      });
+      await runStage("a2a_publish", () => {
+        eventBus.publish(
+          AgentEvent.artifactUpdate({
+            taskId,
+            contextId,
+            artifact: createA2AArtifact(validatedArtifact),
+            append: false,
+            lastChunk: true,
+            metadata: {},
+          }),
+        );
+        eventBus.publish(
+          AgentEvent.statusUpdate({
+            taskId,
+            contextId,
+            status: {
+              state: TaskState.TASK_STATE_COMPLETED,
+              message: createStatusMessage(taskId, contextId, "The audit Artifact is ready."),
+              timestamp: this.#now().toISOString(),
+            },
+            metadata: {},
+          }),
+        );
+      });
     } catch (error) {
       if (controller.signal.aborted) {
         return;
@@ -495,22 +585,24 @@ export class AssayAgentExecutor implements AgentExecutor {
       } catch {
         // Error reporting must not prevent the Task from reaching a terminal state.
       }
+      const failedStatus = {
+        state: TaskState.TASK_STATE_FAILED,
+        message: createStatusMessage(
+          taskId,
+          contextId,
+          "The audit could not be completed due to an internal error.",
+          { correlationId, stage: currentStage },
+        ),
+        timestamp: startedAt,
+      };
       eventBus.publish(
         AgentEvent.statusUpdate({
           taskId,
           contextId,
-          status: {
-            state: TaskState.TASK_STATE_FAILED,
-            message: createStatusMessage(
-              taskId,
-              contextId,
-              "The audit could not be completed due to an internal error.",
-              { correlationId },
-            ),
-            timestamp: startedAt,
-          },
+          status: failedStatus,
           metadata: {
             correlationId,
+            stage: currentStage,
           },
         }),
       );

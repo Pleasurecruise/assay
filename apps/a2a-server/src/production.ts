@@ -1,9 +1,14 @@
 import { AgentRegistry, AgentRuntime, createRuntimeTimelineLogger } from "@assay/agent-runtime";
-import { createAuditCheckAgentDefinitions, ParallelAuditCheckRunner } from "@assay/agents";
+import {
+  createAuditCheckAgentDefinitions,
+  ParallelAuditCheckRunner,
+  SubprocessMoireExperimentExecutor,
+} from "@assay/agents";
 import { createPandaDataTools, PandaDataProcessGateway } from "@assay/finance-tools";
 import { ArkResponsesStrategyParser, StrategyIntake } from "@assay/intake";
 import { buildModel } from "@oh-my-pi/pi-catalog/build";
 import type { ProductionA2AConfig } from "./configuration";
+import { createExecutionTimelineLogger } from "./execution-timeline";
 import { AssayAgentExecutor } from "./executor";
 import { InMemoryAuditArtifactStore } from "./artifact-store";
 import { SubprocessClaimReproducer } from "./claim-reproducer";
@@ -46,15 +51,30 @@ export function createProductionA2AApp(config: ProductionA2AConfig): AssayA2AApp
   });
   const pandaDataGateway = new PandaDataProcessGateway();
   const pandaDataTools = createPandaDataTools(pandaDataGateway);
+  const auditApiKeys = [...new Set([config.arkApiKey, ...(config.arkApiKeys ?? [])])];
+  let nextAuditApiKey = 0;
   const runtime = new AgentRuntime({
     model,
+    maxConcurrentModelCalls: 1,
     registry: new AgentRegistry(
       createAuditCheckAgentDefinitions({ availableTools: pandaDataTools }),
     ),
-    getApiKey: () => config.arkApiKey,
+    getApiKey: () => {
+      const apiKey = auditApiKeys[nextAuditApiKey % auditApiKeys.length] as string;
+      nextAuditApiKey += 1;
+      return apiKey;
+    },
     onEvent: createRuntimeTimelineLogger(),
   });
-  const runner = new ParallelAuditCheckRunner(runtime);
+  const runner = new ParallelAuditCheckRunner(runtime, {
+    enableDiscriminativeMoire: true,
+    moireExecutor: new SubprocessMoireExperimentExecutor(),
+    moirePlanningContext: {
+      // The independent cost-stress tool runs on the frozen as-of panel.
+      // M2 alone is authorized to rerun the ladder on the PIT-corrected panel.
+      costBaselineMode: "uncorrected",
+    },
+  });
   const executor = new AssayAgentExecutor({
     intake,
     runner,
@@ -62,6 +82,7 @@ export function createProductionA2AApp(config: ProductionA2AConfig): AssayA2AApp
     artifactStore: new InMemoryAuditArtifactStore(),
     dataAsOf: config.dataAsOf,
     codeRevision: config.codeRevision,
+    executionTimelineLogger: createExecutionTimelineLogger(),
   });
   return createAssayA2AApp({
     executor,

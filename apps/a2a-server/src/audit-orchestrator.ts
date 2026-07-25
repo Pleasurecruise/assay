@@ -10,6 +10,7 @@ import {
   type AuditArtifact,
   type AuditCheckResult,
   type AuditVerdict,
+  type CheckConclusion,
   type ClaimComparison,
   type ParallelAuditChecksRequest,
   type ParallelAuditChecksResult,
@@ -79,7 +80,7 @@ export function deriveVerdict(
   checks: readonly AuditCheckResult[],
   claimComparison: ClaimComparison | null = null,
 ): AuditVerdict {
-  const failedChecks = checks.filter((check) => check.conclusion === "fail");
+  const failedChecks = checks.filter((check) => effectiveConclusion(check) === "fail");
   if (failedChecks.length > 0) {
     return failedChecks.every(
       (check) => FAILURE_RECOVERY_CONDITION_BY_CHECK[check.id] !== undefined,
@@ -87,16 +88,62 @@ export function deriveVerdict(
       ? "QUARANTINE"
       : "RETIRE";
   }
-  if (checks.some((check) => check.conclusion === "insufficient_evidence")) {
+  if (checks.some((check) => effectiveConclusion(check) === "insufficient_evidence")) {
     return "UNVERIFIABLE";
   }
-  if (checks.some((check) => check.conclusion === "pass_with_reservations")) {
+  if (checks.some((check) => effectiveConclusion(check) === "pass_with_reservations")) {
     return "WATCH";
   }
-  if (checks.some((check) => check.conclusion === "pass")) {
+  if (checks.some((check) => effectiveConclusion(check) === "pass")) {
     return claimComparisonTriggersWatchCap(claimComparison) ? "WATCH" : "KEEP";
   }
   throw new Error("An executed strategy audit cannot contain only not-applicable checks");
+}
+
+type MoireResolution = "resolved" | "unresolved" | "legacy";
+
+interface ParsedMoireRefinement {
+  readonly resolution: MoireResolution;
+  readonly effectiveConclusion?: CheckConclusion;
+}
+
+const MOIRE_TAG_PATTERN = /^\[(M1|M2)\]\[(resolved|unresolved)\]\s/u;
+const M2_CORRECTED_CONCLUSION_PATTERN =
+  /(?:^|;\s*)corrected=(pass|pass_with_reservations|fail)(?:;|$)/u;
+
+function parseMoireRefinement(check: AuditCheckResult): ParsedMoireRefinement | undefined {
+  const refinement = check.refinedByMoire;
+  if (refinement === undefined) {
+    return undefined;
+  }
+  const tag = MOIRE_TAG_PATTERN.exec(refinement);
+  if (tag === null) {
+    return { resolution: "legacy" };
+  }
+  if (tag[2] === "unresolved") {
+    return {
+      resolution: "unresolved",
+      effectiveConclusion: "insufficient_evidence",
+    };
+  }
+  if (tag[1] !== "M2") {
+    return { resolution: "resolved" };
+  }
+  const corrected = M2_CORRECTED_CONCLUSION_PATTERN.exec(refinement)?.[1];
+  if (corrected !== "pass" && corrected !== "pass_with_reservations" && corrected !== "fail") {
+    return {
+      resolution: "unresolved",
+      effectiveConclusion: "insufficient_evidence",
+    };
+  }
+  return {
+    resolution: "resolved",
+    effectiveConclusion: corrected,
+  };
+}
+
+function effectiveConclusion(check: AuditCheckResult): CheckConclusion {
+  return parseMoireRefinement(check)?.effectiveConclusion ?? check.conclusion;
 }
 
 function deriveRecoveryConditions(
@@ -107,7 +154,7 @@ function deriveRecoveryConditions(
   const checkConditions =
     verdict === "QUARANTINE"
       ? checks.flatMap((check): RecoveryCondition[] => {
-          if (check.conclusion !== "fail") {
+          if (effectiveConclusion(check) !== "fail") {
             return [];
           }
           const condition = FAILURE_RECOVERY_CONDITION_BY_CHECK[check.id];
@@ -146,7 +193,11 @@ function deriveConfidence(checks: readonly AuditCheckResult[]): number {
   if (applicable.length === 0) {
     throw new Error("An executed strategy audit requires at least one applicable check");
   }
-  return Math.min(...applicable.map((check) => check.confidence ?? 0));
+  return Math.min(
+    ...applicable.map((check) =>
+      parseMoireRefinement(check)?.resolution === "unresolved" ? 0 : (check.confidence ?? 0),
+    ),
+  );
 }
 
 const VERDICT_SUMMARIES: Readonly<Record<AuditVerdict, string>> = {
@@ -171,10 +222,10 @@ export function buildExecutedAuditArtifact(options: BuildExecutedArtifactOptions
   const verdict = deriveVerdict(checks, claimComparison);
   const refinedChecks = checks.filter((check) => check.refinedByMoire !== undefined);
   const resolvedDisputes = refinedChecks
-    .filter((check) => check.conclusion !== "insufficient_evidence")
+    .filter((check) => parseMoireRefinement(check)?.resolution !== "unresolved")
     .flatMap((check) => (check.refinedByMoire ? [check.refinedByMoire] : []));
   const unresolvedDisputes = refinedChecks
-    .filter((check) => check.conclusion === "insufficient_evidence")
+    .filter((check) => parseMoireRefinement(check)?.resolution === "unresolved")
     .flatMap((check) => (check.refinedByMoire ? [check.refinedByMoire] : []));
   const artifact = {
     schemaVersion: AUDIT_ARTIFACT_SCHEMA_VERSION,
@@ -199,10 +250,10 @@ export function buildExecutedAuditArtifact(options: BuildExecutedArtifactOptions
             ? ["Required audit evidence or data capabilities become available."]
             : [],
         assumptionsAndLimits: [
-          "The Moiré follow-up pipeline is retained but disabled by default until the prerequisites in MOIRE_SPEC are implemented.",
+          "Moiré v9 evaluates only the pre-enumerated M1 and M2 discriminative pairs; M3 is outside this audit version.",
           "PandaData financial report rows have no verified disclosure timestamp; forecast and performance bulletin info_date fields are preferred for point-in-time evidence.",
-          "The sprint backtester uses one fixed CSI 300 constituent snapshot, so survivorship bias is not controlled.",
-          "Suspensions, delistings, and missing prices are forward-filled without target replacement in the sprint engine.",
+          "Grid, baseline cost, and regime instruments use the frozen as-of CSI 300 panel; data-availability separately reports the PIT-membership correction, and M2 uses that corrected context when triggered.",
+          "Prices may be forward-filled for valuation. A primary factor-close gap is eligible only when the identity-bound official post-adjusted fallback passes the frozen two-sided scale check; otherwise a missing price or non-tradable trade_status makes that symbol ineligible on the affected date, and targets are not replaced.",
         ],
         strategySpec: options.frozen.spec,
         defaultsApplied: options.frozen.defaultsApplied,

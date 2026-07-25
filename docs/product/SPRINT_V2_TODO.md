@@ -65,10 +65,10 @@ It is not a D8/D9 contract or a claim that the shortcuts are production-safe.
   validation in this slice.
 - The production ArtifactStore remains in memory. Only the accepted local demo
   bundle is saved for sprint evidence.
-- `run_availability_audit` does not yet propagate the runtime AbortSignal into
-  its Python subprocess. A timed-out PIT acquisition can therefore outlive the
-  agent deadline until the host process exits; subprocess cancellation remains
-  a dedicated follow-up.
+- `run_availability_audit` and `run_experiment` do not yet propagate the
+  runtime AbortSignal into their Python subprocesses. A timed-out PIT, grid, or
+  cost-ladder run can therefore outlive the agent deadline until the host
+  process exits; subprocess cancellation remains a dedicated follow-up.
 - The parameter grid is hard-coded to 15 variants. Only parameter robustness
   and cost stress have tools; the other three checks intentionally return
   `insufficient_evidence`.

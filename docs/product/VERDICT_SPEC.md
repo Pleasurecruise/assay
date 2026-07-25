@@ -1,8 +1,8 @@
 # Verdict and Artifact Specification
 
-> Status: target public Artifact contract. The single-check contract and
-> validator are implemented in `packages/contracts/src/audit-checks.ts`; the
-> complete verdict Artifact and A2A gateway remain planned.
+> Status: implemented public Artifact contract. The validators live in
+> `packages/contracts`; the deterministic verdict policy and A2A publication
+> path are wired in `apps/a2a-server`.
 
 ## 1. Single-Check Result
 
@@ -69,22 +69,19 @@ item.
 
 Deterministic rules:
 
-> **Sprint v2 local override:** for an executed audit, an evidenced `fail` is
-> evaluated before `insufficient_evidence`. Because recovery-condition mapping
-> is deferred in this vertical slice, that fail maps to `RETIRE`. Early exits
-> remain `UNVERIFIABLE`. The full rule order below remains the post-sprint
-> target and will be reconciled when D8 is implemented.
-
-1. An unparseable input or any required `insufficient_evidence` result yields
+1. An unresolved Moiré dispute that could change the verdict first converts
+   the affected required check to `insufficient_evidence`.
+2. For an executed audit, evidenced failures are evaluated first:
+   - if every failed check has a scoped recovery condition, return
+     `QUARANTINE`;
+   - if any failed check has no feasible recovery path, return `RETIRE`.
+3. Otherwise, any required `insufficient_evidence` result yields
    `UNVERIFIABLE`.
-2. An unresolved Moiré dispute that could change the verdict first converts
-   affected required checks to `insufficient_evidence`.
-3. If every failed check has a scoped recovery condition, return
-   `QUARANTINE`.
-4. If any failed check has no feasible recovery path, return `RETIRE`.
-5. Otherwise, any `pass_with_reservations` yields `WATCH`.
-6. Otherwise, all applicable checks pass and the verdict is `KEEP`.
-7. `not_applicable` never participates in grading.
+4. Otherwise, any `pass_with_reservations` yields `WATCH`.
+5. Otherwise, all applicable checks pass and the verdict is `KEEP`, subject to
+   the claim-reproduction WATCH cap in `CHECKS_WIRING.md` §0.
+6. `not_applicable` never participates in grading. An audit that exits before
+   execution follows §4.1 and returns `UNVERIFIABLE`.
 
 Overall confidence is the minimum confidence of applicable checks after Moiré
 refinement. The LLM does not choose the verdict.

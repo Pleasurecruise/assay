@@ -1,8 +1,14 @@
 import { spawn } from "node:child_process";
 import type { AgentDefinition } from "@assay/agent-runtime";
+import {
+  AUDIT_TOOL_CONTRACT_VERSION,
+  AVAILABILITY_AUDIT_SOURCE_REF,
+  type AvailabilityAuditResult,
+} from "@assay/contracts";
 import type { ExperimentProcessConfig } from "./run-experiment-tool";
 
-export const AVAILABILITY_AUDIT_SOURCE_REF = "artifact:data-availability/pit-audit";
+export { AVAILABILITY_AUDIT_SOURCE_REF };
+export type { AvailabilityAuditResult };
 
 export interface RunAvailabilityAuditRequest {
   readonly kind: "availability_audit";
@@ -12,28 +18,11 @@ export interface RunAvailabilityAuditRequest {
   };
 }
 
-export interface AvailabilityAuditResult {
-  readonly engineVersion: string;
-  readonly mode: "full_pit" | "degraded_remove_only";
-  readonly futureConstituentCount: number;
-  readonly affectedRebalances: readonly string[];
-  readonly sampleSymbols: readonly string[];
-  readonly untradableTargets: number;
-  readonly contaminatedSelectionRate: number;
-  readonly corrected: {
-    readonly annualReturn: number;
-    readonly sharpe: number;
-    /** Corrected annual return minus the fixed as-of annual return. */
-    readonly delta: number;
-  };
-  readonly sourceRef: typeof AVAILABILITY_AUDIT_SOURCE_REF;
-  readonly assumptions: readonly string[];
-}
-
 type AgentTool = NonNullable<AgentDefinition["tools"]>[number];
 
 const MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
 const RESULT_KEYS = [
+  "contractVersion",
   "engineVersion",
   "mode",
   "futureConstituentCount",
@@ -96,6 +85,11 @@ function parseResult(stdout: string): AvailabilityAuditResult {
   if (typeof parsed.engineVersion !== "string" || parsed.engineVersion.length === 0) {
     throw new Error("run_availability_audit engineVersion must be a non-empty string");
   }
+  if (parsed.contractVersion !== AUDIT_TOOL_CONTRACT_VERSION) {
+    throw new Error(
+      `run_availability_audit contractVersion must equal ${AUDIT_TOOL_CONTRACT_VERSION}`,
+    );
+  }
   if (parsed.mode !== "full_pit" && parsed.mode !== "degraded_remove_only") {
     throw new Error("run_availability_audit mode must be full_pit or degraded_remove_only");
   }
@@ -118,6 +112,7 @@ function parseResult(stdout: string): AvailabilityAuditResult {
     throw new Error(`run_availability_audit sourceRef must equal ${AVAILABILITY_AUDIT_SOURCE_REF}`);
   }
   return {
+    contractVersion: AUDIT_TOOL_CONTRACT_VERSION,
     engineVersion: parsed.engineVersion,
     mode: parsed.mode,
     futureConstituentCount: nonNegativeInteger(

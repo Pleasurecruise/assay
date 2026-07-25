@@ -12,11 +12,39 @@ import {
   AUDIT_CHECK_SCHEMA_VERSION,
   parseAuditCheckResult,
 } from "@assay/contracts";
-import { planMoireExperiments, type MoireExperiment } from "./moire";
+import {
+  planDiscriminativeMoireExperiments,
+  planReviewMoireExperiments,
+  synthesizeDiscriminativeMoire,
+  type DiscriminativeMoireExperiment,
+  type DiscriminativeMoireOutcome,
+  type DiscriminativeMoirePlanningContext,
+  type MoireExperiment,
+} from "./moire";
 
 export const HARD_CHECK_DEADLINE_MS = 120_000;
 const DEFAULT_CHECK_TIMEOUT_MS = HARD_CHECK_DEADLINE_MS;
 const CHECK_EXECUTION_FAILURE_REASON = "Check execution failed before a valid result was produced.";
+const CHECK_SUBMISSION_FAILURE_REASON =
+  "Check agent did not complete one valid submit_check_result call within two attempts.";
+const CHECK_OUTPUT_INVALID_JSON_REASON =
+  "Check agent completed but did not return one parseable JSON object.";
+const CHECK_OUTPUT_INVALID_SCHEMA_REASON =
+  "Check agent completed but its JSON did not satisfy the frozen check-result schema.";
+const CHECK_OUTPUT_AMBIGUOUS_REASON =
+  "Check agent completed but returned multiple valid check-result objects.";
+const CHECK_OUTPUT_HOST_FIELD_REASON =
+  "Check agent completed but attempted to write a host-only result field.";
+
+class CheckOutputContractError extends Error {
+  readonly safeReason: string;
+
+  constructor(safeReason: string) {
+    super(safeReason);
+    this.name = "CheckOutputContractError";
+    this.safeReason = safeReason;
+  }
+}
 
 export interface AuditCheckTaskRunner {
   run(request: RuntimeTaskRequest, options?: { signal?: AbortSignal }): Promise<RuntimeTaskResult>;
@@ -28,29 +56,116 @@ export interface ParallelCheckRunOptions {
 
 export interface ParallelAuditCheckRunnerOptions {
   defaultTimeoutMs?: number;
+  /** @deprecated Retained as an alias for enableReviewMoire. */
   enableMoire?: boolean;
+  enableReviewMoire?: boolean;
+  enableDiscriminativeMoire?: boolean;
+  moireExecutor?: MoireExperimentExecutor;
+  moirePlanningContext?: DiscriminativeMoirePlanningContext;
 }
 
-function parseAgentJson(output: string): unknown {
-  const unfenced = output
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/, "")
-    .trim();
-  const candidates = [unfenced];
-  const objectStart = unfenced.indexOf("{");
-  const objectEnd = unfenced.lastIndexOf("}");
-  if (objectStart >= 0 && objectEnd > objectStart) {
-    candidates.push(unfenced.slice(objectStart, objectEnd + 1));
-  }
-  for (const candidate of candidates) {
-    try {
-      return JSON.parse(candidate) as unknown;
-    } catch {
-      // Keep the result contract strict; only strip common presentation wrappers.
+export interface MoireExperimentExecutionContext {
+  readonly auditId: string;
+  readonly traceId: string;
+  readonly subjectId: string;
+  readonly frozenStrategySpec?: string;
+  readonly specHash?: string;
+}
+
+export interface MoireExperimentExecutor {
+  execute(
+    experiment: DiscriminativeMoireExperiment,
+    context: MoireExperimentExecutionContext,
+  ): Promise<DiscriminativeMoireOutcome>;
+}
+
+/**
+ * Legacy free-text extraction is retained only for diagnostic tooling.
+ * Production reads RuntimeTaskResult.auditCheckResult and never calls this.
+ */
+function jsonObjectCandidates(output: string): readonly string[] {
+  const candidates: string[] = [];
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < output.length; index += 1) {
+    const character = output[index];
+    if (start < 0) {
+      if (character === "{") {
+        start = index;
+        depth = 1;
+        inString = false;
+        escaped = false;
+      }
+      continue;
+    }
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+    } else if (character === "{") {
+      depth += 1;
+    } else if (character === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        candidates.push(output.slice(start, index + 1));
+        start = -1;
+      }
     }
   }
-  throw new Error("Check agent returned invalid JSON");
+  return candidates;
+}
+
+export function parseLegacyAgentCheckResultForDiagnostics(
+  output: string,
+  checkId: AuditCheckId,
+): AuditCheckResult {
+  const valid: AuditCheckResult[] = [];
+  let parseableObjectCount = 0;
+  let attemptedHostField = false;
+  for (const candidate of jsonObjectCandidates(output)) {
+    let value: unknown;
+    try {
+      value = JSON.parse(candidate) as unknown;
+    } catch {
+      continue;
+    }
+    parseableObjectCount += 1;
+    try {
+      const parsed = parseAuditCheckResult(value, checkId);
+      if (parsed.refinedByMoire !== undefined) {
+        attemptedHostField = true;
+      } else {
+        valid.push(parsed);
+      }
+    } catch {
+      // A calculation object may precede the one frozen check result. Keep the
+      // schema strict and accept only a unique object that validates in full.
+    }
+  }
+  if (attemptedHostField) {
+    throw new CheckOutputContractError(CHECK_OUTPUT_HOST_FIELD_REASON);
+  }
+  if (valid.length === 1) {
+    return valid[0] as AuditCheckResult;
+  }
+  if (valid.length > 1) {
+    throw new CheckOutputContractError(CHECK_OUTPUT_AMBIGUOUS_REASON);
+  }
+  throw new CheckOutputContractError(
+    parseableObjectCount === 0
+      ? CHECK_OUTPUT_INVALID_JSON_REASON
+      : CHECK_OUTPUT_INVALID_SCHEMA_REASON,
+  );
 }
 
 function validateRequest(request: ParallelAuditChecksRequest): void {
@@ -129,7 +244,7 @@ function buildAgentInput(
 ): string {
   const lines = [
     "执行下面 JSON 中分配的单项审计。只使用你自己的工具和该请求内容；",
-    "不得引用或推测其他检查结果。严格按 system prompt 的 JSON 契约输出。",
+    "不得引用或推测其他检查结果。严格按 system prompt 的 submit_check_result 契约交卷。",
     JSON.stringify(request),
   ];
   if (followUp) {
@@ -155,7 +270,10 @@ function buildAgentInput(
 export class ParallelAuditCheckRunner {
   readonly #taskRunner: AuditCheckTaskRunner;
   readonly #defaultTimeoutMs: number;
-  readonly #enableMoire: boolean;
+  readonly #enableReviewMoire: boolean;
+  readonly #enableDiscriminativeMoire: boolean;
+  readonly #moireExecutor?: MoireExperimentExecutor;
+  readonly #moirePlanningContext: DiscriminativeMoirePlanningContext;
 
   constructor(
     taskRunner: AuditCheckTaskRunner,
@@ -168,7 +286,17 @@ export class ParallelAuditCheckRunner {
     }
     this.#taskRunner = taskRunner;
     this.#defaultTimeoutMs = defaultTimeoutMs;
-    this.#enableMoire = normalizedOptions.enableMoire === true;
+    this.#enableReviewMoire =
+      normalizedOptions.enableReviewMoire === true || normalizedOptions.enableMoire === true;
+    this.#enableDiscriminativeMoire = normalizedOptions.enableDiscriminativeMoire === true;
+    this.#moireExecutor = normalizedOptions.moireExecutor;
+    this.#moirePlanningContext = normalizedOptions.moirePlanningContext ?? {};
+    if (this.#enableReviewMoire && this.#enableDiscriminativeMoire) {
+      throw new Error("Review-style and discriminative Moiré cannot be enabled together");
+    }
+    if (this.#enableDiscriminativeMoire && this.#moireExecutor === undefined) {
+      throw new Error("Discriminative Moiré requires a host experiment executor");
+    }
   }
 
   async run(
@@ -190,25 +318,11 @@ export class ParallelAuditCheckRunner {
         return this.#runOne(request, checkId, traceId, options.signal);
       }),
     );
-    const experiments = this.#enableMoire ? planMoireExperiments(independentChecks) : [];
-    const refinements = await Promise.all(
-      experiments.map(async (experiment) => {
-        const originalResult = independentChecks.find((check) => check.id === experiment.checkId);
-        if (!originalResult) {
-          throw new Error(`Moiré selected unknown check "${experiment.checkId}"`);
-        }
-        const result = await this.#runOne(request, experiment.checkId, traceId, options.signal, {
-          experiment,
-          originalResult,
-        });
-        return {
-          ...result,
-          refinedByMoire: experiment.id,
-        };
-      }),
-    );
-    const refinementsById = new Map(refinements.map((check) => [check.id, check]));
-    const checks = independentChecks.map((check) => refinementsById.get(check.id) ?? check);
+    const checks = this.#enableDiscriminativeMoire
+      ? await this.#runDiscriminativeMoire(request, traceId, independentChecks)
+      : this.#enableReviewMoire
+        ? await this.#runReviewMoire(request, traceId, independentChecks, options.signal)
+        : independentChecks;
 
     return {
       schemaVersion: AUDIT_CHECK_SCHEMA_VERSION,
@@ -219,6 +333,80 @@ export class ParallelAuditCheckRunner {
       startedAt,
       completedAt: new Date().toISOString(),
     };
+  }
+
+  async #runReviewMoire(
+    request: ParallelAuditChecksRequest,
+    traceId: string,
+    independentChecks: readonly AuditCheckResult[],
+    signal?: AbortSignal,
+  ): Promise<readonly AuditCheckResult[]> {
+    const experiments = planReviewMoireExperiments(independentChecks);
+    const refinements = await Promise.all(
+      experiments.map(async (experiment) => {
+        const originalResult = independentChecks.find((check) => check.id === experiment.checkId);
+        if (!originalResult) {
+          throw new Error(`Moiré selected unknown check "${experiment.checkId}"`);
+        }
+        const result = await this.#runOne(request, experiment.checkId, traceId, signal, {
+          experiment,
+          originalResult,
+        });
+        return {
+          ...result,
+          refinedByMoire: experiment.id,
+        };
+      }),
+    );
+    const refinementsById = new Map(refinements.map((check) => [check.id, check]));
+    return independentChecks.map((check) => refinementsById.get(check.id) ?? check);
+  }
+
+  async #runDiscriminativeMoire(
+    request: ParallelAuditChecksRequest,
+    traceId: string,
+    independentChecks: readonly AuditCheckResult[],
+  ): Promise<readonly AuditCheckResult[]> {
+    const executor = this.#moireExecutor;
+    if (executor === undefined) {
+      throw new Error("Discriminative Moiré executor is unavailable");
+    }
+    const experiments = planDiscriminativeMoireExperiments(
+      independentChecks,
+      this.#moirePlanningContext,
+    );
+    const context: MoireExperimentExecutionContext = {
+      auditId: request.auditId,
+      traceId,
+      subjectId: request.subject.id,
+      ...(request.skill === "audit_strategy" ? { frozenStrategySpec: request.subject.input } : {}),
+      ...(request.metadata?.specHash === undefined ? {} : { specHash: request.metadata.specHash }),
+    };
+    const refinements = await Promise.all(
+      experiments.map(async (experiment) => {
+        try {
+          const outcome = await executor.execute(experiment, context);
+          const synthesis = synthesizeDiscriminativeMoire(experiment, outcome);
+          return {
+            checkId: experiment.checkId,
+            refinedByMoire: synthesis.refinedByMoire,
+          };
+        } catch {
+          return {
+            checkId: experiment.checkId,
+            refinedByMoire:
+              `[${experiment.id}][unresolved] 判别实验未完成，` + "该矛盾仍可能改变最终判决。",
+          };
+        }
+      }),
+    );
+    const refinementsById = new Map<AuditCheckId, string>(
+      refinements.map((refinement) => [refinement.checkId, refinement.refinedByMoire]),
+    );
+    return independentChecks.map((check) => {
+      const refinedByMoire = refinementsById.get(check.id);
+      return refinedByMoire === undefined ? check : { ...check, refinedByMoire };
+    });
   }
 
   async #runOne(
@@ -243,8 +431,9 @@ export class ParallelAuditCheckRunner {
       ...(budget === undefined ? {} : { budget }),
     };
 
+    let result: RuntimeTaskResult;
     try {
-      const result = await this.#taskRunner.run(
+      result = await this.#taskRunner.run(
         {
           id: `${request.auditId}:${checkId}`,
           traceId,
@@ -256,17 +445,21 @@ export class ParallelAuditCheckRunner {
             auditId: request.auditId,
             subjectId: request.subject.id,
             checkId,
-            ...(request.skill === "audit_strategy" &&
-            (checkId === "param-robustness" ||
-              checkId === "data-availability" ||
-              checkId === "cost-stress")
+            ...(request.skill === "audit_strategy"
               ? { frozenStrategySpec: request.subject.input }
               : {}),
           },
         },
         { signal },
       );
-      return parseAuditCheckResult(parseAgentJson(result.output), checkId);
+      if (result.auditCheckResult === undefined) {
+        return insufficientEvidence(checkId, CHECK_SUBMISSION_FAILURE_REASON);
+      }
+      const parsed = parseAuditCheckResult(result.auditCheckResult, checkId);
+      if (parsed.refinedByMoire !== undefined) {
+        throw new Error("Only the host may write refinedByMoire");
+      }
+      return parsed;
     } catch (error) {
       if (signal?.aborted) {
         throw signal.reason ?? error;

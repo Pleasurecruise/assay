@@ -19,7 +19,7 @@ export const SPRINT_REAL_DATA_MODE = "pandadata-factor-close-trade-status-v3-cac
 export const SPRINT_DEMO_INPUT =
   "沪深 300 每月底买过去 20 天涨幅最大的 50 只，等权持有，宣称年化 18% 夏普 1.9";
 export const SPRINT_REAL_GOLDEN_PATH = fileURLToPath(
-  new URL("../fixtures/assay-real-data.golden.json", import.meta.url),
+  new URL("../fixtures/assay-pre-pit-real-data.golden.json", import.meta.url),
 );
 
 const PARAM_CHECK_ID: AuditCheckId = "param-robustness";
@@ -31,9 +31,13 @@ const REAL_DATA_INSUFFICIENT_CHECK_IDS = [
 ] as const satisfies readonly AuditCheckId[];
 const OUTPUT_SAFETY_PATTERNS: readonly [RegExp, string][] = [
   [/\/Users\//, "local user path"],
+  [/\/home\//, "local home path"],
   [/\/private\//, "local private path"],
+  [/\/tmp\//, "local temporary path"],
+  [/\/var\/folders\//, "local macOS temporary path"],
   [/[A-Za-z]:\\Users\\/, "local Windows user path"],
   [/\bBearer\s+\S+/i, "bearer credential"],
+  [/\bsk-[A-Za-z0-9_-]{8,}\b/i, "API credential"],
   [/\b(?:ARK_API_KEY|PANDA_DATA_(?:USERNAME|PASSWORD))\b/, "credential variable"],
   [/\b1[3-9]\d{9}\b/, "personal phone number"],
   [/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i, "personal email address"],

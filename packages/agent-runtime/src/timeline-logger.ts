@@ -8,6 +8,7 @@ export interface RuntimeTimelineLoggerOptions {
 interface ToolStart {
   readonly agentKey: string;
   readonly startedAt: number;
+  readonly toolName: string;
 }
 
 function agentKey(event: RuntimeEvent): string {
@@ -25,9 +26,10 @@ function durationMs(startedAt: number | undefined, finishedAt: number): number {
 /**
  * Emit credential-safe runtime timing records.
  *
- * Agent text, tool arguments/results, and provider errors are deliberately
- * excluded. JSON encoding also prevents untrusted identifiers from injecting
- * additional log lines.
+ * Agent text, domain-tool arguments/results, and provider errors are
+ * deliberately excluded. Rejected submit_check_result arguments are the one
+ * exception: they are bounded contract data retained for acceptance forensics.
+ * JSON encoding prevents untrusted strings from injecting additional log lines.
  */
 export function createRuntimeTimelineLogger(
   options: RuntimeTimelineLoggerOptions = {},
@@ -56,6 +58,7 @@ export function createRuntimeTimelineLogger(
       toolStarts.set(toolKey(event), {
         agentKey: currentAgentKey,
         startedAt: observedAt,
+        toolName: event.toolName,
       });
       write(
         `[assay-runtime] ${JSON.stringify({
@@ -71,6 +74,10 @@ export function createRuntimeTimelineLogger(
     if (event.type === "tool.completed") {
       const currentToolKey = toolKey(event);
       const started = toolStarts.get(currentToolKey);
+      if (started === undefined && !agentStarts.has(currentAgentKey)) {
+        // Ignore a completion that arrives after the agent deadline record.
+        return;
+      }
       toolStarts.delete(currentToolKey);
       write(
         `[assay-runtime] ${JSON.stringify({
@@ -84,7 +91,36 @@ export function createRuntimeTimelineLogger(
       return;
     }
 
+    if (event.type === "audit.submission_invalid") {
+      write(
+        `[assay-runtime] ${JSON.stringify({
+          ...base,
+          phase: "audit_submission_invalid",
+          toolCallId: event.toolCallId,
+          attempt: event.attempt,
+          arguments: event.arguments,
+          toolError: event.error,
+        })}\n`,
+      );
+      return;
+    }
+
     if (event.type === "agent.completed" || event.type === "agent.failed") {
+      for (const [key, started] of toolStarts) {
+        if (started.agentKey === currentAgentKey) {
+          write(
+            `[assay-runtime] ${JSON.stringify({
+              ...base,
+              phase: "tool_finished",
+              toolName: started.toolName,
+              durationMs: durationMs(started.startedAt, observedAt),
+              isError: true,
+              outcome: "abandoned",
+            })}\n`,
+          );
+          toolStarts.delete(key);
+        }
+      }
       write(
         `[assay-runtime] ${JSON.stringify({
           ...base,
@@ -94,11 +130,6 @@ export function createRuntimeTimelineLogger(
         })}\n`,
       );
       agentStarts.delete(currentAgentKey);
-      for (const [key, started] of toolStarts) {
-        if (started.agentKey === currentAgentKey) {
-          toolStarts.delete(key);
-        }
-      }
     }
   };
 }

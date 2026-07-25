@@ -11,6 +11,7 @@
     "a2a:server": "bun run apps/a2a-server/src/index.ts",
     "check": "vp check && vp test && bun run sdk:test",
     "e2e:checks": "bun run tests/e2e/src/index.ts",
+    "v9:replay": "bun run tests/e2e/src/replay-v9-real.ts",
     "fmt": "vp fmt . --write",
     "fmt:check": "vp fmt --check",
     "typecheck": "vp check --no-fmt --no-lint",

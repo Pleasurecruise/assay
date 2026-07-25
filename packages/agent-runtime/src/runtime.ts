@@ -1,11 +1,22 @@
 import type {
+  AuditCheckResult,
   RuntimeEvent,
   RuntimeEventPayload,
   RuntimeTaskRequest,
   RuntimeTaskResult,
 } from "@assay/contracts";
-import { Agent, type AgentMessage, type AgentOptions } from "@oh-my-pi/pi-agent-core";
-import type { Model } from "@oh-my-pi/pi-ai";
+import {
+  Agent,
+  TERMINAL_TOOL_RESULT_ABORT_REASON,
+  type AgentMessage,
+  type AgentOptions,
+  type StreamFn,
+} from "@oh-my-pi/pi-agent-core";
+import {
+  createAssistantMessageEventStream,
+  streamSimple,
+  type Model,
+} from "@oh-my-pi/pi-ai";
 import { AgentRegistry } from "./registry";
 import { ToolPolicy } from "./policy";
 import {
@@ -13,8 +24,15 @@ import {
   guardRuntimeToolCall,
   TRUSTED_SPEC_TOOL_NAMES,
 } from "./runtime-tool-guard";
+import {
+  AUDIT_CHECK_SUBMISSION_TOOL_NAME,
+  MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS,
+  parseAuditCheckSubmission,
+} from "./final-result";
+import { ModelCallGate } from "./model-call-gate";
 
 const DEFAULT_MAX_RUN_MS = 19 * 60 * 1_000;
+const DEFAULT_MAX_CONCURRENT_MODEL_CALLS = 3;
 
 export interface AgentRuntimeOptions {
   model: Model;
@@ -22,6 +40,7 @@ export interface AgentRuntimeOptions {
   getApiKey?: AgentOptions["getApiKey"];
   toolPolicy?: ToolPolicy;
   maxRunMs?: number;
+  maxConcurrentModelCalls?: number;
   onEvent?: (event: RuntimeEvent) => void | Promise<void>;
 }
 
@@ -57,12 +76,90 @@ function lastAssistantText(messages: readonly AgentMessage[]): string {
   return "";
 }
 
+const SAFE_SUBMISSION_DIAGNOSTIC_KEYS = new Set([
+  "conclusion",
+  "confidence",
+  "evidence",
+  "missingEvidence",
+  "metric",
+  "value",
+  "unit",
+  "sourceRefs",
+  "requirement",
+  "reason",
+  "id",
+  "refinedByMoire",
+]);
+
+function safeSubmissionDiagnostic(value: unknown, depth = 0): unknown {
+  if (depth >= 8) {
+    return "[depth-limit]";
+  }
+  if (typeof value === "string") {
+    return `[string:${String(value.length)}]`;
+  }
+  if (
+    value === null ||
+    typeof value === "boolean" ||
+    (typeof value === "number" && Number.isFinite(value))
+  ) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value
+      .slice(0, 100)
+      .map((entry) => safeSubmissionDiagnostic(entry, depth + 1));
+  }
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .slice(0, 100)
+        .map(([key, entry], index) => [
+          SAFE_SUBMISSION_DIAGNOSTIC_KEYS.has(key)
+            ? key
+            : `[unexpected-key:${String(index + 1)}]`,
+          safeSubmissionDiagnostic(entry, depth + 1),
+        ]),
+    );
+  }
+  return `[${typeof value}]`;
+}
+
+function createGatedStream(gate: ModelCallGate): StreamFn {
+  return async (...arguments_) => {
+    const release = await gate.acquire();
+    const outer = createAssistantMessageEventStream();
+    try {
+      const inner = streamSimple(...arguments_);
+      void (async () => {
+        try {
+          for await (const event of inner) {
+            outer.push(event);
+          }
+          if (!outer.done) {
+            outer.end(await inner.result());
+          }
+        } catch (error) {
+          outer.fail(error);
+        } finally {
+          release();
+        }
+      })();
+      return outer;
+    } catch (error) {
+      release();
+      throw error;
+    }
+  };
+}
+
 export class AgentRuntime {
   readonly #model: Model;
   readonly #registry: AgentRegistry;
   readonly #getApiKey?: AgentOptions["getApiKey"];
   readonly #toolPolicy: ToolPolicy;
   readonly #maxRunMs: number;
+  readonly #modelCallGate: ModelCallGate;
   readonly #onEvent?: AgentRuntimeOptions["onEvent"];
 
   constructor(options: AgentRuntimeOptions) {
@@ -71,6 +168,9 @@ export class AgentRuntime {
     this.#getApiKey = options.getApiKey;
     this.#toolPolicy = options.toolPolicy ?? new ToolPolicy();
     this.#maxRunMs = options.maxRunMs ?? DEFAULT_MAX_RUN_MS;
+    this.#modelCallGate = new ModelCallGate(
+      options.maxConcurrentModelCalls ?? DEFAULT_MAX_CONCURRENT_MODEL_CALLS,
+    );
     this.#onEvent = options.onEvent;
 
     if (this.#maxRunMs <= 0) {
@@ -98,6 +198,10 @@ export class AgentRuntime {
     let output = "";
     let runExperimentCallCount = 0;
     let successfulRunExperimentCallCount = 0;
+    let successfulAuditSubmissionCount = 0;
+    let auditSubmissionAttemptCount = 0;
+    let submittedAuditResult: AuditCheckResult | undefined;
+    const pendingAuditSubmissions = new Map<string, AuditCheckResult>();
 
     const emit = async (payload: RuntimeEventPayload): Promise<void> => {
       const event: RuntimeEvent = {
@@ -115,6 +219,9 @@ export class AgentRuntime {
     const requiredTrustedSpecTool = tools.find((tool) =>
       TRUSTED_SPEC_TOOL_NAMES.some((name) => name === tool.name),
     )?.name;
+    const auditSubmissionTool = tools.find(
+      (tool) => tool.name === AUDIT_CHECK_SUBMISSION_TOOL_NAME,
+    )?.name;
     const agent = new Agent({
       initialState: {
         systemPrompt: [...definition.systemPrompt],
@@ -127,7 +234,56 @@ export class AgentRuntime {
       // OpenAI's optional reasoning.summary request field.
       hideThinkingSummary: true,
       getApiKey: this.#getApiKey,
+      streamFn: createGatedStream(this.#modelCallGate),
+      getToolChoice: () =>
+        auditSubmissionTool !== undefined &&
+        successfulRunExperimentCallCount === 1 &&
+        successfulAuditSubmissionCount === 0 &&
+        auditSubmissionAttemptCount < MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS
+          ? { type: "tool", name: auditSubmissionTool }
+          : undefined,
       beforeToolCall: async ({ toolCall, args }) => {
+        if (toolCall.name === AUDIT_CHECK_SUBMISSION_TOOL_NAME) {
+          auditSubmissionAttemptCount += 1;
+          let submissionError: string | undefined;
+          if (successfulRunExperimentCallCount !== 1) {
+            submissionError =
+              "The evidence tool must complete before the final audit submission.";
+          } else if (submittedAuditResult !== undefined) {
+            submissionError = "The final audit result has already been submitted.";
+          } else if (
+            auditSubmissionAttemptCount > MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS
+          ) {
+            submissionError = `submit_check_result allows at most ${String(MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS)} attempts.`;
+          } else {
+            try {
+              pendingAuditSubmissions.set(
+                toolCall.id,
+                parseAuditCheckSubmission(toolCall.arguments, definition.id),
+              );
+            } catch (error) {
+              submissionError =
+                error instanceof Error
+                  ? error.message
+                  : "Final audit submission did not satisfy the frozen schema.";
+            }
+          }
+          if (submissionError !== undefined) {
+            await emit({
+              type: "audit.submission_invalid",
+              agentId: definition.id,
+              toolCallId: toolCall.id,
+              attempt: auditSubmissionAttemptCount,
+              arguments: safeSubmissionDiagnostic(toolCall.arguments),
+              error: submissionError,
+            });
+            return {
+              block: true,
+              reason: submissionError,
+            };
+          }
+        }
+
         const guard = guardRuntimeToolCall(
           toolCall.name,
           args,
@@ -203,7 +359,25 @@ export class AgentRuntime {
           });
           break;
         case "tool_execution_end":
-          if (
+          if (event.toolName === AUDIT_CHECK_SUBMISSION_TOOL_NAME) {
+            const pending = pendingAuditSubmissions.get(event.toolCallId);
+            if (
+              event.isError !== true &&
+              pending !== undefined &&
+              submittedAuditResult === undefined
+            ) {
+              submittedAuditResult = pending;
+              successfulAuditSubmissionCount += 1;
+            }
+            pendingAuditSubmissions.delete(event.toolCallId);
+            if (
+              successfulAuditSubmissionCount === 1 ||
+              (event.isError === true &&
+                auditSubmissionAttemptCount >= MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS)
+            ) {
+              agent.abort(TERMINAL_TOOL_RESULT_ABORT_REASON);
+            }
+          } else if (
             TRUSTED_SPEC_TOOL_NAMES.some((name) => name === event.toolName) &&
             event.isError !== true
           ) {
@@ -253,6 +427,17 @@ export class AgentRuntime {
         successfulRunExperimentCallCount,
         requiredTrustedSpecTool,
       );
+      if (auditSubmissionTool !== undefined) {
+        // The structured tool call is the only result path. The legacy output
+        // slot receives only host-serialized accepted arguments; assistant
+        // free text is always discarded.
+        output =
+          successfulAuditSubmissionCount === 1 && submittedAuditResult !== undefined
+            ? JSON.stringify(submittedAuditResult)
+            : "";
+      } else {
+        output ||= lastAssistantText(agent.state.messages);
+      }
 
       await emit({
         type: "agent.completed",
@@ -265,6 +450,9 @@ export class AgentRuntime {
         traceId,
         agentId: definition.id,
         output,
+        ...(successfulAuditSubmissionCount === 1 && submittedAuditResult !== undefined
+          ? { auditCheckResult: submittedAuditResult }
+          : {}),
         events,
         startedAt,
         completedAt: new Date().toISOString(),

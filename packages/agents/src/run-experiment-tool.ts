@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import type { AgentDefinition } from "@assay/agent-runtime";
+import { COST_STRESS_SOURCE_REF, PARAMETER_GRID_SOURCE_REF } from "@assay/contracts";
 
 export type ExperimentKind = "baseline" | "grid" | "cost_ladder";
 export type AgentExperimentKind = Exclude<ExperimentKind, "baseline">;
@@ -35,6 +36,21 @@ export interface RunExperimentResult {
   readonly engineVersion: string;
   readonly baseline: ExperimentResultSummary;
   readonly variants: readonly ExperimentResultSummary[];
+  readonly summaryRef?: typeof PARAMETER_GRID_SOURCE_REF | typeof COST_STRESS_SOURCE_REF;
+}
+
+interface ParameterGridAgentView {
+  readonly engineVersion: string;
+  readonly baseline: Omit<ExperimentResultSummary, "params">;
+  readonly parameterSummary: {
+    readonly baselineSharpe: number;
+    readonly medianVariantSharpe: number;
+    readonly neighborhoodSharpeRetention: number | null;
+    readonly variantCount: number;
+    readonly minVariantSharpe: number;
+    readonly maxVariantSharpe: number;
+  };
+  readonly summaryRef: typeof PARAMETER_GRID_SOURCE_REF;
 }
 
 export interface ExperimentProcessConfig {
@@ -48,7 +64,8 @@ export interface ExperimentProcessConfig {
 type AgentTool = NonNullable<AgentDefinition["tools"]>[number];
 
 const DEFAULT_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
-const RESULT_KEYS = ["engineVersion", "baseline", "variants"] as const;
+const BASE_RESULT_KEYS = ["engineVersion", "baseline", "variants"] as const;
+const AUDIT_RESULT_KEYS = [...BASE_RESULT_KEYS, "summaryRef"] as const;
 const SUMMARY_KEYS = ["params", "annualReturn", "sharpe", "maxDrawdown", "annualTurnover"] as const;
 export const SPRINT_PARAMETER_GRID: ExperimentGrid = Object.freeze({
   signalParams: Object.freeze({ window: Object.freeze([14, 17, 20, 23, 26]) }),
@@ -164,16 +181,17 @@ function parseResultSummary(value: unknown, location: string): ExperimentResultS
   };
 }
 
-function parseResult(stdout: string): RunExperimentResult {
+function parseResult(stdout: string, kind: ExperimentKind): RunExperimentResult {
   let parsed: unknown;
   try {
     parsed = JSON.parse(stdout);
   } catch {
     throw new Error("run_experiment subprocess returned invalid JSON");
   }
-  if (!isRecord(parsed) || !hasExactKeys(parsed, RESULT_KEYS)) {
+  const expectedKeys = kind === "baseline" ? BASE_RESULT_KEYS : AUDIT_RESULT_KEYS;
+  if (!isRecord(parsed) || !hasExactKeys(parsed, expectedKeys)) {
     throw new Error(
-      `run_experiment subprocess response must contain exactly ${RESULT_KEYS.join(", ")}`,
+      `run_experiment subprocess response must contain exactly ${expectedKeys.join(", ")}`,
     );
   }
   if (typeof parsed.engineVersion !== "string" || parsed.engineVersion.trim().length === 0) {
@@ -182,12 +200,87 @@ function parseResult(stdout: string): RunExperimentResult {
   if (!Array.isArray(parsed.variants)) {
     throw new Error("run_experiment subprocess response must include a variants array");
   }
+  const expectedSummaryRef =
+    kind === "grid"
+      ? PARAMETER_GRID_SOURCE_REF
+      : kind === "cost_ladder"
+        ? COST_STRESS_SOURCE_REF
+        : undefined;
+  if (expectedSummaryRef !== undefined && parsed.summaryRef !== expectedSummaryRef) {
+    throw new Error(`run_experiment ${kind} response.summaryRef is invalid`);
+  }
   return {
     engineVersion: parsed.engineVersion,
     baseline: parseResultSummary(parsed.baseline, "response.baseline"),
     variants: parsed.variants.map((variant, index) =>
       parseResultSummary(variant, `response.variants[${String(index)}]`),
     ),
+    ...(expectedSummaryRef === undefined ? {} : { summaryRef: expectedSummaryRef }),
+  };
+}
+
+function gridParameter(params: Readonly<Record<string, unknown>>, name: "window" | "topN"): number {
+  const value = params[name];
+  if (!Number.isSafeInteger(value)) {
+    throw new Error(`run_experiment grid response ${name} parameter must be an integer`);
+  }
+  return value as number;
+}
+
+function median(values: readonly number[]): number {
+  if (values.length === 0) {
+    throw new Error("run_experiment grid response omitted non-baseline variants");
+  }
+  const sorted = [...values].sort((left, right) => left - right);
+  const midpoint = Math.floor(sorted.length / 2);
+  const upper = sorted[midpoint] as number;
+  return sorted.length % 2 === 1 ? upper : ((sorted[midpoint - 1] as number) + upper) / 2;
+}
+
+function parameterGridAgentView(result: RunExperimentResult): ParameterGridAgentView {
+  if (
+    result.summaryRef !== PARAMETER_GRID_SOURCE_REF ||
+    result.variants.length !==
+      SPRINT_PARAMETER_GRID.signalParams.window.length * SPRINT_PARAMETER_GRID.topN.length
+  ) {
+    throw new Error("run_experiment grid response is not the frozen parameter grid");
+  }
+  const baselineWindow = gridParameter(result.baseline.params, "window");
+  const baselineTopN = gridParameter(result.baseline.params, "topN");
+  const baselineEquivalent = result.variants.filter(
+    (variant) =>
+      gridParameter(variant.params, "window") === baselineWindow &&
+      gridParameter(variant.params, "topN") === baselineTopN,
+  );
+  if (baselineEquivalent.length !== 1) {
+    throw new Error(
+      "run_experiment grid response must contain exactly one baseline-equivalent variant",
+    );
+  }
+  const nonBaselineSharpes = result.variants
+    .filter((variant) => variant !== baselineEquivalent[0])
+    .map((variant) => variant.sharpe);
+  const medianVariantSharpe = median(nonBaselineSharpes);
+  const minVariantSharpe = Math.min(...nonBaselineSharpes);
+  const maxVariantSharpe = Math.max(...nonBaselineSharpes);
+  return {
+    engineVersion: result.engineVersion,
+    baseline: {
+      annualReturn: result.baseline.annualReturn,
+      sharpe: result.baseline.sharpe,
+      maxDrawdown: result.baseline.maxDrawdown,
+      annualTurnover: result.baseline.annualTurnover,
+    },
+    parameterSummary: {
+      baselineSharpe: result.baseline.sharpe,
+      medianVariantSharpe,
+      neighborhoodSharpeRetention:
+        result.baseline.sharpe > 0 ? medianVariantSharpe / result.baseline.sharpe : null,
+      variantCount: nonBaselineSharpes.length,
+      minVariantSharpe,
+      maxVariantSharpe,
+    },
+    summaryRef: PARAMETER_GRID_SOURCE_REF,
   };
 }
 
@@ -267,7 +360,10 @@ export async function runExperimentSubprocess(
         return;
       }
       try {
-        const result = parseResult(Buffer.concat(stdoutChunks).toString("utf8").trim());
+        const result = parseResult(
+          Buffer.concat(stdoutChunks).toString("utf8").trim(),
+          request.kind,
+        );
         if (request.kind === "baseline" && result.variants.length !== 0) {
           throw new Error("run_experiment baseline subprocess must not return variants");
         }
@@ -361,8 +457,9 @@ export function createRunExperimentTool(
           : boundRequest;
       assertRequest(request, kind);
       const result = await runExperimentSubprocess(config, request);
+      const agentView = kind === "grid" ? parameterGridAgentView(result) : result;
       return {
-        content: [{ type: "text", text: JSON.stringify(result) }],
+        content: [{ type: "text", text: JSON.stringify(agentView) }],
         details: result,
       };
     },

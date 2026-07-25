@@ -33,6 +33,7 @@ if (
                 window,
                 topN,
                 costModel: baselineParams.costModel,
+                dailyReturnsRef: `artifact:backtest/parameter-grid/${window}-${topN}/daily-returns`,
               },
               annualReturn: 0.1 - index * 0.01,
               sharpe: 1.2 - index * 0.1,
@@ -74,6 +75,11 @@ if (
       annualTurnover: 1.8,
     },
     variants,
+    ...(request.kind === "grid"
+      ? { summaryRef: "artifact:backtest/parameter-grid" }
+      : request.kind === "cost_ladder"
+        ? { summaryRef: "artifact:backtest/cost-stress" }
+        : {}),
   };
 
   if (request.spec.mockResponseShape === "baseline-missing-metric") {
@@ -82,6 +88,8 @@ if (
     response.variants[0].sharpe = "not-a-number";
   } else if (request.spec.mockResponseShape === "extra-top-level-field") {
     response.debug = true;
+  } else if (request.spec.mockResponseShape === "wrong-summary-ref") {
+    response.summaryRef = "artifact:backtest/wrong";
   }
 
   process.stdout.write(JSON.stringify(response));

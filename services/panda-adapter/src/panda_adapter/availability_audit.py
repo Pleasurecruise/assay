@@ -2,26 +2,37 @@
 
 The normal path incrementally caches constituent snapshots, fetches only
 historical constituents absent from the existing as-of market panel, and then
-reruns the baseline with point-in-time selection eligibility.  Provider time
-is bounded separately from computation.  Only after 20 minutes of cumulative
-blocked acquisition does the audit degrade to a disclosed remove-only mode.
+reruns the baseline with point-in-time selection eligibility.  Every factor
+window and daily trade-status response is persisted before the next provider
+call, so interrupted runs resume from completed fragments.  The PIT membership
+timeline is mandatory and fails closed when incomplete or undated. Provider
+time is bounded separately from computation; only missing historical-member
+prices or statuses may degrade to a disclosed remove-only mode.
+
+A configured promoted v9 cache is a production boundary: the audit becomes a
+pure reader and never repairs, downloads, deletes, or rewrites PIT data.
 """
 
 from __future__ import annotations
 
+import json
+import os
+import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from hashlib import sha256
-import json
-import os
 from pathlib import Path
 from time import monotonic, sleep
-import tempfile
 from typing import Any, Final, Literal
 
 import numpy as np
 import pandas as pd
 
+from .audit_cache import (
+    V9_CACHE_VERSION,
+    HistoricalMembersPolicy,
+    load_historical_members_policy,
+)
 from .client import create_initialized_client
 from .data_transport import (
     DEFAULT_RETRY_POLICY,
@@ -29,8 +40,9 @@ from .data_transport import (
     RetryPolicy,
     retry_transport,
 )
-from .engine.constants import ENGINE_VERSION
+from .engine.constants import AUDIT_TOOL_CONTRACT_VERSION, ENGINE_VERSION
 from .engine.core import momentum_signal, run_momentum_backtest
+from .engine.strategy import parse_momentum_strategy
 from .market_panel import (
     INDEX_SYMBOL,
     TRADABLE_TRADE_STATUS,
@@ -45,11 +57,12 @@ from .source_normalization import (
 AvailabilityMode = Literal["full_pit", "degraded_remove_only"]
 
 PIT_SNAPSHOT_SCHEMA_VERSION: Final = "pit-index-snapshot-v1"
-PIT_EXTRA_SCHEMA_VERSION: Final = "pit-extra-panel-batch-v1"
-PIT_DATASET_VERSION: Final = "factor-close-trade-status-pit-v1"
+PIT_EXTRA_SCHEMA_VERSION: Final = "pit-extra-panel-batch-v2"
+PIT_EXTRA_FRAGMENT_SCHEMA_VERSION: Final = "pit-extra-panel-fragment-v2"
+PIT_DATASET_VERSION: Final = "factor-close-trade-status-pit-v2"
 AVAILABILITY_SOURCE_REF: Final = "artifact:data-availability/pit-audit"
 DEFAULT_PIT_CACHE_ROOT: Final = Path(".cache/assay/pit-availability-v1")
-DEFAULT_MAX_BLOCKED_SECONDS: Final = 20 * 60
+DEFAULT_MAX_BLOCKED_SECONDS: Final = 90
 INDEX_SNAPSHOT_LOOKBACK_DAYS: Final = 7
 FACTOR_WINDOW_DAYS: Final = 7
 EXTRA_SYMBOL_BATCH_SIZE: Final = 25
@@ -58,6 +71,10 @@ SAMPLE_SYMBOL_LIMIT: Final = 10
 
 class AvailabilityBudgetExceeded(RuntimeError):
     """Raised internally when live data acquisition exhausts its wall budget."""
+
+
+class _FragmentCoverageError(RuntimeError):
+    """Raised when a source fragment omits keys required by another source."""
 
 
 @dataclass(slots=True)
@@ -148,6 +165,19 @@ def run_availability_audit(
     root = cache_root or Path(
         os.environ.get("ASSAY_PIT_CACHE_ROOT", str(DEFAULT_PIT_CACHE_ROOT))
     )
+    configured_v9_root = os.environ.get("ASSAY_V9_CACHE_ROOT")
+    # Promotion switches availability from the resumable preparation path to
+    # a fail-closed reader.  The no-manifest development path below retains
+    # incremental acquisition and its bounded remove-only degradation.
+    cache_only = bool(configured_v9_root)
+    historical_policy: HistoricalMembersPolicy | None = None
+    if configured_v9_root:
+        historical_policy = load_historical_members_policy(
+            Path(configured_v9_root),
+            pit_cache_root=root,
+            base_symbols=base_symbols,
+            panel_dates=panel.adjusted_close.index,
+        )
     acquisition_budget = _AcquisitionBudget(
         max_blocked_seconds=float(max_blocked_seconds),
         clock=clock,
@@ -167,23 +197,49 @@ def run_availability_audit(
         cache_root=root,
         client=lazy_client,
         budget=acquisition_budget,
+        cache_only=cache_only,
     )
+    if not timeline_complete:
+        # P1 makes the PIT membership timeline a hard requirement.  The only
+        # authorized degradation is remove-only when historical-member prices
+        # or statuses are unavailable after the timeline itself is complete.
+        raise AvailabilityBudgetExceeded(
+            "PIT constituent timeline acquisition is incomplete"
+        )
 
-    mode: AvailabilityMode = "full_pit" if timeline_complete else "degraded_remove_only"
+    mode: AvailabilityMode = (
+        "degraded_remove_only"
+        if historical_policy is not None and historical_policy.mode == "remove_only"
+        else "full_pit"
+    )
     historical_symbols = sorted(
         set().union(*timeline.values()) - set(base_symbols) if timeline else set()
     )
     expanded_panel = panel
     if mode == "full_pit" and historical_symbols:
+        mutable_required: dict[pd.Timestamp, set[str]] = {}
+        historical_symbol_set = set(historical_symbols)
+        for signal_date, execution_date in rebalance_pairs:
+            members = (
+                set(timeline.get(signal_date, frozenset())) & historical_symbol_set
+            )
+            for required_date in (signal_date, execution_date):
+                mutable_required.setdefault(required_date, set()).update(members)
+        required_status_symbols_by_date = {
+            date: frozenset(symbols) for date, symbols in mutable_required.items()
+        }
         try:
             extra_rows = _load_or_fetch_extra_rows(
                 index_symbol=INDEX_SYMBOL,
                 symbols=historical_symbols,
                 start_date=panel.adjusted_close.index.min(),
                 end_date=panel.adjusted_close.index.max(),
+                trading_dates=panel.adjusted_close.index,
+                required_status_symbols_by_date=(required_status_symbols_by_date),
                 cache_root=root,
                 client=lazy_client,
                 budget=acquisition_budget,
+                cache_only=cache_only,
             )
         except AvailabilityBudgetExceeded:
             mode = "degraded_remove_only"
@@ -253,23 +309,35 @@ def run_availability_audit(
                 "fetched incrementally with get_factor(close) and trade_status."
             )
         )
+    elif historical_policy is not None:
+        assumptions.append(_manifest_remove_only_assumption(historical_policy))
     else:
         assumptions.append(
             (
-                "Live PIT acquisition exceeded the 20-minute cumulative "
-                "blocked-time budget; correction is remove-only and does not "
-                "add historical constituents absent from the existing panel."
+                "Live PIT acquisition exceeded the "
+                f"{acquisition_budget.max_blocked_seconds:g}-second cumulative "
+                "blocked-time budget; correction is remove-only and does not add "
+                "historical constituents absent from the existing panel."
             )
         )
-        if not timeline_complete:
-            assumptions.append(
-                (
-                    "Rebalance dates without a cached PIT snapshot retain the "
-                    "as-of membership and therefore cannot create removals."
-                )
-            )
+
+    # Host-only Moiré M2 context. The corrected panel and membership mask are
+    # persisted below the PIT cache boundary and never enter the model-visible
+    # availability response.
+    from .moire_audit import persist_corrected_backtest_context
+
+    persist_corrected_backtest_context(
+        spec=spec,
+        panel=expanded_panel,
+        eligible=eligibility,
+        availability_mode=mode,
+        cache_version=V9_CACHE_VERSION,
+        pit_dataset_version=PIT_DATASET_VERSION,
+        pit_cache_root=root,
+    )
 
     return {
+        "contractVersion": AUDIT_TOOL_CONTRACT_VERSION,
         "engineVersion": ENGINE_VERSION,
         "mode": mode,
         "futureConstituentCount": len(future_symbols),
@@ -299,54 +367,18 @@ def run_availability_audit(
     }
 
 
+def _manifest_remove_only_assumption(policy: HistoricalMembersPolicy) -> str:
+    if policy.reason_code is None:
+        raise RuntimeError("remove-only policy requires a reason code")
+    return (
+        f"The promoted {policy.cache_version} manifest authorizes remove-only "
+        f"historical-member handling ({policy.reason_code}); no live "
+        "historical-member acquisition was attempted."
+    )
+
+
 def _parse_strategy(spec: Mapping[str, Any]) -> dict[str, Any]:
-    universe = spec.get("universe")
-    signal = spec.get("signal")
-    selection = spec.get("selection")
-    rebalance = spec.get("rebalance")
-    costs = spec.get("costs", {})
-    if not isinstance(universe, Mapping) or universe.get("index") != INDEX_SYMBOL:
-        raise ValueError(f"spec.universe.index must equal {INDEX_SYMBOL}")
-    if (
-        not isinstance(signal, Mapping)
-        or signal.get("kind") != "template"
-        or signal.get("template") != "momentum"
-    ):
-        raise ValueError("availability audit supports only template momentum")
-    parameters = signal.get("params")
-    if not isinstance(parameters, Mapping):
-        raise ValueError("spec.signal.params must be an object")
-    window = parameters.get("window")
-    if isinstance(window, bool) or not isinstance(window, int) or window <= 0:
-        raise ValueError("spec.signal.params.window must be positive")
-    if not isinstance(selection, Mapping):
-        raise ValueError("spec.selection must be an object")
-    top_n = selection.get("topN")
-    if (
-        isinstance(top_n, bool)
-        or not isinstance(top_n, int)
-        or top_n <= 0
-        or top_n > 200
-    ):
-        raise ValueError("spec.selection.topN must be from 1 to 200")
-    if selection.get("weighting", "equal") != "equal":
-        raise ValueError("availability audit supports only equal weighting")
-    if (
-        not isinstance(rebalance, Mapping)
-        or rebalance.get("frequency") != "monthly"
-        or rebalance.get("at", "close") != "close"
-    ):
-        raise ValueError("availability audit supports month-end close rebalancing")
-    if not isinstance(costs, Mapping):
-        raise ValueError("spec.costs must be an object")
-    cost_model = costs.get("model", "standard")
-    if not isinstance(cost_model, str):
-        raise ValueError("spec.costs.model must be a string")
-    return {
-        "window": window,
-        "top_n": top_n,
-        "cost_model": cost_model,
-    }
+    return parse_momentum_strategy(spec)
 
 
 def _rebalance_pairs(
@@ -409,6 +441,7 @@ def _read_snapshot(
         or payload.get("indexSymbol") != index_symbol
         or payload.get("requestedDate") != requested_date.strftime("%Y-%m-%d")
         or not isinstance(symbols, list)
+        or not symbols
         or any(not isinstance(symbol, str) or not symbol for symbol in symbols)
         or symbols != sorted(set(symbols))
     ):
@@ -430,6 +463,7 @@ def _load_pit_timeline(
     cache_root: Path,
     client: _LazyClient,
     budget: _AcquisitionBudget,
+    cache_only: bool = False,
 ) -> tuple[dict[pd.Timestamp, frozenset[str]], bool]:
     timeline: dict[pd.Timestamp, frozenset[str]] = {}
     complete = True
@@ -442,6 +476,10 @@ def _load_pit_timeline(
                 requested_date=requested_date,
             )
             continue
+        if cache_only:
+            raise RuntimeError(
+                "configured v9 cache is missing a required PIT snapshot"
+            )
         try:
             start_date = requested_date - pd.Timedelta(
                 days=INDEX_SNAPSHOT_LOOKBACK_DAYS - 1
@@ -530,15 +568,218 @@ def _batch_path(root: Path, symbols: Sequence[str]) -> Path:
     return root / f"symbols-{len(symbols)}-{digest}.json"
 
 
+def _fragment_path(
+    root: Path,
+    *,
+    source: Literal["factor-close", "trade-status"],
+    start_date: pd.Timestamp,
+    end_date: pd.Timestamp,
+    symbols: Sequence[str],
+) -> Path:
+    digest = sha256("\n".join(symbols).encode("utf-8")).hexdigest()[:16]
+    date_range = f"{start_date.strftime('%Y%m%d')}-{end_date.strftime('%Y%m%d')}"
+    return (
+        root
+        / "fragments"
+        / source
+        / date_range
+        / f"symbols-{len(symbols)}-{digest}.json"
+    )
+
+
+def _fragment_payload(
+    *,
+    identity: Mapping[str, str],
+    source: Literal["factor-close", "trade-status"],
+    start_date: pd.Timestamp,
+    end_date: pd.Timestamp,
+    symbols: Sequence[str],
+    frame: pd.DataFrame,
+) -> dict[str, Any]:
+    return {
+        "schemaVersion": PIT_EXTRA_FRAGMENT_SCHEMA_VERSION,
+        "identity": dict(identity),
+        "source": source,
+        "start": start_date.strftime("%Y-%m-%d"),
+        "end": end_date.strftime("%Y-%m-%d"),
+        "symbols": list(symbols),
+        "rows": json.loads(frame.to_json(orient="records", double_precision=15)),
+    }
+
+
+def _read_extra_fragment(
+    path: Path,
+    *,
+    identity: Mapping[str, str],
+    source: Literal["factor-close", "trade-status"],
+    start_date: pd.Timestamp,
+    end_date: pd.Timestamp,
+    symbols: Sequence[str],
+) -> pd.DataFrame:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise RuntimeError("cannot read PIT extra-panel fragment") from error
+    expected_symbols = list(symbols)
+    rows = payload.get("rows") if isinstance(payload, Mapping) else None
+    if (
+        not isinstance(payload, Mapping)
+        or payload.get("schemaVersion") != PIT_EXTRA_FRAGMENT_SCHEMA_VERSION
+        or payload.get("identity") != dict(identity)
+        or payload.get("source") != source
+        or payload.get("start") != start_date.strftime("%Y-%m-%d")
+        or payload.get("end") != end_date.strftime("%Y-%m-%d")
+        or payload.get("symbols") != expected_symbols
+        or not isinstance(rows, list)
+    ):
+        raise RuntimeError("PIT extra-panel fragment identity is invalid")
+    return normalize_source_frame(
+        rows,
+        source=source,
+        start_date=start_date,
+        end_date=end_date,
+        symbols=symbols,
+        context=f"cached PIT {source}",
+    )
+
+
+def _load_or_fetch_extra_fragment(
+    *,
+    root: Path,
+    identity: Mapping[str, str],
+    source: Literal["factor-close", "trade-status"],
+    start_date: pd.Timestamp,
+    end_date: pd.Timestamp,
+    symbols: Sequence[str],
+    budget: _AcquisitionBudget,
+    label: str,
+    operation: Callable[[], Any],
+    context: str,
+    required_symbols: Sequence[str] = (),
+    cache_only: bool = False,
+) -> pd.DataFrame:
+    path = _fragment_path(
+        root,
+        source=source,
+        start_date=start_date,
+        end_date=end_date,
+        symbols=symbols,
+    )
+    if path.is_file():
+        frame = _read_extra_fragment(
+            path,
+            identity=identity,
+            source=source,
+            start_date=start_date,
+            end_date=end_date,
+            symbols=symbols,
+        )
+        try:
+            _require_fragment_symbols(
+                frame,
+                required_symbols=required_symbols,
+                context=f"cached PIT {source}",
+            )
+        except _FragmentCoverageError:
+            if cache_only:
+                raise RuntimeError(
+                    "configured v9 cache has an incomplete required "
+                    "PIT extra-panel fragment"
+                ) from None
+            # A structurally valid but incomplete source response must not
+            # become a permanent cache hit. The exact scoped fragment is
+            # recoverable, so discard it and reacquire within the same budget.
+            try:
+                path.unlink()
+            except OSError as error:
+                raise RuntimeError(
+                    "cannot discard incomplete PIT extra-panel fragment"
+                ) from error
+        else:
+            return frame
+    if cache_only:
+        raise RuntimeError(
+            "configured v9 cache is missing a required PIT extra-panel fragment"
+        )
+    value = budget.call(label, operation)
+    frame = normalize_source_frame(
+        value,
+        source=source,
+        start_date=start_date,
+        end_date=end_date,
+        symbols=symbols,
+        context=context,
+    )
+    _require_fragment_symbols(
+        frame,
+        required_symbols=required_symbols,
+        context=context,
+    )
+    _write_json_atomic(
+        path,
+        _fragment_payload(
+            identity=identity,
+            source=source,
+            start_date=start_date,
+            end_date=end_date,
+            symbols=symbols,
+            frame=frame,
+        ),
+    )
+    return frame
+
+
+def _require_fragment_symbols(
+    frame: pd.DataFrame,
+    *,
+    required_symbols: Sequence[str],
+    context: str,
+) -> None:
+    missing = set(required_symbols) - set(frame["symbol"])
+    if missing:
+        raise _FragmentCoverageError(f"{context} is missing required symbol coverage")
+
+
+def _discard_source_fragments(
+    *,
+    root: Path,
+    source: Literal["factor-close", "trade-status"],
+    windows: Sequence[tuple[pd.Timestamp, pd.Timestamp]],
+    symbols: Sequence[str],
+) -> None:
+    """Discard only the exact source fragments proven incomplete."""
+
+    for start_date, end_date in windows:
+        path = _fragment_path(
+            root,
+            source=source,
+            start_date=start_date,
+            end_date=end_date,
+            symbols=symbols,
+        )
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as error:
+            raise RuntimeError(
+                "cannot discard incomplete PIT extra-panel fragments"
+            ) from error
+
+
 def _load_or_fetch_extra_rows(
     *,
     index_symbol: str,
     symbols: Sequence[str],
     start_date: pd.Timestamp,
     end_date: pd.Timestamp,
+    trading_dates: Sequence[pd.Timestamp],
+    required_status_symbols_by_date: Mapping[
+        pd.Timestamp,
+        frozenset[str],
+    ],
     cache_root: Path,
     client: _LazyClient,
     budget: _AcquisitionBudget,
+    cache_only: bool = False,
 ) -> pd.DataFrame:
     identity = _extra_identity(
         index_symbol=index_symbol,
@@ -569,23 +810,29 @@ def _load_or_fetch_extra_rows(
     for offset in range(0, len(missing), EXTRA_SYMBOL_BATCH_SIZE):
         batch = tuple(missing[offset : offset + EXTRA_SYMBOL_BATCH_SIZE])
         frame = _fetch_extra_batch(
+            root=root,
+            identity=identity,
             client=client,
             budget=budget,
             symbols=batch,
             start_date=start_date,
             end_date=end_date,
+            trading_dates=trading_dates,
+            required_status_symbols_by_date=(required_status_symbols_by_date),
+            cache_only=cache_only,
         )
-        _write_json_atomic(
-            _batch_path(root, batch),
-            {
-                "schemaVersion": PIT_EXTRA_SCHEMA_VERSION,
-                "identity": dict(identity),
-                "symbols": list(batch),
-                "rows": json.loads(
-                    frame.to_json(orient="records", double_precision=15)
-                ),
-            },
-        )
+        if not cache_only:
+            _write_json_atomic(
+                _batch_path(root, batch),
+                {
+                    "schemaVersion": PIT_EXTRA_SCHEMA_VERSION,
+                    "identity": dict(identity),
+                    "symbols": list(batch),
+                    "rows": json.loads(
+                        frame.to_json(orient="records", double_precision=15)
+                    ),
+                },
+            )
         cached_frames.append(frame)
         covered.update(batch)
 
@@ -601,65 +848,114 @@ def _load_or_fetch_extra_rows(
 
 def _fetch_extra_batch(
     *,
+    root: Path,
+    identity: Mapping[str, str],
     client: _LazyClient,
     budget: _AcquisitionBudget,
     symbols: Sequence[str],
     start_date: pd.Timestamp,
     end_date: pd.Timestamp,
+    trading_dates: Sequence[pd.Timestamp],
+    required_status_symbols_by_date: Mapping[
+        pd.Timestamp,
+        frozenset[str],
+    ],
+    cache_only: bool = False,
 ) -> pd.DataFrame:
     factor_frames: list[pd.DataFrame] = []
-    for chunk_start, chunk_end in _factor_windows(start_date, end_date):
-        value = budget.call(
-            "get_factor(close)",
-            lambda chunk_start=chunk_start, chunk_end=chunk_end: (
-                client.get().get_factor(
-                    symbol=list(symbols),
-                    start_date=chunk_start.strftime("%Y%m%d"),
-                    end_date=chunk_end.strftime("%Y%m%d"),
-                    factors=["close"],
-                    type="stock",
-                )
-            ),
-        )
+    factor_windows = _factor_windows(start_date, end_date)
+    for chunk_start, chunk_end in factor_windows:
         factor_frames.append(
-            normalize_source_frame(
-                value,
+            _load_or_fetch_extra_fragment(
+                root=root,
+                identity=identity,
                 source="factor-close",
                 start_date=chunk_start,
                 end_date=chunk_end,
                 symbols=symbols,
+                budget=budget,
+                label="get_factor(close)",
+                operation=lambda chunk_start=chunk_start, chunk_end=chunk_end: (
+                    client.get().get_factor(
+                        symbol=list(symbols),
+                        start_date=chunk_start.strftime("%Y%m%d"),
+                        end_date=chunk_end.strftime("%Y%m%d"),
+                        factors=["close"],
+                        type="stock",
+                    )
+                ),
                 context="get_factor(close)",
+                cache_only=cache_only,
             )
         )
     factor = pd.concat(factor_frames, ignore_index=True)
     if factor.empty:
+        if not cache_only:
+            _discard_source_fragments(
+                root=root,
+                source="factor-close",
+                windows=factor_windows,
+                symbols=symbols,
+            )
         raise RuntimeError("PIT historical constituents returned no prices")
     if set(factor["symbol"]) != set(symbols):
+        # Cartesian date/symbol coverage is intentionally not required:
+        # pre-listing, post-delisting, and suspended dates may lack prices.
+        # Every PIT constituent must nevertheless appear somewhere in the
+        # requested audit window, or the candidate fragments are not reusable.
+        if not cache_only:
+            _discard_source_fragments(
+                root=root,
+                source="factor-close",
+                windows=factor_windows,
+                symbols=symbols,
+            )
         raise RuntimeError("PIT historical constituent price coverage is incomplete")
 
     status_frames: list[pd.DataFrame] = []
-    factor_dates = sorted(pd.Timestamp(value) for value in factor["date"].unique())
-    for trading_date in factor_dates:
-        value = budget.call(
-            "get_market_data(trade_status)",
-            lambda trading_date=trading_date: (
-                client.get().get_market_data(
-                    symbol=list(symbols),
-                    start_date=trading_date.strftime("%Y%m%d"),
-                    end_date=trading_date.strftime("%Y%m%d"),
-                    fields=["symbol", "date", "trade_status"],
-                    type="stock",
-                )
-            ),
+    status_dates = sorted(
+        pd.Timestamp(value).normalize()
+        for value in trading_dates
+        if start_date <= pd.Timestamp(value) <= end_date
+    )
+    batch_symbols = set(symbols)
+    for trading_date in status_dates:
+        date_text = trading_date.strftime("%Y-%m-%d")
+        factor_symbols = set(
+            factor.loc[factor["date"] == date_text, "symbol"].astype(str).unique()
         )
+        critical_symbols = (
+            set(
+                required_status_symbols_by_date.get(
+                    trading_date,
+                    frozenset(),
+                )
+            )
+            & batch_symbols
+        )
+        required_symbols = tuple(sorted(factor_symbols | critical_symbols))
         status_frames.append(
-            normalize_source_frame(
-                value,
+            _load_or_fetch_extra_fragment(
+                root=root,
+                identity=identity,
                 source="trade-status",
                 start_date=trading_date,
                 end_date=trading_date,
                 symbols=symbols,
+                budget=budget,
+                label="get_market_data(trade_status)",
+                operation=lambda trading_date=trading_date: (
+                    client.get().get_market_data(
+                        symbol=list(symbols),
+                        start_date=trading_date.strftime("%Y%m%d"),
+                        end_date=trading_date.strftime("%Y%m%d"),
+                        fields=["symbol", "date", "trade_status"],
+                        type="stock",
+                    )
+                ),
                 context="get_market_data(trade_status)",
+                required_symbols=required_symbols,
+                cache_only=cache_only,
             )
         )
     status = pd.concat(status_frames, ignore_index=True)
@@ -667,6 +963,33 @@ def _fetch_extra_batch(
     status_keys = set(zip(status["date"], status["symbol"], strict=True))
     if factor_keys - status_keys:
         raise RuntimeError("PIT factor rows are missing trade status coverage")
+    tradable_status = status.loc[status["tradeStatus"] == TRADABLE_TRADE_STATUS]
+    tradable_status_keys = set(
+        zip(
+            tradable_status["date"],
+            tradable_status["symbol"],
+            strict=True,
+        )
+    )
+    missing_factor_keys = tradable_status_keys - factor_keys
+    if missing_factor_keys:
+        missing_factor_dates = {pd.Timestamp(date) for date, _ in missing_factor_keys}
+        affected_windows = [
+            (window_start, window_end)
+            for window_start, window_end in factor_windows
+            if any(
+                window_start <= missing_date <= window_end
+                for missing_date in missing_factor_dates
+            )
+        ]
+        if not cache_only:
+            _discard_source_fragments(
+                root=root,
+                source="factor-close",
+                windows=affected_windows,
+                symbols=symbols,
+            )
+        raise RuntimeError("PIT tradable status rows are missing factor close coverage")
     merged = factor.merge(
         status,
         on=["date", "symbol"],
@@ -807,8 +1130,9 @@ def _count_untradable_targets(
     window: int,
     top_n: int,
 ) -> int:
+    """Count selected target occurrences blocked on their execution dates."""
+
     signals = momentum_signal(panel.adjusted_close, window)
-    raw_available = panel.adjusted_close.notna()
     symbols = list(panel.adjusted_close.columns)
     count = 0
     for signal_date, execution_date in rebalance_pairs:
@@ -826,12 +1150,7 @@ def _count_untradable_targets(
         )[:top_n]
         for position in ranked:
             symbol = symbols[position]
-            if not (
-                bool(raw_available.loc[signal_date, symbol])
-                and bool(panel.tradable.loc[signal_date, symbol])
-                and bool(raw_available.loc[execution_date, symbol])
-                and bool(panel.tradable.loc[execution_date, symbol])
-            ):
+            if not bool(panel.tradable.loc[execution_date, symbol]):
                 count += 1
     return count
 

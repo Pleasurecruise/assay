@@ -1,4 +1,7 @@
 from .availability_audit import run_availability_audit
+from .homogeneity_audit import run_homogeneity
+from .moire_audit import run_moire_request
+from .regime_audit import run_regime_split
 from .client import (
     PandaDataClient,
     PandaDataInitializationError,
@@ -16,6 +19,9 @@ __all__ = [
     "PandaDataOperationError",
     "PandaDataSettings",
     "run_availability_audit",
+    "run_homogeneity",
+    "run_moire_request",
+    "run_regime_split",
     "BacktestValidationError",
     "ProtocolValidationError",
     "execute_request",

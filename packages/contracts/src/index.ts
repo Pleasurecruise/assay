@@ -1,6 +1,10 @@
+import type { AuditCheckResult } from "./audit-checks";
+
 export * from "./audit-checks";
 export * from "./audit-artifact";
 export * from "./audit-request";
+export * from "./audit-tool-contracts";
+export * from "./moire-policy";
 export * from "./strategy-spec";
 export * from "./strategy-spec-hash";
 export * from "./verdict-policy";
@@ -59,6 +63,14 @@ export type RuntimeEventPayload =
       reason: string;
     }
   | {
+      type: "audit.submission_invalid";
+      agentId: AgentId;
+      toolCallId: string;
+      attempt: number;
+      arguments: unknown;
+      error: string;
+    }
+  | {
       type: "agent.completed";
       agentId: AgentId;
       output: string;
@@ -76,6 +88,11 @@ export interface RuntimeTaskResult {
   traceId: string;
   agentId: AgentId;
   output: string;
+  /**
+   * Host-validated arguments captured from submit_check_result. Free-form
+   * assistant text never populates this field.
+   */
+  auditCheckResult?: AuditCheckResult;
   events: readonly RuntimeEvent[];
   startedAt: string;
   completedAt: string;
