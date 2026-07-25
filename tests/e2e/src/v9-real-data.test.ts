@@ -18,6 +18,7 @@ import {
   loadV9OfflineMechanismFixture,
 } from "./v9-real-data.fixture";
 import {
+  assertV9GoldenSuiteStructure,
   assertV9PitTimelineManifest,
   assertV9RealMechanism,
   assertV9TaskCompleted,
@@ -25,12 +26,16 @@ import {
   replayV9RealMechanism,
   runV9RealAcceptance,
   v9UnacceptedDiagnosticPath,
-  V9_REAL_ARTIFACT_PATH,
+  V9_GOLDEN_SUITE_ARTIFACT_PATH,
+  V9_GOLDEN_SUITE_VERSION,
+  V9_REAL_BUNDLE_VERSION,
+  V9_REAL_DATA_MODE,
   V9_REAL_POLL_TIMEOUT_MS,
   V9_UNACCEPTED_DIAGNOSTIC_VERSION,
   type V9RealAcceptanceBundle,
 } from "./v9-real-data";
 import { formatV9ReplayReport, replayV9CandidateFile } from "./replay-v9-real";
+import { GOLDEN_SHARED_RUNTIME_CHECKSUMS, GOLDEN_STRATEGY_CASES } from "./golden-cases";
 
 const enabled = process.env.ASSAY_V9_E2E === "1" && Reflect.has(globalThis, "Bun");
 const liveTest = enabled ? test : test.skip;
@@ -54,6 +59,40 @@ test("accepts a provenance-bound offline mechanism fixture", async () => {
       },
     }),
   ).toThrow(/fallback counts/u);
+});
+
+test("freezes the three-case suite envelope in G01, G02, G03 order", async () => {
+  const fixture = await loadV9OfflineMechanismFixture();
+  const bundle = acceptanceCandidateFromV9MechanismFixture(fixture);
+  const suite = {
+    schemaVersion: V9_GOLDEN_SUITE_VERSION,
+    artifactRole: "real-data-acceptance-suite",
+    generatedAt: bundle.generatedAt,
+    codeRevision: bundle.codeRevision,
+    registryCapabilityDigest: `sha256-${"a".repeat(64)}`,
+    sharedChecksums: GOLDEN_SHARED_RUNTIME_CHECKSUMS,
+    cases: GOLDEN_STRATEGY_CASES.map((goldenCase, index) => ({
+      label: goldenCase.label,
+      packageId: goldenCase.packageId,
+      strategyKey: goldenCase.strategyKey,
+      runtimeManifestDigest: `sha256-${String(index + 1).repeat(64)}`,
+      acceptance: {
+        ...bundle,
+        schemaVersion: V9_REAL_BUNDLE_VERSION,
+        artifactRole: "real-data-acceptance",
+        input: goldenCase.input,
+        dataMode: V9_REAL_DATA_MODE,
+      },
+    })),
+  };
+
+  expect(() => assertV9GoldenSuiteStructure(suite)).not.toThrow();
+  expect(() =>
+    assertV9GoldenSuiteStructure({
+      ...suite,
+      cases: [...suite.cases].reverse(),
+    }),
+  ).toThrow(/frozen G01, G02, G03 order/u);
 });
 
 test("freezes 36 completed month ends plus one terminal PIT observation", () => {
@@ -377,9 +416,9 @@ test("replays every assertion and reports expected versus actual without pinning
 });
 
 liveTest(
-  "runs the one terminal real-data five-check acceptance",
+  "runs the sequential G01, G02, G03 real-data five-check suite",
   async () => {
-    await expect(runV9RealAcceptance()).resolves.toBe(V9_REAL_ARTIFACT_PATH);
+    await expect(runV9RealAcceptance()).resolves.toBe(V9_GOLDEN_SUITE_ARTIFACT_PATH);
   },
-  V9_REAL_POLL_TIMEOUT_MS + 60_000,
+  V9_REAL_POLL_TIMEOUT_MS * GOLDEN_STRATEGY_CASES.length + 60_000,
 );

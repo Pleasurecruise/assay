@@ -12,7 +12,8 @@
 - Public Agent Card with the `audit_strategy` skill.
 - Natural-language intake through Volcano Ark, deterministic validation, and
   frozen `StrategySpec` provenance.
-- Claims-free data planning and immutable local-package resolution.
+- Claims-free data planning and immutable local-package resolution across
+  three registered strategy bindings.
 - Claim reproduction, five isolated audit agents, bounded Moiré M1/M2
   experiments, deterministic verdict synthesis, and JSON/Markdown Artifacts.
 - Task cancellation, execution timelines, optional A2A Bearer authentication,
@@ -26,9 +27,12 @@ Production does not initialize PandaData and does not fetch market data
 online. PandaData remains pinned only for offline package preparation and
 adapter compatibility tests.
 
-Each deployment must provision an immutable local package registry under
-`ASSAY_LOCAL_DATA_PACKAGE_ROOT`. The repository does not commit these packages;
-`.cache/` is intentionally ignored.
+The repository commits one shared canonical source package, its integrity
+manifest, and a registry containing three claims-free strategy bindings. Each
+deployment must run `bun run data:prepare` to validate that source and
+deterministically materialize three immutable runtime packages under
+`ASSAY_LOCAL_DATA_PACKAGE_ROOT`. Generated `.cache/` runtime packages remain
+intentionally ignored.
 
 Startup and request semantics are separate:
 
@@ -57,11 +61,17 @@ ARK_MODEL_DEEPSEEK=
 Local market data does not make the complete audit network-free. Natural
 language intake and audit agents still call the configured Ark endpoint.
 
-## Current Deployment Gap
+## Current Deployment Requirement
 
-The code and fixture tests are implemented, but a real deployment must still
-provision and register the G01 immutable data package before `/readyz` becomes
-ready and a complete audit can run. G02 and G03 are not registered.
+All three strategy bindings are registered. G01, G02, and G03 are fixture and
+acceptance labels only; runtime intake does not recognize or route by those
+labels. It freezes the parsed natural-language strategy, builds a claims-free
+data identity, and resolves one of the three semantic runtime package IDs.
+
+A fresh deployment must run `bun run data:prepare` before service startup and
+point `ASSAY_LOCAL_DATA_PACKAGE_ROOT` at the generated, validated registry.
+Acceptance then starts one A2A server and submits the three frozen
+natural-language inputs sequentially through that same server lifecycle.
 
 ## Not Implemented
 

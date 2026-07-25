@@ -26,7 +26,7 @@
     "data:audit-support": "uv run --project services/panda-adapter python services/panda-adapter/scripts/prepare_v9_p1_cache.py --cache-root .cache/assay --base-cache .cache/assay/csi300-3y.csv",
     "data:package": "bun run scripts/package_local_data.ts",
     "data:install": "bun run scripts/install_local_data.ts",
-    "data:validate": "uv run --project services/panda-adapter python -m panda_adapter.local_data_validate --root .cache/assay/local-packages",
+    "data:validate": "uv run --project services/panda-adapter python -m panda_adapter.local_data_validate",
     "data:prepare": "bun run data:install && bun run data:validate",
     "data:rebuild": "bun run data:base && bun run data:audit-support && bun run data:package && bun run data:prepare"
   },

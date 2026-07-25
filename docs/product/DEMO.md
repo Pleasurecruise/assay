@@ -1,7 +1,9 @@
 # Demo and Delivery Plan
 
-> Status: the `audit_strategy` application path is implemented. A complete
-> demonstration still requires provisioning the real G01 local package.
+> Status: the `audit_strategy` application path and all three strategy
+> bindings are implemented. A complete demonstration requires running
+> `bun run data:prepare` to generate and validate the three-package runtime
+> registry.
 > Factor and comparison examples remain future work.
 >
 > See [PROPOSAL.md](PROPOSAL.md) for delivery constraints,
@@ -10,11 +12,17 @@
 
 ## 1. Example Tasks
 
-1. Current: audit the registered G01 momentum strategy and show claim
-   reproduction, five checks, Moiré, and the final Artifact.
-2. Future: audit a registered deliberately fragile strategy.
+1. Current: in one A2A server lifecycle, submit the three frozen
+   natural-language strategy inputs sequentially and show claim reproduction,
+   five checks, Moiré, and the final Artifact for each.
+2. Current: show that the three claims-free bindings select three semantic
+   runtime packages while reusing the checksums of one shared canonical data
+   source.
 3. Future: compare two same-kind subjects after the comparison skill is
    implemented.
+
+G01, G02, and G03 are fixture and acceptance labels only. They are not sent as
+runtime routing keys and do not appear in package IDs.
 
 ## 2. Demo Requirements
 
@@ -42,17 +50,21 @@ Do not show:
 1. **Implemented:** A2A gateway, Intake, local data resolver, deterministic
    backtester, five checks, Moiré M1/M2, verdict aggregation, final Artifacts,
    cancellation, authentication, and web history.
-2. **Deployment requirement:** provision and register the real G01 package;
-   verify `/readyz`; run the complete G01 acceptance.
-3. **Future:** G02/G03, factor and comparison skills, durable A2A Task
-   recovery, and streaming.
+2. **Deployment requirement:** run `bun run data:prepare` to validate the
+   shared canonical source and generate the three-package registry; verify
+   `/readyz`; run the three-input sequential acceptance in one server
+   lifecycle.
+3. **Future:** factor and comparison skills, durable A2A Task recovery, and
+   streaming.
 
 ## 4. Submission Checklist
 
 - [ ] Public Agent Card and supported A2A interface URL
 - [ ] Service remains reachable during review
-- [ ] Real G01 package provisioned and `/readyz` returns `200`
-- [ ] G01 completes through the public A2A interface
+- [ ] `bun run data:prepare` generated and validated all three runtime packages
+- [ ] `/readyz` returns `200` against the generated registry
+- [ ] All three fixture inputs complete sequentially through one public A2A
+      server lifecycle
 - [ ] Usage, architecture, skill, and output documentation
 - [ ] Demo video showing the complete flow
 - [ ] Data and research skill inventory

@@ -13,6 +13,12 @@ export interface ProductionA2AConfig {
   arkApiKey: string;
   arkBaseUrl: string;
   arkModel: string;
+  /**
+   * Optional parser retry budget. Production keeps the parser default when
+   * omitted; bounded acceptance suites set this to one so a failed golden
+   * input is never submitted to Ark a second time.
+   */
+  arkParserMaxAttempts?: number;
   authBaseUrl?: string;
   betterAuthSecret?: string;
   dataAsOf: string;

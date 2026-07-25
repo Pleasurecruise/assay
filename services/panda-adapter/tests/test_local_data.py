@@ -45,7 +45,11 @@ def _canonical_bytes(value: object) -> bytes:
 
 def _strategy_spec(
     *,
+    signal_window: int = 20,
     top_n: int = 1,
+    start: str = "20260101",
+    end: str = "20260105",
+    cost_model: str = "standard",
     claims: dict[str, float] | None = None,
 ) -> dict[str, object]:
     return {
@@ -54,12 +58,12 @@ def _strategy_spec(
         "signal": {
             "kind": "template",
             "template": "momentum",
-            "params": {"window": 20},
+            "params": {"window": signal_window},
         },
         "selection": {"topN": top_n, "weighting": "equal"},
         "rebalance": {"frequency": "monthly", "at": "close"},
-        "window": {"start": "20260101", "end": "20260105"},
-        "costs": {"model": "standard"},
+        "window": {"start": start, "end": end},
+        "costs": {"model": cost_model},
         **({} if claims is None else {"claims": claims}),
     }
 
@@ -100,7 +104,18 @@ def _build_local_package(
     root: Path,
     *,
     package_id: str = "csi300-momentum-20d-monthly-top1-equal",
+    strategy_spec: dict[str, object] | None = None,
 ) -> tuple[str, Path]:
+    spec = _strategy_spec() if strategy_spec is None else strategy_spec
+    strategy_window = spec["window"]
+    if not isinstance(strategy_window, dict):
+        raise ValueError("test strategy window must be an object")
+    window_start = str(strategy_window["start"])
+    window_end = str(strategy_window["end"])
+    coverage_start = (
+        f"{window_start[:4]}-{window_start[4:6]}-{window_start[6:8]}"
+    )
+    coverage_end = f"{window_end[:4]}-{window_end[4:6]}-{window_end[6:8]}"
     package_root = root / package_id
     package_root.mkdir()
     market_path = package_root / "market-data.csv"
@@ -186,7 +201,7 @@ def _build_local_package(
         "cacheVersion": V9_CACHE_VERSION,
         "promoted": True,
         "state": "degraded",
-        "window": {"start": "2026-01-01", "end": "2026-01-05"},
+        "window": {"start": coverage_start, "end": coverage_end},
         "universe": {
             "indexSymbol": "000300.SH",
             "baseSymbols": 2,
@@ -195,7 +210,7 @@ def _build_local_package(
         "datasets": {
             "basePanel": {
                 "status": "ready",
-                "factorWindowAnchor": "2026-01-01",
+                "factorWindowAnchor": coverage_start,
                 "columns": ["date", "symbol", "adjClose", "tradeStatus"],
             },
             "pitTimeline": timeline_dataset,
@@ -215,7 +230,6 @@ def _build_local_package(
     audit_manifest_path = audit_support_root / "manifest.json"
     audit_manifest_path.write_bytes(_canonical_bytes(manifest))
 
-    spec = _strategy_spec()
     package_manifest = {
         "schemaVersion": LOCAL_DATA_PACKAGE_SCHEMA_VERSION,
         "packageId": package_id,
@@ -224,11 +238,11 @@ def _build_local_package(
             "indexSymbol": "000300.SH",
             "membershipMode": "point_in_time",
         },
-        "window": {"start": "20260101", "end": "20260105"},
+        "window": {"start": window_start, "end": window_end},
         "coverage": {
-            "start": "2026-01-01",
-            "end": "2026-01-05",
-            "asOf": "2026-01-05",
+            "start": coverage_start,
+            "end": coverage_end,
+            "asOf": coverage_end,
         },
         "capabilities": {
             "trade_calendar": "ready",
@@ -336,6 +350,63 @@ class LocalDataLoaderTest(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "strategy identity"):
                 local.require_spec_identity(_strategy_spec(top_n=2))
+
+    def test_loader_binds_g02_and_g03_strategy_identity(self) -> None:
+        cases = (
+            (
+                "csi300-momentum-14d-monthly-top30-equal",
+                14,
+                30,
+                {"annualReturn": 0.60, "sharpe": 2.3},
+                "sha256-9242fb1add11336293dd23983415e1493e25bdf924c06d04159b645b7f1c8195",
+            ),
+            (
+                "csi300-momentum-26d-monthly-top70-equal",
+                26,
+                70,
+                {"annualReturn": 0.20, "sharpe": 0.9},
+                "sha256-15a2f8c08d6a7f1e2f8013d1c663c325cf9666b30a06a5d8382aefcfc99f21f9",
+            ),
+        )
+        observed_keys: set[str] = set()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for package_id, signal_window, top_n, claims, expected_key in cases:
+                with self.subTest(package_id=package_id):
+                    spec = _strategy_spec(
+                        signal_window=signal_window,
+                        top_n=top_n,
+                        start="20230723",
+                        end="20260723",
+                        claims=claims,
+                    )
+                    data_ref, manifest_path = _build_local_package(
+                        root,
+                        package_id=package_id,
+                        strategy_spec=spec,
+                    )
+                    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                    local = load_local_audit_data(data_ref, root=root)
+                    alternate_claims_and_costs = _strategy_spec(
+                        signal_window=signal_window,
+                        top_n=top_n,
+                        start="20230723",
+                        end="20260723",
+                        cost_model="none",
+                        claims={"annualReturn": 0.01, "sharpe": 0.1},
+                    )
+
+                    self.assertEqual(manifest["strategyKey"], expected_key)
+                    self.assertEqual(_strategy_key(spec), expected_key)
+                    self.assertEqual(
+                        _strategy_key(alternate_claims_and_costs),
+                        expected_key,
+                    )
+                    local.require_spec_identity(spec)
+                    local.require_spec_identity(alternate_claims_and_costs)
+                    observed_keys.add(expected_key)
+
+        self.assertEqual(len(observed_keys), 2)
 
     def test_loader_rejects_manifest_market_audit_support_and_pit_tampering(
         self,

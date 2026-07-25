@@ -170,7 +170,7 @@ package.
 | Claim reproduction and five checks                 | Implemented                            |
 | Moiré M1/M2 and deterministic verdict              | Implemented                            |
 | Web authentication and private history             | Implemented                            |
-| Real G01 package bundled in repository             | Not bundled; deployment input required |
-| G02/G03 packages                                   | Not registered                         |
+| Canonical CSI 300 source package bundled           | Implemented                            |
+| G01/G02/G03 claims-free runtime bindings           | Implemented                            |
 | Factor and comparison public skills                | Not implemented                        |
 | Multi-turn clarification and durable Task recovery | Not implemented                        |

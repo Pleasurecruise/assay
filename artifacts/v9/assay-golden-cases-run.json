@@ -1,0 +1,3559 @@
+{
+  "schemaVersion": "assay-v9-golden-case-suite-v1",
+  "artifactRole": "real-data-acceptance-suite",
+  "generatedAt": "2026-07-25T14:09:56.531Z",
+  "codeRevision": "820d8c6051d339161e10cc7a397ab5a745bdea62",
+  "registryCapabilityDigest": "sha256-8e24dda988c8677023297816202d26c5f40c897796fb4b8d81ff84ca78acc834",
+  "sharedChecksums": {
+    "marketData": "sha256-27779f08aac594467eb16be723a2ac0e743042fddb078e4ca704ea6484dd9382",
+    "auditSupport": "sha256-d8018da42a6e8e4ddf074741b3ab55cda9e3e6040f6a448ac13903d7b9563886",
+    "pitMembership": "sha256-8a5b143d9faeb18d49f73564a1ab5e84a628e1da975b83f57376b3bc1a27dc4a"
+  },
+  "cases": [
+    {
+      "label": "G01",
+      "packageId": "csi300-momentum-20d-monthly-top50-equal",
+      "strategyKey": "sha256-a9d796047db6ccb208f3d82df70287afbb50ddca1fd544f67718155a4dc1bddb",
+      "runtimeManifestDigest": "sha256-0615c0fbfaf247304aa8afbbc25d21e70d8be1d651b677a106913cee8f63f9b8",
+      "acceptance": {
+        "schemaVersion": "assay-v9-real-acceptance-v1",
+        "artifactRole": "real-data-acceptance",
+        "generatedAt": "2026-07-25T14:02:46.253Z",
+        "input": "沪深 300 每月底买过去 20 天涨幅最大的 50 只，等权持有，宣称年化 18% 夏普 1.9",
+        "dataMode": "assay-v9-p1-v1-validated-official-post-cache",
+        "codeRevision": "820d8c6051d339161e10cc7a397ab5a745bdea62",
+        "cacheSnapshot": {
+          "manifestSchemaVersion": "assay-p1-cache-manifest-v1",
+          "cacheVersion": "assay-v9-p1-v1",
+          "manifestSha256": "647e2ad6f957e1f806153a94d1628851d808a0e2677f6534c937a351fc8d1be8",
+          "basePanelSha256": "27779f08aac594467eb16be723a2ac0e743042fddb078e4ca704ea6484dd9382",
+          "state": "degraded",
+          "dataAsOf": "2026-07-23",
+          "priceSources": {
+            "priceSourceMode": "factor-close-with-validated-official-post-fallback",
+            "primarySourceRef": "pandadata:get_factor(close)",
+            "fallbackSourceRef": "pandadata:get_stock_daily_post(close)",
+            "fallbackFillCount": 111,
+            "fallbackFilledKeys": [
+              {
+                "date": "2026-04-15",
+                "symbol": "000001.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000002.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000063.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000100.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000157.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000166.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000301.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000333.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000338.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000408.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000425.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000538.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000568.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000596.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000617.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000625.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000630.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000651.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000657.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000708.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000725.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000768.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000776.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000792.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000807.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000858.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000895.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000938.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000963.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000975.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000977.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000988.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000999.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "001280.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "001391.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "001965.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "001979.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002001.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002027.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002028.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002049.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002050.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002074.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002142.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002179.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002202.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002230.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002236.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002241.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002304.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002311.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002352.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002353.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002371.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002384.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002415.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002422.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002460.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002463.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002466.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002475.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002493.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002532.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002558.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002594.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002600.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002602.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002625.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002648.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002709.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002714.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002736.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002837.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002916.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002920.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002938.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "003816.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300014.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300015.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300033.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300059.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300122.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300124.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300251.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300274.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300308.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300316.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300394.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300408.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300413.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300418.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300433.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300442.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300450.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300476.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300498.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300502.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300628.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300661.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300750.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300760.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300803.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300832.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300866.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300896.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300999.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "301165.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "301236.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "301269.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "301308.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "302132.SZ"
+              }
+            ],
+            "fallbackRejectedCount": 0,
+            "fallbackRejectedReasonCounts": {},
+            "fallbackProvenanceSha256": "f79ee4fb45228b24cc0e770839d478ebff782123513e76af53ccc4cfb9ae0904"
+          },
+          "datasets": {
+            "basePanel": {
+              "status": "ready",
+              "assumptions": [
+                "111 identity-bound single-key get_factor(close) gaps were filled from get_stock_daily_post(close) only after both adjacent trading-date prices matched the primary source."
+              ]
+            },
+            "pitTimeline": {
+              "status": "ready"
+            },
+            "historicalMembers": {
+              "status": "degraded",
+              "mode": "remove_only",
+              "reasonCode": "HISTORICAL_MEMBER_DATA_UNAVAILABLE",
+              "assumptions": [
+                "Historical constituents could not be fully cached within the stage budget; availability correction must use remove-only mode."
+              ]
+            },
+            "indexDaily": {
+              "status": "degraded",
+              "mode": "constituent_proxy",
+              "reasonCode": "INDEX_DAILY_UNAVAILABLE",
+              "assumptions": [
+                "CSI 300 index daily data is unavailable; regime analysis must use the disclosed constituent equal-weight proxy."
+              ]
+            },
+            "comparatorFactors": {
+              "status": "degraded",
+              "mode": "classic_only",
+              "reasonCode": "COMPARATOR_FACTORS_UNAVAILABLE",
+              "assumptions": [
+                "ratio_pe_ttm and market_cap are unavailable; homogeneity analysis must use only the three self-built classic factors."
+              ]
+            }
+          }
+        },
+        "artifact": {
+          "schemaVersion": "1.1.0",
+          "kind": "strategy_audit",
+          "auditId": "audit_8f7f4726-05a3-4b75-81fa-4dd4b80b1aaf",
+          "generatedAt": "2026-07-25T14:02:46.038Z",
+          "results": [
+            {
+              "subjectId": "strategy_8f7f4726-05a3-4b75-81fa-4dd4b80b1aaf",
+              "verdict": "RETIRE",
+              "confidence": 0.75,
+              "summary": "At least one material check failed without a verified recovery path.",
+              "checks": [
+                {
+                  "id": "param-robustness",
+                  "conclusion": "pass",
+                  "confidence": 0.95,
+                  "evidence": [
+                    {
+                      "metric": "baselineSharpe",
+                      "value": 1.044499266119358,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:backtest/parameter-grid"
+                      ]
+                    },
+                    {
+                      "metric": "medianVariantSharpe",
+                      "value": 1.0809683416970175,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:backtest/parameter-grid"
+                      ]
+                    },
+                    {
+                      "metric": "neighborhoodSharpeRetention",
+                      "value": 1.0349153673541136,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:backtest/parameter-grid"
+                      ]
+                    },
+                    {
+                      "metric": "variantCount",
+                      "value": 14,
+                      "unit": "count",
+                      "sourceRefs": [
+                        "artifact:backtest/parameter-grid"
+                      ]
+                    }
+                  ],
+                  "missingEvidence": []
+                },
+                {
+                  "id": "data-availability",
+                  "conclusion": "fail",
+                  "confidence": 0.95,
+                  "evidence": [
+                    {
+                      "metric": "futureConstituentCount",
+                      "value": 76,
+                      "unit": "count",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    },
+                    {
+                      "metric": "affectedRebalances",
+                      "value": 35,
+                      "unit": "count",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    },
+                    {
+                      "metric": "untradableTargets",
+                      "value": 4,
+                      "unit": "count",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    },
+                    {
+                      "metric": "contaminatedSelectionRate",
+                      "value": 0.22228571428571428,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    },
+                    {
+                      "metric": "corrected.annualReturn",
+                      "value": 0.1769805599561396,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    },
+                    {
+                      "metric": "corrected.sharpe",
+                      "value": 0.7768643386238205,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    },
+                    {
+                      "metric": "corrected.delta",
+                      "value": -0.10479778343210744,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    },
+                    {
+                      "metric": "auditMode",
+                      "value": "degraded_remove_only",
+                      "unit": "mode",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    }
+                  ],
+                  "missingEvidence": []
+                },
+                {
+                  "id": "cost-stress",
+                  "conclusion": "pass_with_reservations",
+                  "confidence": 0.85,
+                  "evidence": [
+                    {
+                      "metric": "pessimisticAnnualReturn",
+                      "value": 0.2429,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:backtest/cost-stress"
+                      ]
+                    },
+                    {
+                      "metric": "baselineAnnualReturn",
+                      "value": 0.2818,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:backtest/cost-stress"
+                      ]
+                    },
+                    {
+                      "metric": "returnErosionStandardToPessimistic",
+                      "value": 0.0389,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:backtest/cost-stress"
+                      ]
+                    },
+                    {
+                      "metric": "pessimisticSharpe",
+                      "value": 0.9317,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:backtest/cost-stress"
+                      ]
+                    },
+                    {
+                      "metric": "pessimisticAnnualTurnover",
+                      "value": 10.82,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:backtest/cost-stress"
+                      ]
+                    }
+                  ],
+                  "missingEvidence": [],
+                  "refinedByMoire": "[M2][resolved] 成本结论对成分修正稳健。 original=pass_with_reservations; corrected=pass_with_reservations; sourceRef=artifact:moire/M2/sha256-3f5a86ef075339dc26b5305d950150e87270c45bf3a973f92c087b456741a15d"
+                },
+                {
+                  "id": "regime-dependency",
+                  "conclusion": "pass",
+                  "confidence": 0.75,
+                  "evidence": [
+                    {
+                      "metric": "down-high.days",
+                      "value": 11,
+                      "unit": "trading_days",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "down-high.annualReturn",
+                      "value": 105.74782414689032,
+                      "unit": "annualized_decimal",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "down-high.sharpe",
+                      "value": 10.254344845075241,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "down-high.pnlShare",
+                      "value": 0.4086663058233876,
+                      "unit": "fraction_of_total_pnl",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "down-normal.days",
+                      "value": 57,
+                      "unit": "trading_days",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "down-normal.annualReturn",
+                      "value": -0.6042854116716305,
+                      "unit": "annualized_decimal",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "down-normal.sharpe",
+                      "value": -2.362687052468397,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "down-normal.pnlShare",
+                      "value": -0.47797366010334297,
+                      "unit": "fraction_of_total_pnl",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "up-high.days",
+                      "value": 122,
+                      "unit": "trading_days",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "up-high.annualReturn",
+                      "value": 0.495527939546929,
+                      "unit": "annualized_decimal",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "up-high.sharpe",
+                      "value": 1.3467328386405373,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "up-high.pnlShare",
+                      "value": 0.2503101258897003,
+                      "unit": "fraction_of_total_pnl",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "up-normal.days",
+                      "value": 332,
+                      "unit": "trading_days",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "up-normal.annualReturn",
+                      "value": 0.44236709600268975,
+                      "unit": "annualized_decimal",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "up-normal.sharpe",
+                      "value": 1.4911497299933387,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "up-normal.pnlShare",
+                      "value": 0.7763375737470796,
+                      "unit": "fraction_of_total_pnl",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "dominantEnvironment.pnlShare",
+                      "value": 0.7763375737470796,
+                      "unit": "fraction_of_total_pnl",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    }
+                  ],
+                  "missingEvidence": [
+                    {
+                      "requirement": "down-high must have at least 60 trading days",
+                      "reason": "down-high has 11 trading days and cannot support a strong regime conclusion.",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "requirement": "down-normal must have at least 60 trading days",
+                      "reason": "down-normal has 57 trading days and cannot support a strong regime conclusion.",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "requirement": "disclose constituent_proxy regime-split assumptions",
+                      "reason": "A return dated t is classified only with index information available through t-1. Trend uses a 200-trading-day moving average; volatility uses 60 trading days and an expanding historical two-thirds quantile. The prepared index-daily cache was unavailable; the cached assay-v9-p1-v1 PIT constituent timeline's equal-weight return was used as the authorized deterministic proxy. A snapshot becomes eligible only after its effective date, so future constituents cannot enter earlier proxy returns. Days before the first cached PIT snapshot remain unlabeled. 79 PIT member(s) absent from the frozen price panel were omitted under the authorized remove-only degradation; each proxy day uses the intersection of its as-of PIT membership and the frozen panel. 176 nonzero-return strategy day(s) preceded the first usable regime label and are excluded from slice metrics. Each reported pnlShare remains its additive contribution divided by full-period P&L, so the reported shares need not sum to 1.",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "homogeneity-decay",
+                  "conclusion": "fail",
+                  "confidence": 0.95,
+                  "evidence": [
+                    {
+                      "metric": "maxAbsMeanSpearman",
+                      "value": 1,
+                      "unit": "Spearman correlation",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "momentum_20_meanSpearman",
+                      "value": 1,
+                      "unit": "Spearman correlation",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "momentum_20_rebalanceObservations",
+                      "value": 35,
+                      "unit": "count",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "reversal_5_meanSpearman",
+                      "value": -0.4337103899333862,
+                      "unit": "Spearman correlation",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "reversal_5_rebalanceObservations",
+                      "value": 35,
+                      "unit": "count",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "volatility_20_meanSpearman",
+                      "value": 0.21197338713499114,
+                      "unit": "Spearman correlation",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "volatility_20_rebalanceObservations",
+                      "value": 35,
+                      "unit": "count",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "yearsCovered",
+                      "value": 2,
+                      "unit": "calendar years",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "rankIcSlope",
+                      "value": 0.023622446327996465,
+                      "unit": "RankIC per year",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "2023_observations",
+                      "value": 5,
+                      "unit": "count",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "2023_pearsonIc",
+                      "value": 0.030969232887227055,
+                      "unit": "IC",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "2023_rankIc",
+                      "value": 0.0386705070467836,
+                      "unit": "RankIC",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "2024_observations",
+                      "value": 12,
+                      "unit": "count",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "2024_pearsonIc",
+                      "value": -0.007439887021574512,
+                      "unit": "IC",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "2024_rankIc",
+                      "value": -0.023133672096820036,
+                      "unit": "RankIC",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "2025_observations",
+                      "value": 12,
+                      "unit": "count",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "2025_pearsonIc",
+                      "value": 0.09622988036821528,
+                      "unit": "IC",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "2025_rankIc",
+                      "value": 0.040212371024477805,
+                      "unit": "RankIC",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "2026_observations",
+                      "value": 5,
+                      "unit": "count",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "2026_pearsonIc",
+                      "value": 0.20762364973948869,
+                      "unit": "IC",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "2026_rankIc",
+                      "value": 0.09629664709961863,
+                      "unit": "RankIC",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "mode",
+                      "value": "classic_only",
+                      "unit": "string",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    }
+                  ],
+                  "missingEvidence": [
+                    {
+                      "requirement": "ratio_pe_ttm and market_cap comparator availability",
+                      "reason": "The prepared ratio_pe_ttm/market_cap cache was unavailable; only classic comparators (momentum_20, reversal_5, volatility_20) were used. mode=classic_only.",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "moire": {
+                "disputesOpened": 1,
+                "resolved": [
+                  "[M2][resolved] 成本结论对成分修正稳健。 original=pass_with_reservations; corrected=pass_with_reservations; sourceRef=artifact:moire/M2/sha256-3f5a86ef075339dc26b5305d950150e87270c45bf3a973f92c087b456741a15d"
+                ],
+                "unresolved": []
+              },
+              "recoveryConditions": [
+                {
+                  "scope": "evidence",
+                  "condition": "提交原回测口径（ClaimProfile）后复审"
+                }
+              ],
+              "reviewTriggers": [],
+              "assumptionsAndLimits": [
+                "Moiré v9 evaluates only the pre-enumerated M1 and M2 discriminative pairs; M3 is outside this audit version.",
+                "PandaData financial report rows have no verified disclosure timestamp; forecast and performance bulletin info_date fields are preferred for point-in-time evidence.",
+                "Grid, baseline cost, and regime instruments use the frozen as-of CSI 300 panel; data-availability separately reports the PIT-membership correction, and M2 uses that corrected context when triggered.",
+                "Prices may be forward-filled for valuation. A primary factor-close gap is eligible only when the identity-bound official post-adjusted fallback passes the frozen two-sided scale check; otherwise a missing price or non-tradable trade_status makes that symbol ineligible on the affected date, and targets are not replaced."
+              ],
+              "strategySpec": {
+                "specVersion": "1",
+                "universe": {
+                  "index": "000300.SH"
+                },
+                "signal": {
+                  "kind": "template",
+                  "template": "momentum",
+                  "params": {
+                    "window": 20
+                  }
+                },
+                "selection": {
+                  "topN": 50,
+                  "weighting": "equal"
+                },
+                "rebalance": {
+                  "frequency": "monthly",
+                  "at": "close"
+                },
+                "window": {
+                  "start": "20230723",
+                  "end": "20260723"
+                },
+                "costs": {
+                  "model": "standard"
+                },
+                "claims": {
+                  "annualReturn": 0.18,
+                  "sharpe": 1.9
+                }
+              },
+              "defaultsApplied": [
+                "costs.model=standard",
+                "window=20230723..20260723 (sprint trailing-3y default)"
+              ],
+              "parsingAssumptions": [
+                "Natural-language input was parsed by the configured Ark Responses model."
+              ]
+            }
+          ],
+          "comparison": null,
+          "claimComparison": {
+            "claimed": {
+              "annualReturn": 0.18,
+              "sharpe": 1.9
+            },
+            "reproduced": {
+              "annualReturn": 0.29299487465351537,
+              "sharpe": 1.0762424198921985,
+              "maxDrawdown": -0.2603841001949464
+            },
+            "gaps": {
+              "annualReturn": -0.11299487465351538,
+              "sharpe": 0.8237575801078014
+            },
+            "knownConventionDiffs": []
+          },
+          "riskDisclosure": [
+            "This is a technical robustness audit, not investment advice or a return promise."
+          ],
+          "provenance": {
+            "inputHash": "sha256:a76adf550c3f94aa8892726f0ffa5de597725fe40406d0b409e2c351c8d063f6",
+            "dataAsOf": "2026-07-23",
+            "dataSources": [
+              {
+                "id": "assay:local-data-package:csi300-momentum-20d-monthly-top50-equal:sha256-0615c0fbfaf247304aa8afbbc25d21e70d8be1d651b677a106913cee8f63f9b8",
+                "version": "assay-local-data-v1"
+              },
+              {
+                "id": "pandadata:audit-support:sha256-d8018da42a6e8e4ddf074741b3ab55cda9e3e6040f6a448ac13903d7b9563886",
+                "version": "panda_data@0.0.12"
+              },
+              {
+                "id": "pandadata:market-data:sha256-27779f08aac594467eb16be723a2ac0e743042fddb078e4ca704ea6484dd9382",
+                "version": "panda_data@0.0.12"
+              },
+              {
+                "id": "pandadata:pit-membership:sha256-8a5b143d9faeb18d49f73564a1ab5e84a628e1da975b83f57376b3bc1a27dc4a",
+                "version": "panda_data@0.0.12"
+              }
+            ],
+            "codeRevision": "820d8c6051d339161e10cc7a397ab5a745bdea62"
+          }
+        }
+      }
+    },
+    {
+      "label": "G02",
+      "packageId": "csi300-momentum-14d-monthly-top30-equal",
+      "strategyKey": "sha256-9242fb1add11336293dd23983415e1493e25bdf924c06d04159b645b7f1c8195",
+      "runtimeManifestDigest": "sha256-9814bcc49b1954ab627df3b73581cc1dbd8505d33342992eb0ba2c6173271ac8",
+      "acceptance": {
+        "schemaVersion": "assay-v9-real-acceptance-v1",
+        "artifactRole": "real-data-acceptance",
+        "generatedAt": "2026-07-25T14:06:12.737Z",
+        "input": "请审计这套策略：2023-07-23 至 2026-07-23，在沪深 300 成分股中，每月底按过去 14 个交易日涨幅排序，买入前 30 只并等权持有。策略报告宣称年化收益 60%，夏普 2.3。",
+        "dataMode": "assay-v9-p1-v1-validated-official-post-cache",
+        "codeRevision": "820d8c6051d339161e10cc7a397ab5a745bdea62",
+        "cacheSnapshot": {
+          "manifestSchemaVersion": "assay-p1-cache-manifest-v1",
+          "cacheVersion": "assay-v9-p1-v1",
+          "manifestSha256": "647e2ad6f957e1f806153a94d1628851d808a0e2677f6534c937a351fc8d1be8",
+          "basePanelSha256": "27779f08aac594467eb16be723a2ac0e743042fddb078e4ca704ea6484dd9382",
+          "state": "degraded",
+          "dataAsOf": "2026-07-23",
+          "priceSources": {
+            "priceSourceMode": "factor-close-with-validated-official-post-fallback",
+            "primarySourceRef": "pandadata:get_factor(close)",
+            "fallbackSourceRef": "pandadata:get_stock_daily_post(close)",
+            "fallbackFillCount": 111,
+            "fallbackFilledKeys": [
+              {
+                "date": "2026-04-15",
+                "symbol": "000001.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000002.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000063.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000100.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000157.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000166.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000301.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000333.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000338.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000408.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000425.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000538.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000568.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000596.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000617.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000625.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000630.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000651.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000657.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000708.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000725.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000768.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000776.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000792.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000807.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000858.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000895.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000938.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000963.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000975.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000977.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000988.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000999.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "001280.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "001391.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "001965.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "001979.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002001.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002027.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002028.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002049.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002050.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002074.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002142.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002179.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002202.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002230.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002236.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002241.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002304.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002311.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002352.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002353.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002371.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002384.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002415.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002422.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002460.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002463.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002466.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002475.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002493.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002532.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002558.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002594.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002600.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002602.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002625.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002648.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002709.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002714.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002736.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002837.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002916.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002920.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002938.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "003816.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300014.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300015.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300033.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300059.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300122.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300124.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300251.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300274.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300308.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300316.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300394.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300408.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300413.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300418.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300433.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300442.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300450.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300476.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300498.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300502.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300628.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300661.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300750.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300760.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300803.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300832.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300866.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300896.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300999.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "301165.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "301236.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "301269.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "301308.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "302132.SZ"
+              }
+            ],
+            "fallbackRejectedCount": 0,
+            "fallbackRejectedReasonCounts": {},
+            "fallbackProvenanceSha256": "f79ee4fb45228b24cc0e770839d478ebff782123513e76af53ccc4cfb9ae0904"
+          },
+          "datasets": {
+            "basePanel": {
+              "status": "ready",
+              "assumptions": [
+                "111 identity-bound single-key get_factor(close) gaps were filled from get_stock_daily_post(close) only after both adjacent trading-date prices matched the primary source."
+              ]
+            },
+            "pitTimeline": {
+              "status": "ready"
+            },
+            "historicalMembers": {
+              "status": "degraded",
+              "mode": "remove_only",
+              "reasonCode": "HISTORICAL_MEMBER_DATA_UNAVAILABLE",
+              "assumptions": [
+                "Historical constituents could not be fully cached within the stage budget; availability correction must use remove-only mode."
+              ]
+            },
+            "indexDaily": {
+              "status": "degraded",
+              "mode": "constituent_proxy",
+              "reasonCode": "INDEX_DAILY_UNAVAILABLE",
+              "assumptions": [
+                "CSI 300 index daily data is unavailable; regime analysis must use the disclosed constituent equal-weight proxy."
+              ]
+            },
+            "comparatorFactors": {
+              "status": "degraded",
+              "mode": "classic_only",
+              "reasonCode": "COMPARATOR_FACTORS_UNAVAILABLE",
+              "assumptions": [
+                "ratio_pe_ttm and market_cap are unavailable; homogeneity analysis must use only the three self-built classic factors."
+              ]
+            }
+          }
+        },
+        "artifact": {
+          "schemaVersion": "1.1.0",
+          "kind": "strategy_audit",
+          "auditId": "audit_47ac48b9-05ee-456a-8477-ec6c43669a2d",
+          "generatedAt": "2026-07-25T14:06:12.540Z",
+          "results": [
+            {
+              "subjectId": "strategy_47ac48b9-05ee-456a-8477-ec6c43669a2d",
+              "verdict": "QUARANTINE",
+              "confidence": 0.72,
+              "summary": "The strategy should be paused until its scoped recovery conditions are met.",
+              "checks": [
+                {
+                  "id": "param-robustness",
+                  "conclusion": "pass",
+                  "confidence": 0.9,
+                  "evidence": [
+                    {
+                      "metric": "baselineSharpe",
+                      "value": 1.2616353421906688,
+                      "unit": "dimensionless",
+                      "sourceRefs": [
+                        "artifact:backtest/parameter-grid"
+                      ]
+                    },
+                    {
+                      "metric": "medianVariantSharpe",
+                      "value": 1.0668409556190106,
+                      "unit": "dimensionless",
+                      "sourceRefs": [
+                        "artifact:backtest/parameter-grid"
+                      ]
+                    },
+                    {
+                      "metric": "neighborhoodSharpeRetention",
+                      "value": 0.8456016726406677,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:backtest/parameter-grid"
+                      ]
+                    },
+                    {
+                      "metric": "variantCount",
+                      "value": 14,
+                      "unit": "count",
+                      "sourceRefs": [
+                        "artifact:backtest/parameter-grid"
+                      ]
+                    }
+                  ],
+                  "missingEvidence": []
+                },
+                {
+                  "id": "data-availability",
+                  "conclusion": "fail",
+                  "confidence": 0.95,
+                  "evidence": [
+                    {
+                      "metric": "futureConstituentCount",
+                      "value": 76,
+                      "unit": "count",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    },
+                    {
+                      "metric": "affectedRebalances",
+                      "value": 35,
+                      "unit": "count",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    },
+                    {
+                      "metric": "untradableTargets",
+                      "value": 3,
+                      "unit": "count",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    },
+                    {
+                      "metric": "contaminatedSelectionRate",
+                      "value": 0.2638095238095238,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    },
+                    {
+                      "metric": "corrected.annualReturn",
+                      "value": 0.28650004843493626,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    },
+                    {
+                      "metric": "corrected.sharpe",
+                      "value": 1.0446434080328408,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    },
+                    {
+                      "metric": "corrected.delta",
+                      "value": -0.12229088250513609,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    },
+                    {
+                      "metric": "auditMode",
+                      "value": "degraded_remove_only",
+                      "unit": "label",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    }
+                  ],
+                  "missingEvidence": [
+                    {
+                      "requirement": "PIT constituent membership for all historical members",
+                      "reason": "Audit ran in degraded_remove_only mode: the as-of comparison universe is exactly the symbol set already present in the frozen market panel. The promoted assay-v9-p1-v1 manifest authorizes remove-only historical-member handling (HISTORICAL_MEMBER_DATA_UNAVAILABLE); no live historical-member acquisition was attempted. 76 future constituents were excluded from the as-of panel, and 35 rebalancing dates were affected. Financial disclosure timing is not activated because this strategy uses only price momentum.",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "cost-stress",
+                  "conclusion": "pass_with_reservations",
+                  "confidence": 0.85,
+                  "evidence": [
+                    {
+                      "metric": "baseline annualReturn (standard costs)",
+                      "value": 0.4088,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:backtest/cost-stress"
+                      ]
+                    },
+                    {
+                      "metric": "realistic annualReturn",
+                      "value": 0.3813,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:backtest/cost-stress"
+                      ]
+                    },
+                    {
+                      "metric": "pessimistic annualReturn",
+                      "value": 0.361,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:backtest/cost-stress"
+                      ]
+                    },
+                    {
+                      "metric": "baseline annualTurnover",
+                      "value": 14.59,
+                      "unit": "times/year",
+                      "sourceRefs": [
+                        "artifact:backtest/cost-stress"
+                      ]
+                    },
+                    {
+                      "metric": "realistic annualTurnover",
+                      "value": 14.1,
+                      "unit": "times/year",
+                      "sourceRefs": [
+                        "artifact:backtest/cost-stress"
+                      ]
+                    },
+                    {
+                      "metric": "pessimistic annualTurnover",
+                      "value": 13.75,
+                      "unit": "times/year",
+                      "sourceRefs": [
+                        "artifact:backtest/cost-stress"
+                      ]
+                    },
+                    {
+                      "metric": "pessimistic annualReturn positive",
+                      "value": true,
+                      "unit": "boolean",
+                      "sourceRefs": [
+                        "artifact:backtest/cost-stress"
+                      ]
+                    }
+                  ],
+                  "missingEvidence": [],
+                  "refinedByMoire": "[M2][resolved] 成本结论对成分修正稳健。 original=pass_with_reservations; corrected=pass_with_reservations; sourceRef=artifact:moire/M2/sha256-086ed4ccaf6aa928676af737fc5b4959bcfe6a069a6b2f5786992d9d1dbec2ce"
+                },
+                {
+                  "id": "regime-dependency",
+                  "conclusion": "pass",
+                  "confidence": 0.72,
+                  "evidence": [
+                    {
+                      "metric": "down-high.days",
+                      "value": 11,
+                      "unit": "trading_days",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "down-high.annualReturn",
+                      "value": 140.4402914285199,
+                      "unit": "annualized_decimal",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "down-high.sharpe",
+                      "value": 9.924043393615866,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "down-high.pnlShare",
+                      "value": 0.3508899894932814,
+                      "unit": "fraction_of_total_pnl",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "down-normal.days",
+                      "value": 57,
+                      "unit": "trading_days",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "down-normal.annualReturn",
+                      "value": -0.5668993342381335,
+                      "unit": "annualized_decimal",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "down-normal.sharpe",
+                      "value": -2.0303406460857163,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "down-normal.pnlShare",
+                      "value": -0.36161773007485953,
+                      "unit": "fraction_of_total_pnl",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "up-high.days",
+                      "value": 122,
+                      "unit": "trading_days",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "up-high.annualReturn",
+                      "value": 1.128349944639989,
+                      "unit": "annualized_decimal",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "up-high.sharpe",
+                      "value": 2.237716572044634,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "up-high.pnlShare",
+                      "value": 0.29941405479481475,
+                      "unit": "fraction_of_total_pnl",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "up-normal.days",
+                      "value": 332,
+                      "unit": "trading_days",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "up-normal.annualReturn",
+                      "value": 0.6296622507339327,
+                      "unit": "annualized_decimal",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "up-normal.sharpe",
+                      "value": 1.6864854845695418,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "up-normal.pnlShare",
+                      "value": 0.7394694878964329,
+                      "unit": "fraction_of_total_pnl",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "dominantEnvironment.pnlShare",
+                      "value": 0.7394694878964329,
+                      "unit": "fraction_of_total_pnl",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    }
+                  ],
+                  "missingEvidence": [
+                    {
+                      "requirement": "down-high must have at least 60 trading days",
+                      "reason": "down-high has 11 trading days and cannot support a strong regime conclusion.",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "requirement": "down-normal must have at least 60 trading days",
+                      "reason": "down-normal has 57 trading days and cannot support a strong regime conclusion.",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "requirement": "disclose constituent_proxy regime-split assumptions",
+                      "reason": "A return dated t is classified only with index information available through t-1. Trend uses a 200-trading-day moving average; volatility uses 60 trading days and an expanding historical two-thirds quantile. The prepared index-daily cache was unavailable; the cached assay-v9-p1-v1 PIT constituent timeline's equal-weight return was used as the authorized deterministic proxy. A snapshot becomes eligible only after its effective date, so future constituents cannot enter earlier proxy returns. Days before the first cached PIT snapshot remain unlabeled. 79 PIT member(s) absent from the frozen price panel were omitted under the authorized remove-only degradation; each proxy day uses the intersection of its as-of PIT membership and the frozen panel. 176 nonzero-return strategy day(s) preceded the first usable regime label and are excluded from slice metrics. Each reported pnlShare remains its additive contribution divided by full-period P&L, so the reported shares need not sum to 1.",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "homogeneity-decay",
+                  "conclusion": "pass_with_reservations",
+                  "confidence": 0.85,
+                  "evidence": [
+                    {
+                      "metric": "meanSpearman_vs_momentum_20",
+                      "value": 0.7429659935536642,
+                      "unit": "Spearman correlation",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "rebalanceObservations_momentum_20",
+                      "value": 35,
+                      "unit": "observations",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "meanSpearman_vs_reversal_5",
+                      "value": -0.5716280000400502,
+                      "unit": "Spearman correlation",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "rebalanceObservations_reversal_5",
+                      "value": 35,
+                      "unit": "observations",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "meanSpearman_vs_volatility_20",
+                      "value": 0.1267549176813123,
+                      "unit": "Spearman correlation",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "rebalanceObservations_volatility_20",
+                      "value": 35,
+                      "unit": "observations",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "maxAbsMeanSpearman",
+                      "value": 0.7429659935536642,
+                      "unit": "Spearman correlation",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "nearestComparator",
+                      "value": "momentum_20",
+                      "unit": "comparator label",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "yearsCovered",
+                      "value": 2,
+                      "unit": "years",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "rankIcSlope",
+                      "value": 0.016705508699520838,
+                      "unit": "RankIC/year",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "annualIc_2023_observations",
+                      "value": 5,
+                      "unit": "observations",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "annualIc_2023_pearsonIc",
+                      "value": -0.04997671568942699,
+                      "unit": "Pearson IC",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "annualIc_2023_rankIc",
+                      "value": 0.02686494519983982,
+                      "unit": "Rank IC",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "annualIc_2024_observations",
+                      "value": 12,
+                      "unit": "observations",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "annualIc_2024_pearsonIc",
+                      "value": -0.0021890391916398032,
+                      "unit": "Pearson IC",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "annualIc_2024_rankIc",
+                      "value": -0.01384202082160494,
+                      "unit": "Rank IC",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "annualIc_2025_observations",
+                      "value": 12,
+                      "unit": "observations",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "annualIc_2025_pearsonIc",
+                      "value": 0.09033988421232332,
+                      "unit": "Pearson IC",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "annualIc_2025_rankIc",
+                      "value": 0.049089537838155034,
+                      "unit": "Rank IC",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "annualIc_2026_observations",
+                      "value": 5,
+                      "unit": "observations",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "annualIc_2026_pearsonIc",
+                      "value": 0.14418595650293314,
+                      "unit": "Pearson IC",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "annualIc_2026_rankIc",
+                      "value": 0.061572787978288704,
+                      "unit": "Rank IC",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "mode",
+                      "value": "classic_only",
+                      "unit": "audit mode",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "assumptions",
+                      "value": "ratio_pe_ttm and market_cap cache unavailable; classic-only comparators used",
+                      "unit": "disclosure",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    }
+                  ],
+                  "missingEvidence": []
+                }
+              ],
+              "moire": {
+                "disputesOpened": 1,
+                "resolved": [
+                  "[M2][resolved] 成本结论对成分修正稳健。 original=pass_with_reservations; corrected=pass_with_reservations; sourceRef=artifact:moire/M2/sha256-086ed4ccaf6aa928676af737fc5b4959bcfe6a069a6b2f5786992d9d1dbec2ce"
+                ],
+                "unresolved": []
+              },
+              "recoveryConditions": [
+                {
+                  "scope": "data-availability",
+                  "condition": "改用 PIT 成分池重跑"
+                },
+                {
+                  "scope": "evidence",
+                  "condition": "提交原回测口径（ClaimProfile）后复审"
+                }
+              ],
+              "reviewTriggers": [],
+              "assumptionsAndLimits": [
+                "Moiré v9 evaluates only the pre-enumerated M1 and M2 discriminative pairs; M3 is outside this audit version.",
+                "PandaData financial report rows have no verified disclosure timestamp; forecast and performance bulletin info_date fields are preferred for point-in-time evidence.",
+                "Grid, baseline cost, and regime instruments use the frozen as-of CSI 300 panel; data-availability separately reports the PIT-membership correction, and M2 uses that corrected context when triggered.",
+                "Prices may be forward-filled for valuation. A primary factor-close gap is eligible only when the identity-bound official post-adjusted fallback passes the frozen two-sided scale check; otherwise a missing price or non-tradable trade_status makes that symbol ineligible on the affected date, and targets are not replaced."
+              ],
+              "strategySpec": {
+                "specVersion": "1",
+                "universe": {
+                  "index": "000300.SH"
+                },
+                "signal": {
+                  "kind": "template",
+                  "template": "momentum",
+                  "params": {
+                    "window": 14
+                  }
+                },
+                "selection": {
+                  "topN": 30,
+                  "weighting": "equal"
+                },
+                "rebalance": {
+                  "frequency": "monthly",
+                  "at": "close"
+                },
+                "window": {
+                  "start": "20230723",
+                  "end": "20260723"
+                },
+                "costs": {
+                  "model": "standard"
+                },
+                "claims": {
+                  "annualReturn": 0.6,
+                  "sharpe": 2.3
+                }
+              },
+              "defaultsApplied": [
+                "costs.model=standard"
+              ],
+              "parsingAssumptions": [
+                "Natural-language input was parsed by the configured Ark Responses model."
+              ]
+            }
+          ],
+          "comparison": null,
+          "claimComparison": {
+            "claimed": {
+              "annualReturn": 0.6,
+              "sharpe": 2.3
+            },
+            "reproduced": {
+              "annualReturn": 0.4226213352087933,
+              "sharpe": 1.2927915546460984,
+              "maxDrawdown": -0.26201665135607477
+            },
+            "gaps": {
+              "annualReturn": 0.17737866479120667,
+              "sharpe": 1.0072084453539014
+            },
+            "knownConventionDiffs": []
+          },
+          "riskDisclosure": [
+            "This is a technical robustness audit, not investment advice or a return promise."
+          ],
+          "provenance": {
+            "inputHash": "sha256:862b452edaf1650844d21e419c96782730d8c994c0b79da3602b305a0bd88d31",
+            "dataAsOf": "2026-07-23",
+            "dataSources": [
+              {
+                "id": "assay:local-data-package:csi300-momentum-14d-monthly-top30-equal:sha256-9814bcc49b1954ab627df3b73581cc1dbd8505d33342992eb0ba2c6173271ac8",
+                "version": "assay-local-data-v1"
+              },
+              {
+                "id": "pandadata:audit-support:sha256-d8018da42a6e8e4ddf074741b3ab55cda9e3e6040f6a448ac13903d7b9563886",
+                "version": "panda_data@0.0.12"
+              },
+              {
+                "id": "pandadata:market-data:sha256-27779f08aac594467eb16be723a2ac0e743042fddb078e4ca704ea6484dd9382",
+                "version": "panda_data@0.0.12"
+              },
+              {
+                "id": "pandadata:pit-membership:sha256-8a5b143d9faeb18d49f73564a1ab5e84a628e1da975b83f57376b3bc1a27dc4a",
+                "version": "panda_data@0.0.12"
+              }
+            ],
+            "codeRevision": "820d8c6051d339161e10cc7a397ab5a745bdea62"
+          }
+        }
+      }
+    },
+    {
+      "label": "G03",
+      "packageId": "csi300-momentum-26d-monthly-top70-equal",
+      "strategyKey": "sha256-15a2f8c08d6a7f1e2f8013d1c663c325cf9666b30a06a5d8382aefcfc99f21f9",
+      "runtimeManifestDigest": "sha256-e2cb53c1ef6cdb0b06d87144a26ee7d31dc34a0324b451b87893cac816b81524",
+      "acceptance": {
+        "schemaVersion": "assay-v9-real-acceptance-v1",
+        "artifactRole": "real-data-acceptance",
+        "generatedAt": "2026-07-25T14:09:56.528Z",
+        "input": "请独立复核：2023-07-23 至 2026-07-23，在沪深 300 成分股中，每月底按过去 26 个交易日涨幅排序，持有前 70 只，等权配置。管理人宣称年化收益 20%，夏普 0.9。",
+        "dataMode": "assay-v9-p1-v1-validated-official-post-cache",
+        "codeRevision": "820d8c6051d339161e10cc7a397ab5a745bdea62",
+        "cacheSnapshot": {
+          "manifestSchemaVersion": "assay-p1-cache-manifest-v1",
+          "cacheVersion": "assay-v9-p1-v1",
+          "manifestSha256": "647e2ad6f957e1f806153a94d1628851d808a0e2677f6534c937a351fc8d1be8",
+          "basePanelSha256": "27779f08aac594467eb16be723a2ac0e743042fddb078e4ca704ea6484dd9382",
+          "state": "degraded",
+          "dataAsOf": "2026-07-23",
+          "priceSources": {
+            "priceSourceMode": "factor-close-with-validated-official-post-fallback",
+            "primarySourceRef": "pandadata:get_factor(close)",
+            "fallbackSourceRef": "pandadata:get_stock_daily_post(close)",
+            "fallbackFillCount": 111,
+            "fallbackFilledKeys": [
+              {
+                "date": "2026-04-15",
+                "symbol": "000001.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000002.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000063.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000100.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000157.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000166.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000301.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000333.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000338.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000408.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000425.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000538.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000568.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000596.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000617.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000625.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000630.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000651.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000657.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000708.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000725.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000768.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000776.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000792.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000807.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000858.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000895.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000938.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000963.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000975.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000977.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000988.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "000999.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "001280.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "001391.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "001965.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "001979.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002001.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002027.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002028.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002049.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002050.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002074.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002142.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002179.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002202.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002230.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002236.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002241.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002304.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002311.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002352.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002353.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002371.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002384.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002415.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002422.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002460.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002463.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002466.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002475.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002493.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002532.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002558.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002594.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002600.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002602.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002625.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002648.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002709.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002714.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002736.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002837.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002916.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002920.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "002938.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "003816.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300014.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300015.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300033.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300059.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300122.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300124.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300251.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300274.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300308.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300316.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300394.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300408.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300413.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300418.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300433.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300442.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300450.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300476.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300498.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300502.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300628.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300661.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300750.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300760.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300803.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300832.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300866.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300896.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "300999.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "301165.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "301236.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "301269.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "301308.SZ"
+              },
+              {
+                "date": "2026-04-15",
+                "symbol": "302132.SZ"
+              }
+            ],
+            "fallbackRejectedCount": 0,
+            "fallbackRejectedReasonCounts": {},
+            "fallbackProvenanceSha256": "f79ee4fb45228b24cc0e770839d478ebff782123513e76af53ccc4cfb9ae0904"
+          },
+          "datasets": {
+            "basePanel": {
+              "status": "ready",
+              "assumptions": [
+                "111 identity-bound single-key get_factor(close) gaps were filled from get_stock_daily_post(close) only after both adjacent trading-date prices matched the primary source."
+              ]
+            },
+            "pitTimeline": {
+              "status": "ready"
+            },
+            "historicalMembers": {
+              "status": "degraded",
+              "mode": "remove_only",
+              "reasonCode": "HISTORICAL_MEMBER_DATA_UNAVAILABLE",
+              "assumptions": [
+                "Historical constituents could not be fully cached within the stage budget; availability correction must use remove-only mode."
+              ]
+            },
+            "indexDaily": {
+              "status": "degraded",
+              "mode": "constituent_proxy",
+              "reasonCode": "INDEX_DAILY_UNAVAILABLE",
+              "assumptions": [
+                "CSI 300 index daily data is unavailable; regime analysis must use the disclosed constituent equal-weight proxy."
+              ]
+            },
+            "comparatorFactors": {
+              "status": "degraded",
+              "mode": "classic_only",
+              "reasonCode": "COMPARATOR_FACTORS_UNAVAILABLE",
+              "assumptions": [
+                "ratio_pe_ttm and market_cap are unavailable; homogeneity analysis must use only the three self-built classic factors."
+              ]
+            }
+          }
+        },
+        "artifact": {
+          "schemaVersion": "1.1.0",
+          "kind": "strategy_audit",
+          "auditId": "audit_fa439e0b-7686-4a24-860b-463b14aad9ee",
+          "generatedAt": "2026-07-25T14:09:56.286Z",
+          "results": [
+            {
+              "subjectId": "strategy_fa439e0b-7686-4a24-860b-463b14aad9ee",
+              "verdict": "QUARANTINE",
+              "confidence": 0.7,
+              "summary": "The strategy should be paused until its scoped recovery conditions are met.",
+              "checks": [
+                {
+                  "id": "param-robustness",
+                  "conclusion": "pass",
+                  "confidence": 0.95,
+                  "evidence": [
+                    {
+                      "metric": "baselineSharpe",
+                      "value": 1.0240797522522562,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:backtest/parameter-grid"
+                      ]
+                    },
+                    {
+                      "metric": "medianVariantSharpe",
+                      "value": 1.0809683416970175,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:backtest/parameter-grid"
+                      ]
+                    },
+                    {
+                      "metric": "neighborhoodSharpeRetention",
+                      "value": 1.0555509366527815,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:backtest/parameter-grid"
+                      ]
+                    },
+                    {
+                      "metric": "variantCount",
+                      "value": 14,
+                      "unit": "count",
+                      "sourceRefs": [
+                        "artifact:backtest/parameter-grid"
+                      ]
+                    }
+                  ],
+                  "missingEvidence": []
+                },
+                {
+                  "id": "data-availability",
+                  "conclusion": "fail",
+                  "confidence": 0.95,
+                  "evidence": [
+                    {
+                      "metric": "futureConstituentCount",
+                      "value": 76,
+                      "unit": "count",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    },
+                    {
+                      "metric": "affectedRebalances",
+                      "value": 35,
+                      "unit": "count",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    },
+                    {
+                      "metric": "untradableTargets",
+                      "value": 4,
+                      "unit": "count",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    },
+                    {
+                      "metric": "contaminatedSelectionRate",
+                      "value": 0.20408163265306123,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    },
+                    {
+                      "metric": "corrected.annualReturn",
+                      "value": 0.16402515698612996,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    },
+                    {
+                      "metric": "corrected.sharpe",
+                      "value": 0.7757978027216739,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    },
+                    {
+                      "metric": "corrected.delta",
+                      "value": -0.0905588222567093,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    },
+                    {
+                      "metric": "auditMode",
+                      "value": "degraded_remove_only",
+                      "unit": "label",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    },
+                    {
+                      "metric": "assumptions",
+                      "value": "remove-only historical-member handling; financial disclosure timing not activated; immutable local dataRef used; no live historical-member acquisition",
+                      "unit": "text",
+                      "sourceRefs": [
+                        "artifact:data-availability/pit-audit"
+                      ]
+                    }
+                  ],
+                  "missingEvidence": []
+                },
+                {
+                  "id": "cost-stress",
+                  "conclusion": "pass_with_reservations",
+                  "confidence": 0.82,
+                  "evidence": [
+                    {
+                      "metric": "standard_cost_annualReturn",
+                      "value": 0.25458,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:backtest/cost-stress"
+                      ]
+                    },
+                    {
+                      "metric": "realistic_cost_annualReturn",
+                      "value": 0.23586,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:backtest/cost-stress"
+                      ]
+                    },
+                    {
+                      "metric": "pessimistic_cost_annualReturn",
+                      "value": 0.22204,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:backtest/cost-stress"
+                      ]
+                    },
+                    {
+                      "metric": "standard_cost_sharpe",
+                      "value": 1.02408,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:backtest/cost-stress"
+                      ]
+                    },
+                    {
+                      "metric": "realistic_cost_sharpe",
+                      "value": 0.96461,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:backtest/cost-stress"
+                      ]
+                    },
+                    {
+                      "metric": "pessimistic_cost_sharpe",
+                      "value": 0.91998,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:backtest/cost-stress"
+                      ]
+                    },
+                    {
+                      "metric": "standard_cost_annualTurnover",
+                      "value": 9.76195,
+                      "unit": "times/year",
+                      "sourceRefs": [
+                        "artifact:backtest/cost-stress"
+                      ]
+                    },
+                    {
+                      "metric": "realistic_cost_annualTurnover",
+                      "value": 9.52807,
+                      "unit": "times/year",
+                      "sourceRefs": [
+                        "artifact:backtest/cost-stress"
+                      ]
+                    },
+                    {
+                      "metric": "pessimistic_cost_annualTurnover",
+                      "value": 9.35829,
+                      "unit": "times/year",
+                      "sourceRefs": [
+                        "artifact:backtest/cost-stress"
+                      ]
+                    },
+                    {
+                      "metric": "annualReturn_erosion_standard_to_realistic",
+                      "value": 0.01873,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:backtest/cost-stress"
+                      ]
+                    },
+                    {
+                      "metric": "annualReturn_erosion_standard_to_pessimistic",
+                      "value": 0.03255,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:backtest/cost-stress"
+                      ]
+                    },
+                    {
+                      "metric": "pessimistic_still_profitable",
+                      "value": true,
+                      "unit": "boolean",
+                      "sourceRefs": [
+                        "artifact:backtest/cost-stress"
+                      ]
+                    }
+                  ],
+                  "missingEvidence": [],
+                  "refinedByMoire": "[M2][resolved] 成本结论对成分修正稳健。 original=pass_with_reservations; corrected=pass_with_reservations; sourceRef=artifact:moire/M2/sha256-c1e338d43446fdeb6e32ab9d7ce388db41687d71f9a8b73ba6f58ac5b7361e7c"
+                },
+                {
+                  "id": "regime-dependency",
+                  "conclusion": "pass",
+                  "confidence": 0.7,
+                  "evidence": [
+                    {
+                      "metric": "down-high.days",
+                      "value": 11,
+                      "unit": "trading_days",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "down-high.annualReturn",
+                      "value": 51.32467901142566,
+                      "unit": "annualized_decimal",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "down-high.sharpe",
+                      "value": 12.296927808336395,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "down-high.pnlShare",
+                      "value": 0.3517862144742633,
+                      "unit": "fraction_of_total_pnl",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "down-normal.days",
+                      "value": 57,
+                      "unit": "trading_days",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "down-normal.annualReturn",
+                      "value": -0.4882062438404787,
+                      "unit": "annualized_decimal",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "down-normal.sharpe",
+                      "value": -2.0257812020528734,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "down-normal.pnlShare",
+                      "value": -0.37586547778765406,
+                      "unit": "fraction_of_total_pnl",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "up-high.days",
+                      "value": 122,
+                      "unit": "trading_days",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "up-high.annualReturn",
+                      "value": 0.6076473802400932,
+                      "unit": "annualized_decimal",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "up-high.sharpe",
+                      "value": 1.559648775007442,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "up-high.pnlShare",
+                      "value": 0.296325616356906,
+                      "unit": "fraction_of_total_pnl",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "up-normal.days",
+                      "value": 332,
+                      "unit": "trading_days",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "up-normal.annualReturn",
+                      "value": 0.3474118179919967,
+                      "unit": "annualized_decimal",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "up-normal.sharpe",
+                      "value": 1.332902018692456,
+                      "unit": "ratio",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "up-normal.pnlShare",
+                      "value": 0.7174265697906059,
+                      "unit": "fraction_of_total_pnl",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "metric": "dominantEnvironment.pnlShare",
+                      "value": 0.7174265697906059,
+                      "unit": "fraction_of_total_pnl",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    }
+                  ],
+                  "missingEvidence": [
+                    {
+                      "requirement": "down-high must have at least 60 trading days",
+                      "reason": "down-high has 11 trading days and cannot support a strong regime conclusion.",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "requirement": "down-normal must have at least 60 trading days",
+                      "reason": "down-normal has 57 trading days and cannot support a strong regime conclusion.",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    },
+                    {
+                      "requirement": "disclose constituent_proxy regime-split assumptions",
+                      "reason": "A return dated t is classified only with index information available through t-1. Trend uses a 200-trading-day moving average; volatility uses 60 trading days and an expanding historical two-thirds quantile. The prepared index-daily cache was unavailable; the cached assay-v9-p1-v1 PIT constituent timeline's equal-weight return was used as the authorized deterministic proxy. A snapshot becomes eligible only after its effective date, so future constituents cannot enter earlier proxy returns. Days before the first cached PIT snapshot remain unlabeled. 79 PIT member(s) absent from the frozen price panel were omitted under the authorized remove-only degradation; each proxy day uses the intersection of its as-of PIT membership and the frozen panel. 176 nonzero-return strategy day(s) preceded the first usable regime label and are excluded from slice metrics. Each reported pnlShare remains its additive contribution divided by full-period P&L, so the reported shares need not sum to 1.",
+                      "sourceRefs": [
+                        "artifact:regime-dependency/regime-split"
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "homogeneity-decay",
+                  "conclusion": "pass_with_reservations",
+                  "confidence": 0.75,
+                  "evidence": [
+                    {
+                      "metric": "maxAbsMeanSpearman",
+                      "value": 0.8403274619367382,
+                      "unit": "Spearman correlation",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "momentum_20_meanSpearman",
+                      "value": 0.8403274619367382,
+                      "unit": "Spearman correlation",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "reversal_5_meanSpearman",
+                      "value": -0.3534551323748531,
+                      "unit": "Spearman correlation",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "volatility_20_meanSpearman",
+                      "value": 0.23532546364710036,
+                      "unit": "Spearman correlation",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "rebalanceObservations",
+                      "value": 35,
+                      "unit": "count",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "yearsCovered",
+                      "value": 2,
+                      "unit": "complete calendar years",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "rankIcSlope",
+                      "value": 0.013806274146592495,
+                      "unit": "rankIc/year",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "2023_pearsonIc",
+                      "value": 0.05566711084117311,
+                      "unit": "Pearson IC",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "2023_rankIc",
+                      "value": 0.051848910140380754,
+                      "unit": "Rank IC",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "2023_observations",
+                      "value": 5,
+                      "unit": "count",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "2024_pearsonIc",
+                      "value": -0.017365549326505223,
+                      "unit": "Pearson IC",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "2024_rankIc",
+                      "value": -0.04483374770788917,
+                      "unit": "Rank IC",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "2024_observations",
+                      "value": 12,
+                      "unit": "count",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "2025_pearsonIc",
+                      "value": 0.10910205281101083,
+                      "unit": "Pearson IC",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "2025_rankIc",
+                      "value": 0.04561787373907087,
+                      "unit": "Rank IC",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "2025_observations",
+                      "value": 12,
+                      "unit": "count",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "2026_pearsonIc",
+                      "value": 0.1752772351619345,
+                      "unit": "Pearson IC",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "2026_rankIc",
+                      "value": 0.06771928347999477,
+                      "unit": "Rank IC",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "2026_observations",
+                      "value": 5,
+                      "unit": "count",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "mode",
+                      "value": "classic_only",
+                      "unit": "enum",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "assumption_classic_comparators",
+                      "value": "momentum_20=close/close.shift(20)-1, reversal_5=-(close/close.shift(5)-1), volatility_20=rolling_std(daily_return,20,ddof=1)*sqrt(252)",
+                      "unit": "formula",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    },
+                    {
+                      "metric": "assumption_ratio_pe_ttm_cache_unavailable",
+                      "value": true,
+                      "unit": "boolean",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    }
+                  ],
+                  "missingEvidence": [
+                    {
+                      "requirement": "Minimum 4 complete calendar years for reliable decay analysis",
+                      "reason": "yearsCovered=2, spanning only 2024-2025 as complete calendar anniversaries between first observation 2023-07-24 and last 2026-07-23; rankIcSlope of 0.0138 may be unreliable with only 2 full-year buckets",
+                      "sourceRefs": [
+                        "artifact:homogeneity-decay/spearman-ic"
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "moire": {
+                "disputesOpened": 1,
+                "resolved": [
+                  "[M2][resolved] 成本结论对成分修正稳健。 original=pass_with_reservations; corrected=pass_with_reservations; sourceRef=artifact:moire/M2/sha256-c1e338d43446fdeb6e32ab9d7ce388db41687d71f9a8b73ba6f58ac5b7361e7c"
+                ],
+                "unresolved": []
+              },
+              "recoveryConditions": [
+                {
+                  "scope": "data-availability",
+                  "condition": "改用 PIT 成分池重跑"
+                }
+              ],
+              "reviewTriggers": [],
+              "assumptionsAndLimits": [
+                "Moiré v9 evaluates only the pre-enumerated M1 and M2 discriminative pairs; M3 is outside this audit version.",
+                "PandaData financial report rows have no verified disclosure timestamp; forecast and performance bulletin info_date fields are preferred for point-in-time evidence.",
+                "Grid, baseline cost, and regime instruments use the frozen as-of CSI 300 panel; data-availability separately reports the PIT-membership correction, and M2 uses that corrected context when triggered.",
+                "Prices may be forward-filled for valuation. A primary factor-close gap is eligible only when the identity-bound official post-adjusted fallback passes the frozen two-sided scale check; otherwise a missing price or non-tradable trade_status makes that symbol ineligible on the affected date, and targets are not replaced."
+              ],
+              "strategySpec": {
+                "specVersion": "1",
+                "universe": {
+                  "index": "000300.SH"
+                },
+                "signal": {
+                  "kind": "template",
+                  "template": "momentum",
+                  "params": {
+                    "window": 26
+                  }
+                },
+                "selection": {
+                  "topN": 70,
+                  "weighting": "equal"
+                },
+                "rebalance": {
+                  "frequency": "monthly",
+                  "at": "close"
+                },
+                "window": {
+                  "start": "20230723",
+                  "end": "20260723"
+                },
+                "costs": {
+                  "model": "standard"
+                },
+                "claims": {
+                  "annualReturn": 0.2,
+                  "sharpe": 0.9
+                }
+              },
+              "defaultsApplied": [
+                "costs.model=standard"
+              ],
+              "parsingAssumptions": [
+                "Natural-language input was parsed by the configured Ark Responses model."
+              ]
+            }
+          ],
+          "comparison": null,
+          "claimComparison": {
+            "claimed": {
+              "annualReturn": 0.2,
+              "sharpe": 0.9
+            },
+            "reproduced": {
+              "annualReturn": 0.2639356701851292,
+              "sharpe": 1.0533561388649118,
+              "maxDrawdown": -0.2208297759251826
+            },
+            "gaps": {
+              "annualReturn": -0.06393567018512919,
+              "sharpe": -0.15335613886491173
+            },
+            "knownConventionDiffs": []
+          },
+          "riskDisclosure": [
+            "This is a technical robustness audit, not investment advice or a return promise."
+          ],
+          "provenance": {
+            "inputHash": "sha256:18d1a3ff19ce6983f3c99d1c1e3dbe6e0e9c381eb9cfa572ff42314b0c9115ed",
+            "dataAsOf": "2026-07-23",
+            "dataSources": [
+              {
+                "id": "assay:local-data-package:csi300-momentum-26d-monthly-top70-equal:sha256-e2cb53c1ef6cdb0b06d87144a26ee7d31dc34a0324b451b87893cac816b81524",
+                "version": "assay-local-data-v1"
+              },
+              {
+                "id": "pandadata:audit-support:sha256-d8018da42a6e8e4ddf074741b3ab55cda9e3e6040f6a448ac13903d7b9563886",
+                "version": "panda_data@0.0.12"
+              },
+              {
+                "id": "pandadata:market-data:sha256-27779f08aac594467eb16be723a2ac0e743042fddb078e4ca704ea6484dd9382",
+                "version": "panda_data@0.0.12"
+              },
+              {
+                "id": "pandadata:pit-membership:sha256-8a5b143d9faeb18d49f73564a1ab5e84a628e1da975b83f57376b3bc1a27dc4a",
+                "version": "panda_data@0.0.12"
+              }
+            ],
+            "codeRevision": "820d8c6051d339161e10cc7a397ab5a745bdea62"
+          }
+        }
+      }
+    }
+  ]
+}

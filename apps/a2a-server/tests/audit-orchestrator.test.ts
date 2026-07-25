@@ -15,6 +15,8 @@ const identity = {
   subjectId: "strategy_verdict_policy",
   traceId: "trace_verdict_policy",
 };
+const LOCAL_PACKAGE_SOURCE =
+  "assay:local-data-package:fixture-package:sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 const frozen = freezeStrategySpec(
   {
@@ -295,6 +297,11 @@ describe("buildExecutedAuditArtifact", () => {
       identity: provenanceIdentity,
       result,
       generatedAt: "2026-07-24T00:00:02.000Z",
+      acquisitionSources: [
+        LOCAL_PACKAGE_SOURCE,
+        "pandadata:market_data:fixture",
+        "test:untracked-acquisition-source",
+      ],
     });
 
     expect(artifact.results[0]?.verdict).toBe("RETIRE");
@@ -306,6 +313,10 @@ describe("buildExecutedAuditArtifact", () => {
     });
     expect(artifact.provenance.dataSources).toEqual([
       { id: "assay:backtest:fixture", version: "assay-backtester@1" },
+      {
+        id: LOCAL_PACKAGE_SOURCE,
+        version: "assay-local-data-v1",
+      },
       {
         id: "pandadata:market_data:fixture",
         version: "panda_data@0.0.12",

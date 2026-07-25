@@ -5,6 +5,7 @@ import { link, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { TaskState, type Task } from "@a2a-js/sdk";
 import { planDiscriminativeMoireExperiments } from "@assay/agents";
+import { strategyDataKey } from "@assay/finance-tools";
 import {
   AUDIT_ARTIFACT_SCHEMA_VERSION,
   AUDIT_CHECK_IDS,
@@ -16,18 +17,33 @@ import {
   PARAMETER_GRID_SOURCE_REF,
   parseAuditArtifact,
   REGIME_SPLIT_SOURCE_REF,
+  strategyForData,
   type AuditArtifact,
   type AuditCheckId,
   type JsonValue,
 } from "@assay/contracts";
-import { createAssayA2AClient, extractAuditArtifact } from "../../../apps/web/src/lib/a2a-client";
+import {
+  createAssayA2AClient,
+  extractAuditArtifact,
+  type AssayA2AClient,
+} from "../../../apps/web/src/lib/a2a-client";
 import { deriveVerdict } from "../../../apps/a2a-server/src/audit-orchestrator";
 import { LOCAL_DATA_RUNTIME_ROOT } from "../../../apps/a2a-server/src/local-data-package";
-import { CSI300_MOMENTUM_CASE_PACKAGE_ID } from "../../../scripts/case_data_package";
-import { loadCsi300MomentumRuntimePackage } from "./local-runtime-package";
+import {
+  GOLDEN_SHARED_RUNTIME_CHECKSUMS,
+  GOLDEN_STRATEGY_CASES,
+  canonicalSpecForGoldenCase,
+  type GoldenStrategyCase,
+  type GoldenStrategyCaseLabel,
+} from "./golden-cases";
+import {
+  loadGoldenRuntimePackages,
+  type LoadedGoldenRuntimePackage,
+} from "./local-runtime-package";
 import { assertOutputSafe } from "./sprint-acceptance";
 
 export const V9_REAL_BUNDLE_VERSION = "assay-v9-real-acceptance-v1";
+export const V9_GOLDEN_SUITE_VERSION = "assay-v9-golden-case-suite-v1";
 export const V9_REAL_DATA_MODE = "assay-v9-p1-v1-validated-official-post-cache";
 export const V9_CACHE_VERSION = "assay-v9-p1-v1";
 export const V9_MANIFEST_SCHEMA_VERSION = "assay-p1-cache-manifest-v1";
@@ -38,13 +54,14 @@ export const V9_FALLBACK_PROVENANCE_SCHEMA_VERSION = "assay-base-official-post-f
 export const V9_EXPECTED_PIT_POINTS = 37;
 export const V9_EXPECTED_COMPLETED_MONTH_ENDS = 36;
 export const V9_REAL_POLL_TIMEOUT_MS = 600_000;
-export const V9_REAL_INPUT =
-  "沪深 300 每月底买过去 20 天涨幅最大的 50 只，等权持有，宣称年化 18% 夏普 1.9";
+export const V9_REAL_INPUT = GOLDEN_STRATEGY_CASES[0]!.input;
 export const V9_REAL_ARTIFACT_PATH = "artifacts/v9/assay-real-data-run.json";
+export const V9_GOLDEN_SUITE_ARTIFACT_PATH = "artifacts/v9/assay-golden-cases-run.json";
 export const V9_UNACCEPTED_DIAGNOSTIC_DIR = ".cache/assay/run-logs";
 export const V9_UNACCEPTED_DIAGNOSTIC_VERSION = "assay-v9-unaccepted-diagnostic-v1";
 export const V9_MECHANISM_REPLAY_VERSION = "assay-v9-mechanism-replay-v1";
-const DEFAULT_LOCAL_PACKAGE_ROOT = `${LOCAL_DATA_RUNTIME_ROOT}/${CSI300_MOMENTUM_CASE_PACKAGE_ID}`;
+const DEFAULT_LOCAL_PACKAGE_ROOT =
+  `${LOCAL_DATA_RUNTIME_ROOT}/${GOLDEN_STRATEGY_CASES[0]!.packageId}`;
 const V9_DATASET_NAMES = [
   "basePanel",
   "pitTimeline",
@@ -120,11 +137,34 @@ export interface V9RealAcceptanceBundle {
   readonly schemaVersion: typeof V9_REAL_BUNDLE_VERSION;
   readonly artifactRole: "real-data-acceptance";
   readonly generatedAt: string;
-  readonly input: typeof V9_REAL_INPUT;
+  readonly input: string;
   readonly dataMode: typeof V9_REAL_DATA_MODE;
   readonly codeRevision: string;
   readonly cacheSnapshot: V9CacheSnapshot;
   readonly artifact: AuditArtifact;
+}
+
+export interface V9GoldenCaseAcceptance {
+  readonly label: GoldenStrategyCaseLabel;
+  readonly packageId: string;
+  readonly strategyKey: `sha256-${string}`;
+  readonly runtimeManifestDigest: `sha256-${string}`;
+  readonly acceptance: V9RealAcceptanceBundle;
+}
+
+export interface V9GoldenSuiteAcceptance {
+  readonly schemaVersion: typeof V9_GOLDEN_SUITE_VERSION;
+  readonly artifactRole: "real-data-acceptance-suite";
+  readonly generatedAt: string;
+  readonly codeRevision: string;
+  readonly registryCapabilityDigest: `sha256-${string}`;
+  readonly sharedChecksums: typeof GOLDEN_SHARED_RUNTIME_CHECKSUMS;
+  readonly cases: readonly V9GoldenCaseAcceptance[];
+}
+
+export interface V9RealMechanismOptions {
+  readonly goldenCase?: GoldenStrategyCase;
+  readonly packageProvenanceSource?: string;
 }
 
 export interface V9UnacceptedDiagnostic {
@@ -243,6 +283,79 @@ function writeAcceptanceTimeline(entry: Readonly<Record<string, string | number 
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function assertV9GoldenSuiteStructure(
+  value: unknown,
+): asserts value is V9GoldenSuiteAcceptance {
+  requireValue(isRecord(value), "golden suite must be a JSON object");
+  requireValue(
+    value.schemaVersion === V9_GOLDEN_SUITE_VERSION &&
+      value.artifactRole === "real-data-acceptance-suite",
+    "golden suite schema or artifact role is invalid",
+  );
+  requireValue(
+    typeof value.generatedAt === "string" && !Number.isNaN(Date.parse(value.generatedAt)),
+    "golden suite generatedAt must be a parseable timestamp",
+  );
+  requireValue(
+    typeof value.codeRevision === "string" && /^[a-f0-9]{40}$/u.test(value.codeRevision),
+    "golden suite codeRevision must be the tested Git commit",
+  );
+  requireValue(
+    typeof value.registryCapabilityDigest === "string" &&
+      /^sha256-[a-f0-9]{64}$/u.test(value.registryCapabilityDigest),
+    "golden suite registry capability digest is invalid",
+  );
+  const sharedChecksums = value.sharedChecksums;
+  requireValue(
+    isRecord(sharedChecksums) &&
+      (["marketData", "auditSupport", "pitMembership"] as const).every(
+        (checksumName) =>
+          sharedChecksums[checksumName] ===
+          GOLDEN_SHARED_RUNTIME_CHECKSUMS[checksumName],
+      ),
+    "golden suite shared checksums do not match the frozen runtime data",
+  );
+  requireValue(
+    Array.isArray(value.cases) && value.cases.length === GOLDEN_STRATEGY_CASES.length,
+    "golden suite must contain exactly three cases",
+  );
+
+  const runtimeManifestDigests: string[] = [];
+  for (const [index, goldenCase] of GOLDEN_STRATEGY_CASES.entries()) {
+    const caseValue = value.cases[index];
+    requireValue(
+      isRecord(caseValue) &&
+        caseValue.label === goldenCase.label &&
+        caseValue.packageId === goldenCase.packageId &&
+        caseValue.strategyKey === goldenCase.strategyKey,
+      "golden suite cases are not in frozen G01, G02, G03 order",
+    );
+    requireValue(
+      typeof caseValue.runtimeManifestDigest === "string" &&
+        /^sha256-[a-f0-9]{64}$/u.test(caseValue.runtimeManifestDigest),
+      `${goldenCase.label} runtime manifest digest is invalid`,
+    );
+    runtimeManifestDigests.push(caseValue.runtimeManifestDigest);
+
+    const acceptance = caseValue.acceptance;
+    requireValue(isRecord(acceptance), `${goldenCase.label} acceptance must be an object`);
+    requireValue(
+      acceptance.schemaVersion === V9_REAL_BUNDLE_VERSION &&
+        acceptance.artifactRole === "real-data-acceptance" &&
+        acceptance.input === goldenCase.input &&
+        acceptance.dataMode === V9_REAL_DATA_MODE &&
+        acceptance.codeRevision === value.codeRevision &&
+        isRecord(acceptance.cacheSnapshot) &&
+        isRecord(acceptance.artifact),
+      `${goldenCase.label} acceptance is not bound to its frozen input and suite revision`,
+    );
+  }
+  requireValue(
+    new Set(runtimeManifestDigests).size === GOLDEN_STRATEGY_CASES.length,
+    "golden suite runtime manifest digests must be unique",
+  );
 }
 
 function parseAssumptions(value: unknown, location: string): readonly string[] | undefined {
@@ -812,7 +925,18 @@ interface V9MechanismEvaluation {
   readonly bundle?: V9RealAcceptanceBundle;
 }
 
-function runV9MechanismAssertions(value: unknown): V9MechanismEvaluation {
+function runV9MechanismAssertions(
+  value: unknown,
+  options: V9RealMechanismOptions = {},
+): V9MechanismEvaluation {
+  const goldenCase = options.goldenCase ?? GOLDEN_STRATEGY_CASES[0]!;
+  const expectedSpec = canonicalSpecForGoldenCase(goldenCase);
+  const expectedCanonicalSpec = canonicalizeStrategySpec(expectedSpec);
+  const expectedClaims = {
+    annualReturn: goldenCase.claims.annualReturn ?? "absent",
+    sharpe: goldenCase.claims.sharpe ?? "absent",
+    maxDrawdown: goldenCase.claims.maxDrawdown ?? "absent",
+  } satisfies JsonValue;
   const assertions: V9MechanismAssertionResult[] = [];
   const record = isRecord(value) ? value : undefined;
   pushAssertion(
@@ -839,9 +963,9 @@ function runV9MechanismAssertions(value: unknown): V9MechanismEvaluation {
   pushAssertion(
     assertions,
     "bundle.input",
-    inputDigest(V9_REAL_INPUT),
+    inputDigest(goldenCase.input),
     inputDigest(record?.input),
-    record?.input === V9_REAL_INPUT,
+    record?.input === goldenCase.input,
   );
   const rawCacheSnapshot = isRecord(record?.cacheSnapshot) ? record.cacheSnapshot : undefined;
   const rawCacheVersion = rawCacheSnapshot?.cacheVersion;
@@ -935,9 +1059,43 @@ function runV9MechanismAssertions(value: unknown): V9MechanismEvaluation {
     pushAssertion(
       assertions,
       "artifact.strategyResult",
-      "one strategy result",
-      result === undefined ? "missing" : "present",
-      result !== undefined,
+      "exactly one strategy result",
+      { count: artifact.results.length, firstResult: result === undefined ? "missing" : "present" },
+      artifact.results.length === 1 && result !== undefined,
+    );
+  }
+
+  if (result?.strategySpec === undefined) {
+    pushBlockedAssertion(
+      assertions,
+      "strategySpec.canonical",
+      JSON.parse(expectedCanonicalSpec) as JsonValue,
+      "artifact.strategyResult",
+    );
+    pushBlockedAssertion(
+      assertions,
+      "strategySpec.claimsFreeDataPlan",
+      goldenCase.strategyKey,
+      "artifact.strategyResult",
+    );
+  } else {
+    const actualCanonicalSpec = canonicalizeStrategySpec(result.strategySpec);
+    pushAssertion(
+      assertions,
+      "strategySpec.canonical",
+      JSON.parse(expectedCanonicalSpec) as JsonValue,
+      JSON.parse(actualCanonicalSpec) as JsonValue,
+      actualCanonicalSpec === expectedCanonicalSpec,
+    );
+    const claimsFreeStrategy = strategyForData(result.strategySpec);
+    const actualStrategyKey = strategyDataKey(claimsFreeStrategy);
+    pushAssertion(
+      assertions,
+      "strategySpec.claimsFreeDataPlan",
+      goldenCase.strategyKey,
+      actualStrategyKey,
+      !Object.hasOwn(claimsFreeStrategy, "claims") &&
+        actualStrategyKey === goldenCase.strategyKey,
     );
   }
 
@@ -1051,7 +1209,7 @@ function runV9MechanismAssertions(value: unknown): V9MechanismEvaluation {
     pushBlockedAssertion(
       assertions,
       "claimComparison.claimed",
-      { annualReturn: 0.18, sharpe: 1.9, maxDrawdown: "absent" },
+      expectedClaims,
       "artifact.schema",
     );
     pushBlockedAssertion(
@@ -1080,12 +1238,12 @@ function runV9MechanismAssertions(value: unknown): V9MechanismEvaluation {
     pushAssertion(
       assertions,
       "claimComparison.claimed",
-      { annualReturn: 0.18, sharpe: 1.9, maxDrawdown: "absent" },
+      expectedClaims,
       claimedActual,
       comparison !== null &&
-        comparison.claimed.annualReturn === 0.18 &&
-        comparison.claimed.sharpe === 1.9 &&
-        comparison.claimed.maxDrawdown === undefined,
+        comparison.claimed.annualReturn === goldenCase.claims.annualReturn &&
+        comparison.claimed.sharpe === goldenCase.claims.sharpe &&
+        comparison.claimed.maxDrawdown === goldenCase.claims.maxDrawdown,
     );
     const reproducedActual: JsonValue =
       comparison === null
@@ -1105,6 +1263,44 @@ function runV9MechanismAssertions(value: unknown): V9MechanismEvaluation {
         Number.isFinite(comparison.reproduced.sharpe) &&
         Number.isFinite(comparison.reproduced.maxDrawdown),
     );
+    if (comparison === null) {
+      pushBlockedAssertion(
+        assertions,
+        "claimComparison.gaps",
+        "claimed minus reproduced for every claimed metric",
+        "claimComparison.present",
+      );
+    } else {
+      const annualReturnGap =
+        comparison.claimed.annualReturn === undefined
+          ? undefined
+          : comparison.claimed.annualReturn - comparison.reproduced.annualReturn;
+      const sharpeGap =
+        comparison.claimed.sharpe === undefined
+          ? undefined
+          : comparison.claimed.sharpe - comparison.reproduced.sharpe;
+      const maxDrawdownGap =
+        comparison.claimed.maxDrawdown === undefined
+          ? undefined
+          : comparison.claimed.maxDrawdown - comparison.reproduced.maxDrawdown;
+      const gapsReconcile =
+        (annualReturnGap === undefined
+          ? comparison.gaps.annualReturn === undefined
+          : comparison.gaps.annualReturn === annualReturnGap) &&
+        (sharpeGap === undefined
+          ? comparison.gaps.sharpe === undefined
+          : comparison.gaps.sharpe === sharpeGap) &&
+        (maxDrawdownGap === undefined
+          ? comparison.gaps.maxDrawdown === undefined
+          : comparison.gaps.maxDrawdown === maxDrawdownGap);
+      pushAssertion(
+        assertions,
+        "claimComparison.gaps",
+        "claimed minus reproduced for every claimed metric",
+        gapsReconcile ? "reconciled" : "mismatch",
+        gapsReconcile,
+      );
+    }
   }
 
   if (artifact === undefined || cacheSnapshot === undefined) {
@@ -1140,6 +1336,33 @@ function runV9MechanismAssertions(value: unknown): V9MechanismEvaluation {
     );
   }
 
+  if (options.packageProvenanceSource !== undefined) {
+    if (artifact === undefined) {
+      pushBlockedAssertion(
+        assertions,
+        "provenance.runtimePackage",
+        options.packageProvenanceSource,
+        "artifact.schema",
+      );
+    } else {
+      const packageSource = artifact.provenance.dataSources.find(
+        ({ id }) => id === options.packageProvenanceSource,
+      );
+      pushAssertion(
+        assertions,
+        "provenance.runtimePackage",
+        {
+          id: options.packageProvenanceSource,
+          version: "assay-local-data-v1",
+        },
+        packageSource === undefined
+          ? "missing"
+          : { id: packageSource.id, version: packageSource.version },
+        packageSource?.version === "assay-local-data-v1",
+      );
+    }
+  }
+
   if (artifact === undefined || result?.strategySpec === undefined) {
     pushBlockedAssertion(
       assertions,
@@ -1148,13 +1371,13 @@ function runV9MechanismAssertions(value: unknown): V9MechanismEvaluation {
       artifact === undefined ? "artifact.schema" : "artifact.strategySpec",
     );
   } else {
-    const expectedHash = hashStrategySpec(canonicalizeStrategySpec(result.strategySpec));
     pushAssertion(
       assertions,
       "provenance.inputHash",
-      expectedHash,
+      goldenCase.specHash,
       artifact.provenance.inputHash,
-      artifact.provenance.inputHash === expectedHash,
+      artifact.provenance.inputHash === goldenCase.specHash &&
+        hashStrategySpec(canonicalizeStrategySpec(result.strategySpec)) === goldenCase.specHash,
     );
   }
 
@@ -1281,7 +1504,7 @@ function runV9MechanismAssertions(value: unknown): V9MechanismEvaluation {
           schemaVersion: V9_REAL_BUNDLE_VERSION,
           artifactRole: "real-data-acceptance",
           generatedAt: record.generatedAt as string,
-          input: V9_REAL_INPUT,
+          input: goldenCase.input,
           dataMode: V9_REAL_DATA_MODE,
           codeRevision: record.codeRevision as string,
           cacheSnapshot,
@@ -1291,12 +1514,18 @@ function runV9MechanismAssertions(value: unknown): V9MechanismEvaluation {
   return { report, ...(bundle === undefined ? {} : { bundle }) };
 }
 
-export function replayV9RealMechanism(value: unknown): V9MechanismReplayReport {
-  return runV9MechanismAssertions(value).report;
+export function replayV9RealMechanism(
+  value: unknown,
+  options: V9RealMechanismOptions = {},
+): V9MechanismReplayReport {
+  return runV9MechanismAssertions(value, options).report;
 }
 
-export function assertV9RealMechanism(value: unknown): V9RealAcceptanceBundle {
-  const evaluation = runV9MechanismAssertions(value);
+export function assertV9RealMechanism(
+  value: unknown,
+  options: V9RealMechanismOptions = {},
+): V9RealAcceptanceBundle {
+  const evaluation = runV9MechanismAssertions(value, options);
   if (!evaluation.report.passed || evaluation.bundle === undefined) {
     const mismatches = evaluation.report.assertions
       .filter((assertion) => assertion.status !== "pass")
@@ -1463,6 +1692,182 @@ async function closeServer(server: Server): Promise<void> {
   });
 }
 
+async function runGoldenCaseAgainstClient(
+  client: AssayA2AClient,
+  runtimePackage: LoadedGoldenRuntimePackage,
+  cacheSnapshot: V9CacheSnapshot,
+  codeRevision: string,
+  caseIndex: number,
+): Promise<V9GoldenCaseAcceptance> {
+  const goldenCase = runtimePackage.goldenCase;
+  const timelineIdentity = {
+    caseLabel: goldenCase.label,
+    caseIndex: caseIndex + 1,
+  };
+  const sendStartedAt = Date.now();
+  writeAcceptanceTimeline({ ...timelineIdentity, phase: "send_started" });
+  let submitted: Task;
+  try {
+    submitted = await client.sendTextMessage(goldenCase.input, {
+      // The server receives no G01/G02/G03 label or case metadata.
+      messageId: `assay_v9_real_acceptance_${String(caseIndex + 1)}`,
+    });
+    writeAcceptanceTimeline({
+      ...timelineIdentity,
+      phase: "send_finished",
+      outcome: "completed",
+      durationMs: Date.now() - sendStartedAt,
+    });
+  } catch (error) {
+    writeAcceptanceTimeline({
+      ...timelineIdentity,
+      phase: "send_finished",
+      outcome: "failed",
+      failureStage: "send",
+      durationMs: Date.now() - sendStartedAt,
+      errorType: safeErrorType(error),
+    });
+    throw error;
+  }
+
+  let completed = submitted;
+  if (submitted.status?.state !== TaskState.TASK_STATE_COMPLETED) {
+    const pollStartedAt = Date.now();
+    writeAcceptanceTimeline({ ...timelineIdentity, phase: "poll_started" });
+    try {
+      completed = await client.pollTask(submitted.id, {
+        intervalMs: 250,
+        timeoutMs: V9_REAL_POLL_TIMEOUT_MS,
+      });
+      writeAcceptanceTimeline({
+        ...timelineIdentity,
+        phase: "poll_finished",
+        outcome: "completed",
+        durationMs: Date.now() - pollStartedAt,
+        terminalState: taskStateLabel(completed.status?.state),
+      });
+    } catch (error) {
+      writeAcceptanceTimeline({
+        ...timelineIdentity,
+        phase: "poll_finished",
+        outcome: "failed",
+        failureStage: "poll",
+        durationMs: Date.now() - pollStartedAt,
+        errorType: safeErrorType(error),
+      });
+      throw error;
+    }
+  }
+
+  const terminalDiagnostics = v9TaskDiagnostics(completed);
+  writeAcceptanceTimeline({
+    ...timelineIdentity,
+    phase: "task_terminal",
+    ...terminalDiagnostics,
+  });
+  if (completed.status?.state !== TaskState.TASK_STATE_COMPLETED) {
+    writeAcceptanceTimeline({
+      ...timelineIdentity,
+      phase: "suite_stopped",
+      outcome: "failed",
+      failureStage: terminalDiagnostics.stage,
+      terminalState: terminalDiagnostics.terminalState,
+      correlationId: terminalDiagnostics.correlationId,
+    });
+  }
+  assertV9TaskCompleted(completed);
+
+  let artifact: AuditArtifact | undefined;
+  try {
+    artifact = extractAuditArtifact(completed);
+    requireValue(artifact, `${goldenCase.label} task did not return an audit Artifact`);
+  } catch (error) {
+    writeAcceptanceTimeline({
+      ...timelineIdentity,
+      phase: "suite_stopped",
+      outcome: "failed",
+      failureStage: "artifact_extract",
+      errorType: safeErrorType(error),
+    });
+    throw error;
+  }
+  const bundle: V9RealAcceptanceBundle = {
+    schemaVersion: V9_REAL_BUNDLE_VERSION,
+    artifactRole: "real-data-acceptance",
+    generatedAt: new Date().toISOString(),
+    input: goldenCase.input,
+    dataMode: V9_REAL_DATA_MODE,
+    codeRevision,
+    cacheSnapshot,
+    artifact,
+  };
+  const diagnosticPath = v9UnacceptedDiagnosticPath(bundle);
+  const diagnosticStartedAt = Date.now();
+  try {
+    await persistV9UnacceptedDiagnostic(bundle);
+    writeAcceptanceTimeline({
+      ...timelineIdentity,
+      phase: "unaccepted_candidate_persisted",
+      outcome: "completed",
+      durationMs: Date.now() - diagnosticStartedAt,
+    });
+  } catch (error) {
+    writeAcceptanceTimeline({
+      ...timelineIdentity,
+      phase: "unaccepted_candidate_persisted",
+      outcome: "failed",
+      failureStage: "candidate_persist",
+      durationMs: Date.now() - diagnosticStartedAt,
+      errorType: safeErrorType(error),
+    });
+    throw error;
+  }
+
+  const mechanismStartedAt = Date.now();
+  writeAcceptanceTimeline({ ...timelineIdentity, phase: "mechanism_assertion_started" });
+  let accepted: V9RealAcceptanceBundle;
+  try {
+    accepted = assertV9RealMechanism(bundle, {
+      goldenCase,
+      packageProvenanceSource: runtimePackage.packageProvenanceSource,
+    });
+    writeAcceptanceTimeline({
+      ...timelineIdentity,
+      phase: "mechanism_assertion_finished",
+      outcome: "completed",
+      durationMs: Date.now() - mechanismStartedAt,
+    });
+  } catch (error) {
+    writeAcceptanceTimeline({
+      ...timelineIdentity,
+      phase: "mechanism_assertion_finished",
+      outcome: "failed",
+      failureStage: "mechanism_assertion",
+      durationMs: Date.now() - mechanismStartedAt,
+      errorType: safeErrorType(error),
+    });
+    throw error;
+  }
+
+  try {
+    await rm(diagnosticPath, { force: true });
+  } catch (error) {
+    writeAcceptanceTimeline({
+      ...timelineIdentity,
+      phase: "unaccepted_candidate_cleanup",
+      outcome: "failed",
+      errorType: safeErrorType(error),
+    });
+  }
+  return {
+    label: goldenCase.label,
+    packageId: runtimePackage.manifest.packageId,
+    strategyKey: runtimePackage.plan.strategyKey,
+    runtimeManifestDigest: runtimePackage.manifestDigest,
+    acceptance: accepted,
+  };
+}
+
 export async function runV9RealAcceptance(): Promise<string> {
   const apiKey = process.env.ARK_API_KEY?.trim();
   const arkModel = process.env.ARK_MODEL_DEEPSEEK?.trim();
@@ -1473,8 +1878,26 @@ export async function runV9RealAcceptance(): Promise<string> {
     codeRevision !== undefined && /^[a-f0-9]{40}$/.test(codeRevision),
     "ASSAY_CODE_REVISION must be the tested Git commit",
   );
-  const localPackage = await loadCsi300MomentumRuntimePackage(LOCAL_DATA_RUNTIME_ROOT);
-  const { snapshot: cacheSnapshot } = await inspectV9Cache(localPackage.packageRoot);
+
+  const runtimeRoot = resolve(
+    process.env.ASSAY_LOCAL_DATA_PACKAGE_ROOT?.trim() || LOCAL_DATA_RUNTIME_ROOT,
+  );
+  const runtimeRegistry = await loadGoldenRuntimePackages(runtimeRoot);
+  const cacheSnapshots: V9CacheSnapshot[] = [];
+  for (const runtimePackage of runtimeRegistry.packages) {
+    cacheSnapshots.push((await inspectV9Cache(runtimePackage.packageRoot)).snapshot);
+  }
+  const cacheSnapshot = cacheSnapshots[0];
+  requireValue(cacheSnapshot !== undefined, "golden runtime registry has no cache snapshot");
+  requireValue(
+    cacheSnapshots.every(
+      (candidate) =>
+        JSON.stringify(candidate) === JSON.stringify(cacheSnapshot) &&
+        candidate.basePanelSha256 ===
+          GOLDEN_SHARED_RUNTIME_CHECKSUMS.marketData.slice("sha256-".length),
+    ),
+    "golden runtime packages do not expose one identical V9 cache snapshot",
+  );
   process.env.ASSAY_EXPERIMENT_PYTHON = resolve("services/panda-adapter/.venv/bin/python");
 
   const { createProductionA2AApp } = await import("../../../apps/a2a-server/src/production");
@@ -1482,14 +1905,14 @@ export async function runV9RealAcceptance(): Promise<string> {
     arkApiKey: apiKey,
     arkBaseUrl: process.env.ARK_BASE_URL?.trim() || "https://ark.cn-beijing.volces.com/api/v3",
     arkModel,
+    arkParserMaxAttempts: 1,
     dataAsOf: cacheSnapshot.dataAsOf,
     capabilitySnapshotId:
-      `local-data-package:${localPackage.manifest.packageId}:` +
-      localPackage.manifestDigest.slice("sha256-".length, "sha256-".length + 12),
+      `local-data-registry:${runtimeRegistry.registryCapabilityDigest.slice("sha256-".length)}`,
     codeRevision,
     publicUrl: "http://127.0.0.1",
     corsOrigins: ["http://localhost:5173"],
-    localDataPackageRoot: localPackage.root,
+    localDataPackageRoot: runtimeRoot,
     auditOutputRoot: resolve(".cache/assay/audit-output"),
   });
   const server = app.listen(0, "127.0.0.1");
@@ -1502,123 +1925,91 @@ export async function runV9RealAcceptance(): Promise<string> {
     const client = await createAssayA2AClient({
       baseUrl: `http://127.0.0.1:${String(address.port)}/a2a`,
     });
-    const sendStartedAt = Date.now();
-    writeAcceptanceTimeline({ phase: "send_started" });
-    let submitted: Task;
-    try {
-      submitted = await client.sendTextMessage(V9_REAL_INPUT, {
-        messageId: "assay_v9_real_acceptance",
-      });
-      writeAcceptanceTimeline({
-        phase: "send_finished",
-        outcome: "completed",
-        durationMs: Date.now() - sendStartedAt,
-      });
-    } catch (error) {
-      writeAcceptanceTimeline({
-        phase: "send_finished",
-        outcome: "failed",
-        durationMs: Date.now() - sendStartedAt,
-        errorType: safeErrorType(error),
-      });
-      throw error;
+
+    const acceptedCases: V9GoldenCaseAcceptance[] = [];
+    for (const [index, runtimePackage] of runtimeRegistry.packages.entries()) {
+      // Strictly sequential. A thrown failure stops the suite and prevents all
+      // later natural-language submissions; there is no suite retry loop.
+      const caseSnapshot = cacheSnapshots[index];
+      requireValue(
+        caseSnapshot !== undefined,
+        `${runtimePackage.goldenCase.label} cache snapshot is missing`,
+      );
+      acceptedCases.push(
+        await runGoldenCaseAgainstClient(
+          client,
+          runtimePackage,
+          caseSnapshot,
+          codeRevision,
+          index,
+        ),
+      );
     }
-    let completed = submitted;
-    if (submitted.status?.state !== TaskState.TASK_STATE_COMPLETED) {
-      const pollStartedAt = Date.now();
-      writeAcceptanceTimeline({ phase: "poll_started" });
-      try {
-        completed = await client.pollTask(submitted.id, {
-          intervalMs: 250,
-          timeoutMs: V9_REAL_POLL_TIMEOUT_MS,
-        });
-        writeAcceptanceTimeline({
-          phase: "poll_finished",
-          outcome: "completed",
-          durationMs: Date.now() - pollStartedAt,
-          terminalState: taskStateLabel(completed.status?.state),
-        });
-      } catch (error) {
-        writeAcceptanceTimeline({
-          phase: "poll_finished",
-          outcome: "failed",
-          durationMs: Date.now() - pollStartedAt,
-          errorType: safeErrorType(error),
-        });
-        throw error;
-      }
-    }
-    writeAcceptanceTimeline({
-      phase: "task_terminal",
-      ...v9TaskDiagnostics(completed),
-    });
-    assertV9TaskCompleted(completed);
-    const artifact = extractAuditArtifact(completed);
-    requireValue(artifact, "v9 task did not return an audit Artifact");
-    const bundle: V9RealAcceptanceBundle = {
-      schemaVersion: V9_REAL_BUNDLE_VERSION,
-      artifactRole: "real-data-acceptance",
-      generatedAt: new Date().toISOString(),
-      input: V9_REAL_INPUT,
-      dataMode: V9_REAL_DATA_MODE,
-      codeRevision,
-      cacheSnapshot,
-      artifact,
-    };
-    const diagnosticPath = v9UnacceptedDiagnosticPath(bundle);
-    const diagnosticStartedAt = Date.now();
-    try {
-      await persistV9UnacceptedDiagnostic(bundle);
-      writeAcceptanceTimeline({
-        phase: "unaccepted_candidate_persisted",
-        outcome: "completed",
-        durationMs: Date.now() - diagnosticStartedAt,
-      });
-    } catch (error) {
-      writeAcceptanceTimeline({
-        phase: "unaccepted_candidate_persisted",
-        outcome: "failed",
-        durationMs: Date.now() - diagnosticStartedAt,
-        errorType: safeErrorType(error),
-      });
-      throw error;
-    }
-    const mechanismStartedAt = Date.now();
-    writeAcceptanceTimeline({ phase: "mechanism_assertion_started" });
-    let accepted: V9RealAcceptanceBundle;
-    try {
-      accepted = assertV9RealMechanism(bundle);
-      writeAcceptanceTimeline({
-        phase: "mechanism_assertion_finished",
-        outcome: "completed",
-        durationMs: Date.now() - mechanismStartedAt,
-      });
-    } catch (error) {
-      writeAcceptanceTimeline({
-        phase: "mechanism_assertion_finished",
-        outcome: "failed",
-        durationMs: Date.now() - mechanismStartedAt,
-        errorType: safeErrorType(error),
-      });
-      throw error;
-    }
-    const outputPath = resolve(process.env.ASSAY_V9_OUTPUT?.trim() || V9_REAL_ARTIFACT_PATH);
     requireValue(
-      outputPath !== resolve("artifacts/sprint/assay-vertical-run.json") &&
-        outputPath !== resolve("artifacts/v9/assay-moire-mechanism-fixtures.json"),
-      "v9 output must not overwrite a mechanism fixture",
+      acceptedCases.length === GOLDEN_STRATEGY_CASES.length &&
+        acceptedCases.every(
+          (accepted, index) =>
+            accepted.label === GOLDEN_STRATEGY_CASES[index]?.label &&
+            accepted.packageId === GOLDEN_STRATEGY_CASES[index]?.packageId &&
+            accepted.strategyKey === GOLDEN_STRATEGY_CASES[index]?.strategyKey,
+        ),
+      "golden cases did not complete in frozen G01, G02, G03 order",
     );
-    await writeJsonAtomic(outputPath, accepted);
+
+    const suite: V9GoldenSuiteAcceptance = {
+      schemaVersion: V9_GOLDEN_SUITE_VERSION,
+      artifactRole: "real-data-acceptance-suite",
+      generatedAt: new Date().toISOString(),
+      codeRevision,
+      registryCapabilityDigest: runtimeRegistry.registryCapabilityDigest,
+      sharedChecksums: GOLDEN_SHARED_RUNTIME_CHECKSUMS,
+      cases: acceptedCases,
+    };
+    let outputPath: string | undefined;
+    const outputOverride = process.env.ASSAY_V9_OUTPUT?.trim();
     try {
-      await rm(diagnosticPath, { force: true });
+      assertV9GoldenSuiteStructure(suite);
+      assertOutputSafe(suite);
+      outputPath = resolve(outputOverride || V9_GOLDEN_SUITE_ARTIFACT_PATH);
+      requireValue(
+        outputPath !== resolve(V9_REAL_ARTIFACT_PATH) &&
+          outputPath !== resolve("artifacts/sprint/assay-vertical-run.json") &&
+          outputPath !== resolve("artifacts/v9/assay-moire-mechanism-fixtures.json") &&
+          !pathIsEqualOrInside(resolve("tests/e2e/fixtures"), outputPath),
+        "golden suite output must not overwrite a legacy artifact or mechanism fixture",
+      );
     } catch (error) {
       writeAcceptanceTimeline({
-        phase: "unaccepted_candidate_cleanup",
+        phase: "suite_stopped",
         outcome: "failed",
+        failureStage: "suite_finalize",
+        caseCount: acceptedCases.length,
         errorType: safeErrorType(error),
       });
+      throw error;
     }
-    return V9_REAL_ARTIFACT_PATH;
+    requireValue(outputPath !== undefined, "golden suite output path was not finalized");
+    const persistStartedAt = Date.now();
+    try {
+      await writeJsonAtomic(outputPath, suite);
+      writeAcceptanceTimeline({
+        phase: "suite_persisted",
+        outcome: "completed",
+        caseCount: acceptedCases.length,
+        durationMs: Date.now() - persistStartedAt,
+      });
+    } catch (error) {
+      writeAcceptanceTimeline({
+        phase: "suite_stopped",
+        outcome: "failed",
+        failureStage: "suite_persist",
+        caseCount: acceptedCases.length,
+        durationMs: Date.now() - persistStartedAt,
+        errorType: safeErrorType(error),
+      });
+      throw error;
+    }
+    return outputOverride ? outputPath : V9_GOLDEN_SUITE_ARTIFACT_PATH;
   } finally {
     await closeServer(server);
   }
