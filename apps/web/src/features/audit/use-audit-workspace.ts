@@ -78,9 +78,7 @@ export function useAuditWorkspace() {
             AbortSignal.timeout(TASK_STATUS_REQUEST_TIMEOUT_MS),
           ]),
         });
-        setServiceState(
-          capabilities.dataCredentialsConfigured ? "ready" : "configuration_required",
-        );
+        setServiceState(capabilities.dataPackagesConfigured ? "ready" : "configuration_required");
       } catch {
         if (!controller.signal.aborted) {
           clientPromiseRef.current = null;

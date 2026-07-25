@@ -15,6 +15,7 @@ import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
 import { createHash, timingSafeEqual } from "node:crypto";
 import express, { type Express, type Request, type RequestHandler } from "express";
 import { createAssayAgentCard } from "./agent-card";
+import { createMissingTaskNormalizer } from "./a2a-rest-compat";
 import type { AssayAuthService } from "./auth";
 import { DEFAULT_ASSAY_A2A_CORS_ORIGINS } from "./configuration";
 import type { AssayDatabase, StoredAuditRecord } from "./database";
@@ -149,6 +150,10 @@ export function createAssayA2AApp(options: CreateAssayA2AAppOptions): AssayA2AAp
       requestHandler,
       userBuilder: a2aUserBuilder,
     }),
+  );
+  app.get(
+    `${ASSAY_A2A_REST_PATH}/tasks/:taskId`,
+    createMissingTaskNormalizer(taskStore, a2aUserBuilder),
   );
   app.use(
     ASSAY_A2A_REST_PATH,

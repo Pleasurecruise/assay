@@ -118,10 +118,10 @@ describe("AssayA2AClient", () => {
       }
       return jsonResponse({
         skill: "audit_strategy",
-        dataProvider: "PandaData",
-        dataTools: ["panda_market_data", "assay_strategy_backtest"],
+        dataProvider: "LocalDataPackage",
+        dataTools: ["local_data_package", "assay_strategy_backtest"],
         backtester: "assay-backtester@1",
-        dataCredentialsConfigured: true,
+        dataPackagesConfigured: true,
       });
     };
     const client = await createAssayA2AClient({
@@ -131,10 +131,10 @@ describe("AssayA2AClient", () => {
 
     await expect(client.getCapabilities()).resolves.toEqual({
       skill: "audit_strategy",
-      dataProvider: "PandaData",
-      dataTools: ["panda_market_data", "assay_strategy_backtest"],
+      dataProvider: "LocalDataPackage",
+      dataTools: ["local_data_package", "assay_strategy_backtest"],
       backtester: "assay-backtester@1",
-      dataCredentialsConfigured: true,
+      dataPackagesConfigured: true,
     });
   });
 

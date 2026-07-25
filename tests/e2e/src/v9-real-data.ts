@@ -1465,14 +1465,6 @@ async function closeServer(server: Server): Promise<void> {
 
 export async function runV9RealAcceptance(): Promise<string> {
   const apiKey = process.env.ARK_API_KEY?.trim();
-  const supplementalApiKeys = [
-    ...new Set(
-      (process.env.ARK_API_KEYS ?? "")
-        .split(",")
-        .map((entry) => entry.trim())
-        .filter((entry) => entry.length > 0),
-    ),
-  ];
   const arkModel = process.env.ARK_MODEL_DEEPSEEK?.trim();
   const codeRevision = process.env.ASSAY_CODE_REVISION?.trim();
   requireValue(apiKey, "ARK_API_KEY is required");
@@ -1488,7 +1480,6 @@ export async function runV9RealAcceptance(): Promise<string> {
   const { createProductionA2AApp } = await import("../../../apps/a2a-server/src/production");
   const { app } = await createProductionA2AApp({
     arkApiKey: apiKey,
-    arkApiKeys: supplementalApiKeys,
     arkBaseUrl: process.env.ARK_BASE_URL?.trim() || "https://ark.cn-beijing.volces.com/api/v3",
     arkModel,
     dataAsOf: cacheSnapshot.dataAsOf,

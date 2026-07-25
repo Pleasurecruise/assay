@@ -136,11 +136,11 @@ export function AuditSidebar({
             ) : null}
             <button
               className="settings-row"
-              onClick={() => setLanguage(language === "en" ? "zh-CN" : "en")}
+              onClick={() => setLanguage(language === "en-US" ? "zh-CN" : "en-US")}
               type="button"
             >
               <Languages />
-              <span>{language === "en" ? t("language.zh") : t("language.en")}</span>
+              <span>{language === "en-US" ? t("language.zh") : t("language.en")}</span>
             </button>
             <button className="settings-row" onClick={onToggleTheme} type="button">
               {isDark ? <Sun /> : <Moon />}

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 
-import en from "@/locales/en.json";
+import enUS from "@/locales/en-US.json";
 import zhCN from "@/locales/zh-CN.json";
 import {
   PREFERENCE_STORAGE_KEYS,
@@ -9,8 +9,8 @@ import {
   writeLocalPreference,
 } from "@/lib/preferences";
 
-export type Language = "en" | "zh-CN";
-export type TranslationKey = keyof typeof en;
+export type Language = "en-US" | "zh-CN";
+export type TranslationKey = keyof typeof enUS;
 export type TranslationFunction = (
   key: TranslationKey,
   variables?: Readonly<Record<string, string | number>>,
@@ -24,7 +24,7 @@ function defineLocale<T extends LocaleShape>(locale: ExactLocale<T>): T {
 }
 
 const locales = {
-  en: defineLocale(en),
+  "en-US": defineLocale(enUS),
   "zh-CN": defineLocale(zhCN),
 } satisfies Record<Language, LocaleShape>;
 
@@ -41,11 +41,13 @@ function initialLanguage(): Language {
     readLocalPreference(PREFERENCE_STORAGE_KEYS.language) ??
     readLocalPreference(PREFERENCE_STORAGE_KEYS.legacyLanguage);
   const language =
-    saved === "en" || saved === "zh-CN"
+    saved === "zh-CN"
       ? saved
-      : navigator.language.toLowerCase().startsWith("zh")
-        ? "zh-CN"
-        : "en";
+      : saved === "en" || saved === "en-US"
+        ? "en-US"
+        : navigator.language.toLowerCase().startsWith("zh")
+          ? "zh-CN"
+          : "en-US";
   document.documentElement.lang = language;
   return language;
 }
