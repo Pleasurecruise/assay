@@ -51,12 +51,18 @@ export function createProductionA2AApp(config: ProductionA2AConfig): AssayA2AApp
   });
   const pandaDataGateway = new PandaDataProcessGateway();
   const pandaDataTools = createPandaDataTools(pandaDataGateway);
+  const auditApiKeys = [...new Set([config.arkApiKey, ...(config.arkApiKeys ?? [])])];
+  let nextAuditApiKey = 0;
   const runtime = new AgentRuntime({
     model,
     registry: new AgentRegistry(
       createAuditCheckAgentDefinitions({ availableTools: pandaDataTools }),
     ),
-    getApiKey: () => config.arkApiKey,
+    getApiKey: () => {
+      const apiKey = auditApiKeys[nextAuditApiKey % auditApiKeys.length] as string;
+      nextAuditApiKey += 1;
+      return apiKey;
+    },
     onEvent: createRuntimeTimelineLogger(),
   });
   const runner = new ParallelAuditCheckRunner(runtime, {
