@@ -1,8 +1,19 @@
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
-import type { AgentDefinition } from "@assay/agent-runtime";
-import { COST_STRESS_SOURCE_REF, PARAMETER_GRID_SOURCE_REF } from "@assay/contracts";
+import type { AgentDefinition, AgentSubmissionValidator } from "@assay/agent-runtime";
+import {
+  COST_STRESS_SOURCE_REF,
+  PARAMETER_GRID_SOURCE_REF,
+  PARAMETER_RETENTION_PASS_THRESHOLD,
+  PARAMETER_RETENTION_RESERVATION_THRESHOLD,
+  SPRINT_PARAMETER_GRID_TOP_N,
+  SPRINT_PARAMETER_GRID_WINDOWS,
+  type CheckConclusion,
+  type CheckEvidence,
+  type MissingEvidence,
+} from "@assay/contracts";
 import { assertHostDataRef, type HostDataRefRequest } from "./data-ref";
+import { computeOverfitStatistics, type OverfitStatistics } from "./pbo";
 
 export type ExperimentKind = "baseline" | "grid" | "cost_ladder";
 export type AgentExperimentKind = Exclude<ExperimentKind, "baseline">;
@@ -39,6 +50,12 @@ export interface RunExperimentResult {
   readonly baseline: ExperimentResultSummary;
   readonly variants: readonly ExperimentResultSummary[];
   readonly summaryRef?: typeof PARAMETER_GRID_SOURCE_REF | typeof COST_STRESS_SOURCE_REF;
+  /**
+   * Grid responses only: per-variant daily returns aligned with `variants`,
+   * inlined by the engine so the host can compute overfitting statistics
+   * without replicating Python-side artifact path derivation.
+   */
+  readonly variantDailyReturns?: readonly (readonly number[])[];
 }
 
 interface ParameterGridAgentView {
@@ -51,8 +68,16 @@ interface ParameterGridAgentView {
     readonly variantCount: number;
     readonly minVariantSharpe: number;
     readonly maxVariantSharpe: number;
+    readonly overfitStatistics: OverfitStatistics | null;
   };
   readonly summaryRef: typeof PARAMETER_GRID_SOURCE_REF;
+  readonly submissionContract: ParameterRobustnessSubmissionContract;
+}
+
+export interface ParameterRobustnessSubmissionContract {
+  readonly requiredConclusion: Exclude<CheckConclusion, "not_applicable">;
+  readonly requiredEvidence: readonly CheckEvidence[];
+  readonly requiredMissingEvidence: readonly MissingEvidence[];
 }
 
 export interface ExperimentProcessConfig {
@@ -68,10 +93,25 @@ type AgentTool = NonNullable<AgentDefinition["tools"]>[number];
 const DEFAULT_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
 const BASE_RESULT_KEYS = ["engineVersion", "baseline", "variants"] as const;
 const AUDIT_RESULT_KEYS = [...BASE_RESULT_KEYS, "summaryRef"] as const;
+const GRID_RESULT_KEYS = [...AUDIT_RESULT_KEYS, "variantDailyReturns"] as const;
 const SUMMARY_KEYS = ["params", "annualReturn", "sharpe", "maxDrawdown", "annualTurnover"] as const;
+const OVERFIT_EVIDENCE_FIELDS = [
+  ["pbo", "ratio"],
+  ["combinationsEvaluated", "count"],
+  ["degradationSlope", "ratio"],
+  ["dailyBaselineSharpe", "ratio"],
+  ["sampleLength", "count"],
+  ["effectiveTrials", "count"],
+  ["expectedMaxSharpeDaily", "ratio"],
+  ["deflatedSharpeRatio", "ratio"],
+  ["minTrackRecordDays", "days"],
+] as const satisfies readonly (readonly [keyof OverfitStatistics, string])[];
+const OVERFIT_MISSING_REQUIREMENT_PREFIX = "overfitStatistics.";
+// Values live in @assay/contracts so Intake gating, this frozen grid, and the
+// check prompt can never drift apart.
 export const SPRINT_PARAMETER_GRID: ExperimentGrid = Object.freeze({
-  signalParams: Object.freeze({ window: Object.freeze([14, 17, 20, 23, 26]) }),
-  topN: Object.freeze([30, 50, 70]),
+  signalParams: Object.freeze({ window: SPRINT_PARAMETER_GRID_WINDOWS }),
+  topN: SPRINT_PARAMETER_GRID_TOP_N,
 });
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -191,7 +231,8 @@ function parseResult(stdout: string, kind: ExperimentKind): RunExperimentResult 
   } catch {
     throw new Error("run_experiment subprocess returned invalid JSON");
   }
-  const expectedKeys = kind === "baseline" ? BASE_RESULT_KEYS : AUDIT_RESULT_KEYS;
+  const expectedKeys =
+    kind === "baseline" ? BASE_RESULT_KEYS : kind === "grid" ? GRID_RESULT_KEYS : AUDIT_RESULT_KEYS;
   if (!isRecord(parsed) || !hasExactKeys(parsed, expectedKeys)) {
     throw new Error(
       `run_experiment subprocess response must contain exactly ${expectedKeys.join(", ")}`,
@@ -212,14 +253,54 @@ function parseResult(stdout: string, kind: ExperimentKind): RunExperimentResult 
   if (expectedSummaryRef !== undefined && parsed.summaryRef !== expectedSummaryRef) {
     throw new Error(`run_experiment ${kind} response.summaryRef is invalid`);
   }
+  const variants = parsed.variants.map((variant, index) =>
+    parseResultSummary(variant, `response.variants[${String(index)}]`),
+  );
   return {
     engineVersion: parsed.engineVersion,
     baseline: parseResultSummary(parsed.baseline, "response.baseline"),
-    variants: parsed.variants.map((variant, index) =>
-      parseResultSummary(variant, `response.variants[${String(index)}]`),
-    ),
+    variants,
     ...(expectedSummaryRef === undefined ? {} : { summaryRef: expectedSummaryRef }),
+    ...(kind === "grid"
+      ? {
+          variantDailyReturns: parseVariantDailyReturns(
+            parsed.variantDailyReturns,
+            variants.length,
+          ),
+        }
+      : {}),
   };
+}
+
+function parseVariantDailyReturns(
+  value: unknown,
+  variantCount: number,
+): readonly (readonly number[])[] {
+  if (!Array.isArray(value) || value.length !== variantCount) {
+    throw new Error(
+      "run_experiment grid response.variantDailyReturns must align with response.variants",
+    );
+  }
+  let sampleLength: number | undefined;
+  return value.map((series, index) => {
+    if (!Array.isArray(series) || series.length === 0) {
+      throw new Error(
+        `run_experiment grid response.variantDailyReturns[${String(index)}] must be a non-empty array`,
+      );
+    }
+    sampleLength ??= series.length;
+    if (series.length !== sampleLength) {
+      throw new Error(
+        "run_experiment grid response.variantDailyReturns series must share one sample length",
+      );
+    }
+    return series.map((entry, position) =>
+      parseFiniteMetric(
+        entry,
+        `response.variantDailyReturns[${String(index)}][${String(position)}]`,
+      ),
+    );
+  });
 }
 
 function gridParameter(params: Readonly<Record<string, unknown>>, name: "window" | "topN"): number {
@@ -238,6 +319,54 @@ function median(values: readonly number[]): number {
   const midpoint = Math.floor(sorted.length / 2);
   const upper = sorted[midpoint] as number;
   return sorted.length % 2 === 1 ? upper : ((sorted[midpoint - 1] as number) + upper) / 2;
+}
+
+function frozenParameterRobustnessConclusion(
+  neighborhoodSharpeRetention: number | null,
+): ParameterRobustnessSubmissionContract["requiredConclusion"] {
+  if (neighborhoodSharpeRetention === null || !Number.isFinite(neighborhoodSharpeRetention)) {
+    return "insufficient_evidence";
+  }
+  if (neighborhoodSharpeRetention >= PARAMETER_RETENTION_PASS_THRESHOLD) {
+    return "pass";
+  }
+  return neighborhoodSharpeRetention >= PARAMETER_RETENTION_RESERVATION_THRESHOLD
+    ? "pass_with_reservations"
+    : "fail";
+}
+
+function overfitMissingEvidence(metric: keyof OverfitStatistics): MissingEvidence {
+  return {
+    requirement: `${OVERFIT_MISSING_REQUIREMENT_PREFIX}${metric}`,
+    reason: "The frozen parameter-grid returns could not produce this overfitting statistic.",
+    sourceRefs: [PARAMETER_GRID_SOURCE_REF],
+  };
+}
+
+function createParameterRobustnessSubmissionContract(
+  neighborhoodSharpeRetention: number | null,
+  overfitStatistics: OverfitStatistics | null,
+): ParameterRobustnessSubmissionContract {
+  const requiredEvidence: CheckEvidence[] = [];
+  const requiredMissingEvidence: MissingEvidence[] = [];
+  for (const [metric, unit] of OVERFIT_EVIDENCE_FIELDS) {
+    const value = overfitStatistics?.[metric] ?? null;
+    if (typeof value === "number" && Number.isFinite(value)) {
+      requiredEvidence.push({
+        metric,
+        value,
+        unit,
+        sourceRefs: [PARAMETER_GRID_SOURCE_REF],
+      });
+    } else {
+      requiredMissingEvidence.push(overfitMissingEvidence(metric));
+    }
+  }
+  return {
+    requiredConclusion: frozenParameterRobustnessConclusion(neighborhoodSharpeRetention),
+    requiredEvidence,
+    requiredMissingEvidence,
+  };
 }
 
 function parameterGridAgentView(result: RunExperimentResult): ParameterGridAgentView {
@@ -260,12 +389,21 @@ function parameterGridAgentView(result: RunExperimentResult): ParameterGridAgent
       "run_experiment grid response must contain exactly one baseline-equivalent variant",
     );
   }
+  const baselineVariantIndex = result.variants.indexOf(
+    baselineEquivalent[0] as ExperimentResultSummary,
+  );
+  const overfitStatistics =
+    result.variantDailyReturns === undefined
+      ? null
+      : computeOverfitStatistics(result.variantDailyReturns, baselineVariantIndex);
   const nonBaselineSharpes = result.variants
     .filter((variant) => variant !== baselineEquivalent[0])
     .map((variant) => variant.sharpe);
   const medianVariantSharpe = median(nonBaselineSharpes);
   const minVariantSharpe = Math.min(...nonBaselineSharpes);
   const maxVariantSharpe = Math.max(...nonBaselineSharpes);
+  const neighborhoodSharpeRetention =
+    result.baseline.sharpe > 0 ? medianVariantSharpe / result.baseline.sharpe : null;
   return {
     engineVersion: result.engineVersion,
     baseline: {
@@ -277,15 +415,112 @@ function parameterGridAgentView(result: RunExperimentResult): ParameterGridAgent
     parameterSummary: {
       baselineSharpe: result.baseline.sharpe,
       medianVariantSharpe,
-      neighborhoodSharpeRetention:
-        result.baseline.sharpe > 0 ? medianVariantSharpe / result.baseline.sharpe : null,
+      neighborhoodSharpeRetention,
       variantCount: nonBaselineSharpes.length,
       minVariantSharpe,
       maxVariantSharpe,
+      overfitStatistics,
     },
     summaryRef: PARAMETER_GRID_SOURCE_REF,
+    submissionContract: createParameterRobustnessSubmissionContract(
+      neighborhoodSharpeRetention,
+      overfitStatistics,
+    ),
   };
 }
+
+function sameStringArray(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((entry, index) => entry === right[index]);
+}
+
+function sameEvidence(left: CheckEvidence, right: CheckEvidence): boolean {
+  return (
+    left.metric === right.metric &&
+    Object.is(left.value, right.value) &&
+    left.unit === right.unit &&
+    sameStringArray(left.sourceRefs, right.sourceRefs)
+  );
+}
+
+function sameMissingEvidence(left: MissingEvidence, right: MissingEvidence): boolean {
+  return (
+    left.requirement === right.requirement &&
+    left.reason === right.reason &&
+    sameStringArray(left.sourceRefs, right.sourceRefs)
+  );
+}
+
+function parameterSubmissionContractFromDetails(
+  details: unknown,
+): ParameterRobustnessSubmissionContract {
+  if (!isRecord(details) || !isRecord(details.submissionContract)) {
+    throw new Error(
+      "Parameter-robustness submission validation requires the host evidence contract.",
+    );
+  }
+  const contract = details.submissionContract;
+  if (
+    (contract.requiredConclusion !== "pass" &&
+      contract.requiredConclusion !== "pass_with_reservations" &&
+      contract.requiredConclusion !== "fail" &&
+      contract.requiredConclusion !== "insufficient_evidence") ||
+    !Array.isArray(contract.requiredEvidence) ||
+    !Array.isArray(contract.requiredMissingEvidence)
+  ) {
+    throw new Error("Parameter-robustness host evidence contract is invalid.");
+  }
+  return contract as unknown as ParameterRobustnessSubmissionContract;
+}
+
+export const validateParameterRobustnessSubmission: AgentSubmissionValidator = ({
+  submission,
+  evidenceTool,
+}) => {
+  if (evidenceTool.name !== "run_experiment") {
+    throw new Error("Parameter-robustness submission requires run_experiment evidence.");
+  }
+  const contract = parameterSubmissionContractFromDetails(evidenceTool.details);
+  if (submission.conclusion !== contract.requiredConclusion) {
+    throw new Error(
+      `Parameter-robustness conclusion must equal the frozen retention conclusion "${contract.requiredConclusion}".`,
+    );
+  }
+
+  const overfitMetrics = new Set(OVERFIT_EVIDENCE_FIELDS.map(([metric]) => metric));
+  const submittedOverfitEvidence = submission.evidence.filter((item) =>
+    overfitMetrics.has(item.metric as keyof OverfitStatistics),
+  );
+  if (
+    submittedOverfitEvidence.length !== contract.requiredEvidence.length ||
+    contract.requiredEvidence.some((expected) => {
+      const matches = submittedOverfitEvidence.filter(
+        (actual) => actual.metric === expected.metric,
+      );
+      return matches.length !== 1 || !sameEvidence(matches[0] as CheckEvidence, expected);
+    })
+  ) {
+    throw new Error(
+      "Parameter-robustness overfitting evidence must exactly match the host-required evidence.",
+    );
+  }
+
+  const submittedOverfitMissingEvidence = submission.missingEvidence.filter((item) =>
+    item.requirement.startsWith(OVERFIT_MISSING_REQUIREMENT_PREFIX),
+  );
+  if (
+    submittedOverfitMissingEvidence.length !== contract.requiredMissingEvidence.length ||
+    contract.requiredMissingEvidence.some((expected) => {
+      const matches = submittedOverfitMissingEvidence.filter(
+        (actual) => actual.requirement === expected.requirement,
+      );
+      return matches.length !== 1 || !sameMissingEvidence(matches[0] as MissingEvidence, expected);
+    })
+  ) {
+    throw new Error(
+      "Parameter-robustness unavailable overfitting statistics must exactly match the host-required missing evidence.",
+    );
+  }
+};
 
 /**
  * Thin process boundary around the deterministic backtest engine.
@@ -487,7 +722,13 @@ export function createRunExperimentTool(
       const agentView = kind === "grid" ? parameterGridAgentView(result) : result;
       return {
         content: [{ type: "text", text: JSON.stringify(agentView) }],
-        details: result,
+        details:
+          kind === "grid"
+            ? {
+                ...result,
+                submissionContract: (agentView as ParameterGridAgentView).submissionContract,
+              }
+            : result,
       };
     },
   };

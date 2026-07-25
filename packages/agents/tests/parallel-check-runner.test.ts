@@ -117,7 +117,7 @@ describe("ParallelAuditCheckRunner", () => {
     expect(result.checks.filter((check) => check.conclusion === "pass")).toHaveLength(4);
   });
 
-  test("caps every requested branch deadline at 360 seconds", async () => {
+  test("caps every requested branch deadline at 480 seconds", async () => {
     const dispatched: RuntimeTaskRequest[] = [];
     const taskRunner: AuditCheckTaskRunner = {
       async run(request) {
@@ -155,7 +155,7 @@ describe("ParallelAuditCheckRunner", () => {
 
     expect(timedOut?.conclusion).toBe("insufficient_evidence");
     expect(timedOut?.missingEvidence[0]?.reason).toBe(
-      "Check exceeded its 360000ms deadline before producing a valid result.",
+      "Check exceeded its 480000ms deadline before producing a valid result.",
     );
   });
 

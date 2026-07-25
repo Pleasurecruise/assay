@@ -231,6 +231,7 @@ class ExperimentStdioIntegrationTest(unittest.TestCase):
                     "baseline",
                     "variants",
                     "summaryRef",
+                    "variantDailyReturns",
                 },
             )
             self.assertEqual(
@@ -238,6 +239,10 @@ class ExperimentStdioIntegrationTest(unittest.TestCase):
                 "artifact:backtest/parameter-grid",
             )
             self.assertEqual(len(response["variants"]), 2)
+            self.assertEqual(
+                len(response["variantDailyReturns"]),
+                len(response["variants"]),
+            )
 
     def test_regime_and_homogeneity_use_prepared_caches_over_stdio(
         self,

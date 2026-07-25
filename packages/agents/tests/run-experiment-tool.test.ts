@@ -1,7 +1,13 @@
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import type { AgentTool } from "@assay/agent-runtime";
-import { COST_STRESS_SOURCE_REF, PARAMETER_GRID_SOURCE_REF } from "@assay/contracts";
+import {
+  COST_STRESS_SOURCE_REF,
+  PARAMETER_GRID_SOURCE_REF,
+  type AuditCheckResult,
+  type CheckEvidence,
+  type MissingEvidence,
+} from "@assay/contracts";
 import { describe, expect, test } from "vitest";
 import { createAuditCheckAgentDefinitions } from "../src/definitions";
 import {
@@ -117,6 +123,34 @@ describe("run_experiment tool", () => {
     });
     expect(result.engineVersion).toBe("mock-v1");
     expect(result.summaryRef).toBe(PARAMETER_GRID_SOURCE_REF);
+    expect(result.variantDailyReturns).toHaveLength(4);
+    expect(
+      result.variantDailyReturns?.every(
+        (series) =>
+          series.length === result.variantDailyReturns?.[0]?.length &&
+          series.every((value) => Number.isFinite(value)),
+      ),
+    ).toBe(true);
+  });
+
+  test("rejects a grid response without an aligned daily-return matrix", async () => {
+    const gridRequest = (mockResponseShape: string): RunExperimentRequest => ({
+      kind: "grid",
+      dataRef,
+      spec: { specVersion: "1", mockResponseShape },
+      grid: {
+        signalParams: { window: [14, 20] },
+        topN: [30, 50],
+      },
+      budget: { maxVariants: 4 },
+    });
+
+    await expect(
+      runExperimentSubprocess(mockProcess, gridRequest("grid-missing-daily-returns")),
+    ).rejects.toThrow("response must contain exactly");
+    await expect(
+      runExperimentSubprocess(mockProcess, gridRequest("grid-misaligned-daily-returns")),
+    ).rejects.toThrow("must align with response.variants");
   });
 
   test("surfaces a nonzero engine exit and stderr without inventing a result", async () => {
@@ -264,6 +298,11 @@ describe("run_experiment tool", () => {
         medianVariantSharpe: number;
         neighborhoodSharpeRetention: number;
       };
+      submissionContract: {
+        requiredConclusion: AuditCheckResult["conclusion"];
+        requiredEvidence: CheckEvidence[];
+        requiredMissingEvidence: MissingEvidence[];
+      };
     };
     expect(gridAgentView).toMatchObject({
       engineVersion: "mock-v1",
@@ -283,6 +322,45 @@ describe("run_experiment tool", () => {
     });
     expect(gridAgentView.parameterSummary.medianVariantSharpe).toBeCloseTo(1.1);
     expect(gridAgentView.parameterSummary.neighborhoodSharpeRetention).toBeCloseTo(1.1 / 1.3);
+    const overfit = (
+      gridAgentView.parameterSummary as unknown as {
+        overfitStatistics: {
+          pbo: number;
+          combinationsEvaluated: number;
+          deflatedSharpeRatio: number;
+          sampleLength: number;
+        } | null;
+      }
+    ).overfitStatistics;
+    expect(overfit).not.toBeNull();
+    if (overfit === null) {
+      throw new Error("expected grid overfit statistics");
+    }
+    expect(overfit.pbo).toBeGreaterThanOrEqual(0);
+    expect(overfit.pbo).toBeLessThanOrEqual(1);
+    expect(overfit.combinationsEvaluated).toBeGreaterThan(0);
+    expect(overfit.deflatedSharpeRatio).toBeGreaterThanOrEqual(0);
+    expect(overfit.deflatedSharpeRatio).toBeLessThanOrEqual(1);
+    expect(overfit.sampleLength).toBe(64);
+    expect(gridAgentView.submissionContract.requiredConclusion).toBe("pass");
+    expect(gridAgentView.submissionContract.requiredEvidence).toHaveLength(9);
+    expect(gridAgentView.submissionContract.requiredMissingEvidence).toEqual([]);
+    expect(gridAgentView.submissionContract.requiredEvidence.map((item) => item.metric)).toEqual([
+      "pbo",
+      "combinationsEvaluated",
+      "degradationSlope",
+      "dailyBaselineSharpe",
+      "sampleLength",
+      "effectiveTrials",
+      "expectedMaxSharpeDaily",
+      "deflatedSharpeRatio",
+      "minTrackRecordDays",
+    ]);
+    expect(
+      gridAgentView.submissionContract.requiredEvidence.every(
+        (item) => item.sourceRefs.length === 1 && item.sourceRefs[0] === PARAMETER_GRID_SOURCE_REF,
+      ),
+    ).toBe(true);
     expect(contentText(gridOutput)).not.toContain("dailyReturnsRef");
     expect(
       JSON.stringify(
@@ -300,6 +378,13 @@ describe("run_experiment tool", () => {
         }
       ).variants,
     ).toHaveLength(15);
+    expect(
+      (
+        gridOutput.details as {
+          submissionContract: unknown;
+        }
+      ).submissionContract,
+    ).toEqual(gridAgentView.submissionContract);
 
     const output = await costTool.execute(
       "call-4",
@@ -345,6 +430,178 @@ describe("run_experiment tool", () => {
         },
       ],
     });
+  });
+
+  test("mechanically validates the host-required overfitting evidence and frozen conclusion", async () => {
+    const definition = createAuditCheckAgentDefinitions({
+      experimentProcess: mockProcess,
+    }).find((candidate) => candidate.id === "param-robustness");
+    const tool = definition?.tools?.find((candidate) => candidate.name === "run_experiment");
+    const validator = definition?.submissionValidator;
+    if (tool === undefined || validator === undefined) {
+      throw new Error("expected parameter-robustness tool and submission validator");
+    }
+    const toolResult = await tool.execute(
+      "call-contract",
+      {
+        kind: "grid",
+        dataRef,
+        spec: {
+          specVersion: "1",
+          signal: { params: { window: 20 } },
+          selection: { topN: 50 },
+        },
+        budget: { maxVariants: 15 },
+      },
+      undefined,
+    );
+    const contract = (
+      toolResult.details as {
+        submissionContract: {
+          requiredConclusion: AuditCheckResult["conclusion"];
+          requiredEvidence: CheckEvidence[];
+          requiredMissingEvidence: MissingEvidence[];
+        };
+      }
+    ).submissionContract;
+    const validSubmission: AuditCheckResult = {
+      id: "param-robustness",
+      conclusion: contract.requiredConclusion,
+      confidence: 0.8,
+      evidence: contract.requiredEvidence,
+      missingEvidence: contract.requiredMissingEvidence,
+    };
+    const context = (submission: AuditCheckResult) => ({
+      submission,
+      evidenceTool: {
+        name: "run_experiment",
+        details: toolResult.details,
+      },
+    });
+
+    expect(() => validator(context(validSubmission))).not.toThrow();
+
+    const firstEvidence = contract.requiredEvidence[0];
+    if (firstEvidence === undefined) {
+      throw new Error("expected required PBO evidence");
+    }
+    const alteredEvidence = (replacement: Partial<CheckEvidence>): AuditCheckResult => ({
+      ...validSubmission,
+      evidence: [
+        {
+          ...firstEvidence,
+          ...replacement,
+        },
+        ...contract.requiredEvidence.slice(1),
+      ],
+    });
+    for (const submission of [
+      { ...validSubmission, evidence: contract.requiredEvidence.slice(1) },
+      alteredEvidence({ metric: "modelAuthoredPbo" }),
+      alteredEvidence({ value: (firstEvidence.value as number) + 0.01 }),
+      alteredEvidence({ unit: "probability" }),
+      alteredEvidence({ sourceRefs: ["artifact:model-authored"] }),
+      {
+        ...validSubmission,
+        evidence: [...contract.requiredEvidence, firstEvidence],
+      },
+    ]) {
+      expect(() => validator(context(submission))).toThrow(
+        "must exactly match the host-required evidence",
+      );
+    }
+    expect(() =>
+      validator(
+        context({
+          ...validSubmission,
+          conclusion: "fail",
+        }),
+      ),
+    ).toThrow('must equal the frozen retention conclusion "pass"');
+  });
+
+  test("turns unavailable overfitting statistics into host-required missing evidence", async () => {
+    const definition = createAuditCheckAgentDefinitions({
+      experimentProcess: mockProcess,
+    }).find((candidate) => candidate.id === "param-robustness");
+    const tool = definition?.tools?.find((candidate) => candidate.name === "run_experiment");
+    const validator = definition?.submissionValidator;
+    if (tool === undefined || validator === undefined) {
+      throw new Error("expected parameter-robustness tool and submission validator");
+    }
+    const toolResult = await tool.execute(
+      "call-degenerate-contract",
+      {
+        kind: "grid",
+        dataRef,
+        spec: {
+          specVersion: "1",
+          mockResponseShape: "grid-degenerate-daily-returns",
+          signal: { params: { window: 20 } },
+          selection: { topN: 50 },
+        },
+        budget: { maxVariants: 15 },
+      },
+      undefined,
+    );
+    const agentView = JSON.parse(contentText(toolResult)) as {
+      parameterSummary: { overfitStatistics: null };
+      submissionContract: {
+        requiredConclusion: AuditCheckResult["conclusion"];
+        requiredEvidence: CheckEvidence[];
+        requiredMissingEvidence: MissingEvidence[];
+      };
+    };
+    expect(agentView.parameterSummary.overfitStatistics).toBeNull();
+    expect(agentView.submissionContract.requiredConclusion).toBe("pass");
+    expect(agentView.submissionContract.requiredEvidence).toEqual([]);
+    expect(agentView.submissionContract.requiredMissingEvidence).toHaveLength(9);
+
+    const decisionEvidence: CheckEvidence = {
+      metric: "neighborhoodSharpeRetention",
+      value: 1.1 / 1.3,
+      unit: "ratio",
+      sourceRefs: [PARAMETER_GRID_SOURCE_REF],
+    };
+    const validSubmission: AuditCheckResult = {
+      id: "param-robustness",
+      conclusion: agentView.submissionContract.requiredConclusion,
+      confidence: 0.6,
+      evidence: [decisionEvidence],
+      missingEvidence: agentView.submissionContract.requiredMissingEvidence,
+    };
+    const context = (submission: AuditCheckResult) => ({
+      submission,
+      evidenceTool: {
+        name: "run_experiment",
+        details: toolResult.details,
+      },
+    });
+    expect(() => validator(context(validSubmission))).not.toThrow();
+    expect(() =>
+      validator(
+        context({
+          ...validSubmission,
+          missingEvidence: validSubmission.missingEvidence.slice(1),
+        }),
+      ),
+    ).toThrow("must exactly match the host-required missing evidence");
+    expect(() =>
+      validator(
+        context({
+          ...validSubmission,
+          evidence: [
+            decisionEvidence,
+            {
+              metric: "pbo",
+              value: 0,
+              unit: "ratio",
+              sourceRefs: [PARAMETER_GRID_SOURCE_REF],
+            },
+          ],
+        }),
+      ),
+    ).toThrow("must exactly match the host-required evidence");
   });
 
   test("publishes one fixed example and D10 v1.0.0 rules in both prompts", () => {

@@ -1,12 +1,16 @@
 import type { AgentDefinition, AgentTool } from "@assay/agent-runtime";
 import {
   AVAILABILITY_ANNUAL_RETURN_DELTA_FAIL_THRESHOLD,
+  SPRINT_PARAMETER_GRID_TOP_N,
+  SPRINT_PARAMETER_GRID_WINDOWS,
   AVAILABILITY_CONTAMINATED_SELECTION_RATE_FAIL_THRESHOLD,
   CHECKS_WIRING_POLICY_VERSION,
   COST_STRESS_SOURCE_REF,
   HOMOGENEITY_CORRELATION_FAIL_THRESHOLD,
   HOMOGENEITY_MINIMUM_DECAY_YEARS,
   PARAMETER_GRID_SOURCE_REF,
+  PARAMETER_RETENTION_PASS_THRESHOLD,
+  PARAMETER_RETENTION_RESERVATION_THRESHOLD,
   REGIME_MINIMUM_SLICE_DAYS,
   REGIME_PNL_SHARE_FAIL_THRESHOLD,
   REGIME_PNL_SHARE_RESERVATION_THRESHOLD,
@@ -20,6 +24,7 @@ import {
   createRunExperimentTool,
   defaultExperimentProcessConfig,
   type ExperimentProcessConfig,
+  validateParameterRobustnessSubmission,
 } from "./run-experiment-tool";
 import { createRunHomogeneityTool, HOMOGENEITY_AUDIT_SOURCE_REF } from "./run-homogeneity-tool";
 import { createRunRegimeSplitTool, REGIME_SPLIT_SOURCE_REF } from "./run-regime-split-tool";
@@ -45,10 +50,14 @@ confidence 必须是 0 到 1 的数字。evidence 项为
 {"requirement","reason","sourceRefs"}。有确定结论时 evidence 至少一项；证据不足时
 missingEvidence 至少一项。schema 不合法时，工具会返回具体错误；只可修正并重填一次，
 总提交上限为两次。evidence.value 只能是有限数字、字符串或布尔值，严禁数组、对象或 null；
-区间和列表必须拆成多个标量 evidence（例如 min/max/count 各一项）。sourceRefs 必须始终是
+区间和列表必须拆成多个标量 evidence（例如 min/max/count 各一项）。unit 必须是非空
+字符串：比率、概率、Sharpe 等无量纲指标用 "ratio"，计数用 "count"，天数用 "days"，
+交易日数用 "trading_days"，收益率用 "ratio"，换手倍数用 "multiple"；没有更准确单位时
+一律用 "ratio"，严禁空字符串。sourceRefs 必须始终是
 非空字符串数组，不能写成单个字符串。输出前自行检查这些类型，但不要输出检查过程。
 submit_check_result 成功后立即结束，不再输出第二份结果；宿主只验证、注入 id 并留存你的
-提交，不计算或改写 conclusion 与 confidence。
+提交，不改写 conclusion 与 confidence。若下方单项检查明确给出冻结 conclusion 或
+requiredEvidence，宿主会在接收时机械核验，不符合的提交无效。
 `.trim();
 
 const checkPrompts: Readonly<Record<AuditCheckId, string>> = {
@@ -58,23 +67,39 @@ const checkPrompts: Readonly<Record<AuditCheckId, string>> = {
 
 必须且只能调用一次 run_experiment（kind="grid"，budget.maxVariants=15）。
 canonical StrategySpec 与固定 grid 均由宿主注入；调用中不得提交 spec 或 grid，不得追加
-第二次调用或临时探索新变体。固定 grid 为 window=[14,17,20,23,26] ×
-topN=[30,50,70]。只使用该次响应中的 baseline、parameterSummary 和派生数值；完整变体与
+第二次调用或临时探索新变体。固定 grid 为 window=[${SPRINT_PARAMETER_GRID_WINDOWS.join(",")}] ×
+topN=[${SPRINT_PARAMETER_GRID_TOP_N.join(",")}]。只使用该次响应中的 baseline、parameterSummary 和派生数值；完整变体与
 日收益引用由宿主保留在审计工件中，不得要求展开。
 
 D10_GUIDELINE_VERSION="1.0.0"。neighborhoodSharpeRetention =
-非基线预声明变体 Sharpe 中位数 / 基线 Sharpe；基线 Sharpe 不为正时报告原值并独立判断。
-参考区间：>=70% 倾向 pass；>=40% 且 <70% 倾向 pass_with_reservations；<40% 倾向 fail。
-parameterSummary 只做确定性数值汇总，不替你选择结论。这只是预声明倾向，不是主机裁决器。
+非基线预声明变体 Sharpe 中位数 / 基线 Sharpe；基线 Sharpe 不为正时 retention 不可定义。
+冻结结论：>=${String(PARAMETER_RETENTION_PASS_THRESHOLD * 100)}% 必须为 pass；
+>=${String(PARAMETER_RETENTION_RESERVATION_THRESHOLD * 100)}% 且
+<${String(PARAMETER_RETENTION_PASS_THRESHOLD * 100)}% 必须为 pass_with_reservations；
+<${String(PARAMETER_RETENTION_RESERVATION_THRESHOLD * 100)}% 必须为 fail；retention
+不可定义时必须为 insufficient_evidence。工具响应的
+submissionContract.requiredConclusion 已按该规则由宿主计算，最终 conclusion 必须原样复制。
 所有确定性结论的 evidence.sourceRefs 必须包含工具
-响应中的 summaryRef（固定为 ${PARAMETER_GRID_SOURCE_REF}）。若偏离所在区间的倾向，必须以数值
-evidence（样本量、置信区间、绝对收益差或缺失率）和该引用说明，但输出仍只能使用共同契约
-规定的五个字段。baselineSharpe > 0 时，最终 evidence 至少分别给出 baselineSharpe、
+响应中的 summaryRef（固定为 ${PARAMETER_GRID_SOURCE_REF}）。baselineSharpe > 0 时，
+最终 evidence 至少分别给出 baselineSharpe、
 medianVariantSharpe、neighborhoodSharpeRetention、variantCount 四个有限数值；直接读取
 parameterSummary 中的同名字段，四项均引用
 响应中的 summaryRef。baselineSharpe <= 0 时不得把 null 当 evidence.value，改为报告其余有限
 标量并在 missingEvidence 说明 retention 不可定义。不得把 variants、Sharpe 列表或区间数组
 整体放入 evidence.value。
+
+parameterSummary 还含 overfitStatistics（回测过拟合统计：pbo、combinationsEvaluated、
+degradationSlope、dailyBaselineSharpe、sampleLength、effectiveTrials、
+expectedMaxSharpeDaily、deflatedSharpeRatio、minTrackRecordDays；整体可能为 null，
+minTrackRecordDays 单独可能为 null）。宿主已把九项中可计算的数值逐项写入
+submissionContract.requiredEvidence，并把不可计算项逐项写入
+submissionContract.requiredMissingEvidence。最终 evidence 必须逐项原样包含全部
+requiredEvidence，missingEvidence 必须逐项原样包含全部 requiredMissingEvidence；不得遗漏、
+改值、改 metric、改 unit 或改 sourceRefs。正常矩阵会有九条 requiredEvidence，固定单位为：
+pbo、degradationSlope、dailyBaselineSharpe、expectedMaxSharpeDaily、
+deflatedSharpeRatio → "ratio"；combinationsEvaluated、effectiveTrials、sampleLength →
+"count"；minTrackRecordDays → "days"。D10 v1.0.0 下这些统计仅作证据披露，不构成
+结论判据；不得因 overfitStatistics 的数值改变 requiredConclusion。
 `.trim(),
   "data-availability": `
 你负责数据可得性检查。逐历史时点核对股票池、可交易状态和财务信息可得时间，识别幸存者
@@ -97,7 +122,8 @@ ${AVAILABILITY_CONTAMINATED_SELECTION_RATE_FAIL_THRESHOLD} → fail。
 contaminatedSelectionRate、corrected.annualReturn、corrected.sharpe 和 corrected.delta
 写成数值 evidence，所有 sourceRefs 固定包含 ${AVAILABILITY_AUDIT_SOURCE_REF}。工具若为
 degraded_remove_only，必须在 evidence 或 missingEvidence 中如实披露其 assumptions；不得把部分修正
-描述成完整 PIT 修正。本期动量信号不含财务字段，不得声称已核对 fina_reports.date。
+描述成完整 PIT 修正。仅当被审信号包含财务字段且工具响应含财务时点核对结果时，方可引用 fina_reports
+披露日证据；否则不得声称已核对财务披露时点。
 `.trim(),
   "cost-stress": `
 你负责交易成本压力测试。使用回测工具按常规费率、冲击成本和悲观情形分档重跑，测算换手
@@ -109,8 +135,8 @@ canonical StrategySpec 由宿主注入；调用中不得提交 spec 或 grid，�
 
 D10_GUIDELINE_VERSION="1.0.0"。若 pessimistic 变体 annualReturn > 0，倾向
 pass_with_reservations；若 break-even 总成本小于 normal 总成本的 1.5 倍，倾向 fail。
-本冲刺响应不另给 break-even 字段：pessimistic annualReturn <= 0 直接表示策略在 1.5 倍
-realistic 总成本处已归零，按该 fail 档解释。
+响应不含独立 break-even 字段；pessimistic 档即 1.5 倍 realistic 总成本档，其
+annualReturn <= 0 即表示策略在该档已归零，按上述 fail 档解释。
 其余情形由你结合响应中的数值独立判断，主机不计算或改写结论。所有确定性结论的
 evidence.sourceRefs 必须包含工具响应中的 summaryRef（固定为 ${COST_STRESS_SOURCE_REF}）。
 若偏离上述适用倾向，必须以数值 evidence 和该引用说明，但输出仍只能使用共同契约规定的
@@ -224,6 +250,9 @@ export function createAuditCheckAgentDefinitions(
       thinkingLevel: highThinkingChecks.has(id) ? high : medium,
       systemPrompt: [sharedGuardrails, checkPrompts[id]],
       tools,
+      ...(id === "param-robustness"
+        ? { submissionValidator: validateParameterRobustnessSubmission }
+        : {}),
     };
   });
 }

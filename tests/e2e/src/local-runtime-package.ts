@@ -44,9 +44,7 @@ function requireValue(condition: unknown, message: string): asserts condition {
   }
 }
 
-function stableDigest(
-  packages: readonly LoadedGoldenRuntimePackage[],
-): `sha256-${string}` {
+function stableDigest(packages: readonly LoadedGoldenRuntimePackage[]): `sha256-${string}` {
   const identities = packages
     .map(({ manifest, manifestDigest }) => ({
       packageId: manifest.packageId,
@@ -59,10 +57,7 @@ function stableDigest(
   return `sha256-${createHash("sha256").update(JSON.stringify(identities), "utf8").digest("hex")}`;
 }
 
-function assertOnlyClaimsChangedPlan(
-  goldenCase: GoldenStrategyCase,
-  expected: DataPlan,
-): DataPlan {
+function assertOnlyClaimsChangedPlan(goldenCase: GoldenStrategyCase, expected: DataPlan): DataPlan {
   const alternateClaimsSpec = toCanonicalStrategySpec({
     ...goldenCase.strategy,
     claims: {
@@ -80,9 +75,7 @@ function assertOnlyClaimsChangedPlan(
   return alternate;
 }
 
-async function assertUnsupportedStrategy(
-  resolver: LocalDataPackageResolver,
-): Promise<void> {
+async function assertUnsupportedStrategy(resolver: LocalDataPackageResolver): Promise<void> {
   const registered = GOLDEN_STRATEGY_CASES[1];
   requireValue(registered !== undefined, "G02 frozen strategy fixture is missing");
   const unregisteredSpec = toCanonicalStrategySpec({
@@ -134,8 +127,7 @@ export async function loadGoldenRuntimePackages(
     const plan = dataPlanForGoldenCase(goldenCase);
     const auditId = `golden_runtime_validation_${String(index + 1)}`;
     const resolved = await resolver.resolve(plan, auditId);
-    const packageProvenanceSource =
-      `assay:local-data-package:${goldenCase.packageId}:${manifestDigest}`;
+    const packageProvenanceSource = `assay:local-data-package:${goldenCase.packageId}:${manifestDigest}`;
 
     requireValue(
       manifest.packageId === goldenCase.packageId &&
@@ -183,8 +175,7 @@ export async function loadGoldenRuntimePackages(
   for (const checksumName of ["marketData", "auditSupport", "pitMembership"] as const) {
     const checksums = new Set(packages.map(({ manifest }) => manifest.checksums[checksumName]));
     requireValue(
-      checksums.size === 1 &&
-        checksums.has(GOLDEN_SHARED_RUNTIME_CHECKSUMS[checksumName]),
+      checksums.size === 1 && checksums.has(GOLDEN_SHARED_RUNTIME_CHECKSUMS[checksumName]),
       `golden runtime packages do not share the frozen ${checksumName} checksum`,
     );
   }
@@ -211,8 +202,7 @@ export async function loadCsi300MomentumRuntimePackage(
 ): Promise<LoadedCsi300MomentumRuntimePackage> {
   const registry = await loadGoldenRuntimePackages(registryRoot);
   const package_ = registry.packages.find(
-    ({ goldenCase }) =>
-      goldenCase.packageId === "csi300-momentum-20d-monthly-top50-equal",
+    ({ goldenCase }) => goldenCase.packageId === "csi300-momentum-20d-monthly-top50-equal",
   );
   requireValue(package_ !== undefined, "G01 runtime package is missing");
   requireValue(

@@ -189,6 +189,79 @@ describe("StrategyIntake", () => {
     expect(parserCalled).toBe(false);
   });
 
+  test("early-exits when the baseline window is outside the audited grid support", async () => {
+    const intake = createIntake({
+      parse: async () => ({
+        ...completeCandidate,
+        signal: { kind: "template", template: "momentum", params: { window: 60 } },
+      }),
+    });
+
+    const result = await intake.intakeText("沪深 300 六十日动量");
+
+    expect(result).toMatchObject({
+      kind: "early_exit",
+      reasonCode: "unsupported_input",
+    });
+    if (result.kind !== "early_exit") {
+      throw new Error("Expected early exit");
+    }
+    expect(
+      result.issues.some(
+        (issue) =>
+          issue.path === "/signal/params/window" && issue.code === "parameter_outside_audited_grid",
+      ),
+    ).toBe(true);
+  });
+
+  test("early-exits when topN is outside the audited grid support", async () => {
+    const intake = createIntake({
+      parse: async () => ({
+        ...completeCandidate,
+        selection: { topN: 40 },
+      }),
+    });
+
+    const result = await intake.intakeText("沪深 300 动量前 40 只");
+
+    expect(result).toMatchObject({
+      kind: "early_exit",
+      reasonCode: "unsupported_input",
+    });
+    if (result.kind !== "early_exit") {
+      throw new Error("Expected early exit");
+    }
+    expect(
+      result.issues.some(
+        (issue) =>
+          issue.path === "/selection/topN" && issue.code === "parameter_outside_audited_grid",
+      ),
+    ).toBe(true);
+  });
+
+  test("does not let a legacy intake option override the frozen sprint grid", async () => {
+    const intake = new StrategyIntake({
+      parser: {
+        parse: async () => ({
+          ...completeCandidate,
+          selection: { topN: 40 },
+        }),
+      },
+      dataAsOf: "2026-07-23",
+      capabilitySnapshotId: "skeleton:static",
+      codeRevision: "test-revision",
+      // @ts-expect-error The sprint grid is contract-owned and not configurable at Intake.
+      parameterGridSupport: { windows: [20], topN: [40] },
+    });
+
+    const result = await intake.intakeText("尝试覆盖冻结支持域的策略");
+
+    expect(result).toMatchObject({
+      kind: "early_exit",
+      reasonCode: "unsupported_input",
+    });
+  });
+
   test("rejects a fenced code block without requiring a second code pattern", async () => {
     let parserCalled = false;
     const intake = createIntake({
