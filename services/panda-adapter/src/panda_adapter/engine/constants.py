@@ -14,6 +14,9 @@ from typing import Final
 ENGINE_VERSION: Final = "s1a-1"
 TRADING_DAYS_PER_YEAR: Final = 252
 AUDIT_TOOL_CONTRACT_VERSION: Final = "1.0.0"
+PARAMETER_GRID_SOURCE_REF: Final = "artifact:backtest/parameter-grid"
+PARAMETER_GRID_ARTIFACT_DIRECTORY: Final = "parameter-grid"
+COST_STRESS_SOURCE_REF: Final = "artifact:backtest/cost-stress"
 
 # CHECKS_WIRING §2 regime labels.  A return dated t is classified only with
 # information available through t-1.

@@ -1,6 +1,8 @@
 import {
   AUDIT_TOOL_CONTRACT_VERSION,
+  COST_STRESS_SOURCE_REF,
   HOMOGENEITY_COMPARATORS,
+  PARAMETER_GRID_SOURCE_REF,
   RUN_AVAILABILITY_AUDIT_REQUEST_SCHEMA,
   RUN_AVAILABILITY_AUDIT_RESPONSE_SCHEMA,
   RUN_HOMOGENEITY_REQUEST_SCHEMA,
@@ -42,5 +44,10 @@ describe("frozen audit tool contracts", () => {
     expect(RUN_HOMOGENEITY_RESPONSE_SCHEMA.properties.contractVersion.const).toBe(
       AUDIT_TOOL_CONTRACT_VERSION,
     );
+  });
+
+  test("freezes the BACKTESTER experiment summary source identities", () => {
+    expect(PARAMETER_GRID_SOURCE_REF).toBe("artifact:backtest/parameter-grid");
+    expect(COST_STRESS_SOURCE_REF).toBe("artifact:backtest/cost-stress");
   });
 });

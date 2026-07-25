@@ -12,6 +12,7 @@ from panda_adapter.engine.artifacts import (
     DAILY_RETURNS_REF_PREFIX,
     daily_returns_artifact_path,
 )
+from panda_adapter.engine.constants import PARAMETER_GRID_ARTIFACT_DIRECTORY
 from panda_adapter.engine.experiments import run_grid
 
 
@@ -100,7 +101,13 @@ class GridDailyReturnArtifactTest(unittest.TestCase):
                 before,
             )
             self.assertEqual(
-                len(list((root / "param-grid").glob("*.json"))),
+                len(
+                    list(
+                        (
+                            root / PARAMETER_GRID_ARTIFACT_DIRECTORY
+                        ).glob("*.json")
+                    )
+                ),
                 3,
             )
 

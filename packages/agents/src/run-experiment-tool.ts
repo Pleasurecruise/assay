@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import type { AgentDefinition } from "@assay/agent-runtime";
+import { COST_STRESS_SOURCE_REF, PARAMETER_GRID_SOURCE_REF } from "@assay/contracts";
 
 export type ExperimentKind = "baseline" | "grid" | "cost_ladder";
 export type AgentExperimentKind = Exclude<ExperimentKind, "baseline">;
@@ -35,6 +36,7 @@ export interface RunExperimentResult {
   readonly engineVersion: string;
   readonly baseline: ExperimentResultSummary;
   readonly variants: readonly ExperimentResultSummary[];
+  readonly summaryRef?: typeof PARAMETER_GRID_SOURCE_REF | typeof COST_STRESS_SOURCE_REF;
 }
 
 export interface ExperimentProcessConfig {
@@ -48,7 +50,8 @@ export interface ExperimentProcessConfig {
 type AgentTool = NonNullable<AgentDefinition["tools"]>[number];
 
 const DEFAULT_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
-const RESULT_KEYS = ["engineVersion", "baseline", "variants"] as const;
+const BASE_RESULT_KEYS = ["engineVersion", "baseline", "variants"] as const;
+const AUDIT_RESULT_KEYS = [...BASE_RESULT_KEYS, "summaryRef"] as const;
 const SUMMARY_KEYS = ["params", "annualReturn", "sharpe", "maxDrawdown", "annualTurnover"] as const;
 export const SPRINT_PARAMETER_GRID: ExperimentGrid = Object.freeze({
   signalParams: Object.freeze({ window: Object.freeze([14, 17, 20, 23, 26]) }),
@@ -164,16 +167,17 @@ function parseResultSummary(value: unknown, location: string): ExperimentResultS
   };
 }
 
-function parseResult(stdout: string): RunExperimentResult {
+function parseResult(stdout: string, kind: ExperimentKind): RunExperimentResult {
   let parsed: unknown;
   try {
     parsed = JSON.parse(stdout);
   } catch {
     throw new Error("run_experiment subprocess returned invalid JSON");
   }
-  if (!isRecord(parsed) || !hasExactKeys(parsed, RESULT_KEYS)) {
+  const expectedKeys = kind === "baseline" ? BASE_RESULT_KEYS : AUDIT_RESULT_KEYS;
+  if (!isRecord(parsed) || !hasExactKeys(parsed, expectedKeys)) {
     throw new Error(
-      `run_experiment subprocess response must contain exactly ${RESULT_KEYS.join(", ")}`,
+      `run_experiment subprocess response must contain exactly ${expectedKeys.join(", ")}`,
     );
   }
   if (typeof parsed.engineVersion !== "string" || parsed.engineVersion.trim().length === 0) {
@@ -182,12 +186,22 @@ function parseResult(stdout: string): RunExperimentResult {
   if (!Array.isArray(parsed.variants)) {
     throw new Error("run_experiment subprocess response must include a variants array");
   }
+  const expectedSummaryRef =
+    kind === "grid"
+      ? PARAMETER_GRID_SOURCE_REF
+      : kind === "cost_ladder"
+        ? COST_STRESS_SOURCE_REF
+        : undefined;
+  if (expectedSummaryRef !== undefined && parsed.summaryRef !== expectedSummaryRef) {
+    throw new Error(`run_experiment ${kind} response.summaryRef is invalid`);
+  }
   return {
     engineVersion: parsed.engineVersion,
     baseline: parseResultSummary(parsed.baseline, "response.baseline"),
     variants: parsed.variants.map((variant, index) =>
       parseResultSummary(variant, `response.variants[${String(index)}]`),
     ),
+    ...(expectedSummaryRef === undefined ? {} : { summaryRef: expectedSummaryRef }),
   };
 }
 
@@ -267,7 +281,10 @@ export async function runExperimentSubprocess(
         return;
       }
       try {
-        const result = parseResult(Buffer.concat(stdoutChunks).toString("utf8").trim());
+        const result = parseResult(
+          Buffer.concat(stdoutChunks).toString("utf8").trim(),
+          request.kind,
+        );
         if (request.kind === "baseline" && result.variants.length !== 0) {
           throw new Error("run_experiment baseline subprocess must not return variants");
         }

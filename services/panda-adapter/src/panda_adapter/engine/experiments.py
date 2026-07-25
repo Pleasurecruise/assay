@@ -9,7 +9,12 @@ from typing import Any
 import pandas as pd
 
 from .artifacts import persist_grid_daily_returns
-from .constants import COST_LADDER, ENGINE_VERSION
+from .constants import (
+    COST_LADDER,
+    COST_STRESS_SOURCE_REF,
+    ENGINE_VERSION,
+    PARAMETER_GRID_SOURCE_REF,
+)
 from .core import run_momentum_backtest
 
 
@@ -106,6 +111,7 @@ def run_grid(
             daily_returns_ref=baseline_daily_returns_ref,
         ),
         "variants": results,
+        "summaryRef": PARAMETER_GRID_SOURCE_REF,
     }
 
 
@@ -148,6 +154,7 @@ def run_cost_ladder(
             baseline_result,
         ),
         "variants": results,
+        "summaryRef": COST_STRESS_SOURCE_REF,
     }
 
 

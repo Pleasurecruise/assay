@@ -3,8 +3,10 @@ import {
   AVAILABILITY_ANNUAL_RETURN_DELTA_FAIL_THRESHOLD,
   AVAILABILITY_CONTAMINATED_SELECTION_RATE_FAIL_THRESHOLD,
   CHECKS_WIRING_POLICY_VERSION,
+  COST_STRESS_SOURCE_REF,
   HOMOGENEITY_CORRELATION_FAIL_THRESHOLD,
   HOMOGENEITY_MINIMUM_DECAY_YEARS,
+  PARAMETER_GRID_SOURCE_REF,
   REGIME_MINIMUM_SLICE_DAYS,
   REGIME_PNL_SHARE_FAIL_THRESHOLD,
   REGIME_PNL_SHARE_RESERVATION_THRESHOLD,
@@ -61,8 +63,8 @@ topN=[30,50,70]。只使用该次响应中的 baseline、variants 和派生数�
 D10_GUIDELINE_VERSION="1.0.0"。neighborhoodSharpeRetention =
 非基线预声明变体 Sharpe 中位数 / 基线 Sharpe；基线 Sharpe 不为正时报告原值并独立判断。
 参考区间：>=70% 倾向 pass；>=40% 且 <70% 倾向 pass_with_reservations；<40% 倾向 fail。
-这只是预声明倾向，不是主机裁决器。所有确定性结论的 evidence.sourceRefs 必须包含固定
-experiment summary 引用 artifact:backtest/param-grid。若偏离所在区间的倾向，必须以数值
+这只是预声明倾向，不是主机裁决器。所有确定性结论的 evidence.sourceRefs 必须包含工具
+响应中的 summaryRef（固定为 ${PARAMETER_GRID_SOURCE_REF}）。若偏离所在区间的倾向，必须以数值
 evidence（样本量、置信区间、绝对收益差或缺失率）和该引用说明，但输出仍只能使用共同契约
 规定的五个字段。
 `.trim(),
@@ -102,7 +104,7 @@ pass_with_reservations；若 break-even 总成本小于 normal 总成本的 1.5 
 本冲刺响应不另给 break-even 字段：pessimistic annualReturn <= 0 直接表示策略在 1.5 倍
 realistic 总成本处已归零，按该 fail 档解释。
 其余情形由你结合响应中的数值独立判断，主机不计算或改写结论。所有确定性结论的
-evidence.sourceRefs 必须包含固定 experiment summary 引用 artifact:backtest/cost-ladder。
+evidence.sourceRefs 必须包含工具响应中的 summaryRef（固定为 ${COST_STRESS_SOURCE_REF}）。
 若偏离上述适用倾向，必须以数值 evidence 和该引用说明，但输出仍只能使用共同契约规定的
 五个字段。
 `.trim(),

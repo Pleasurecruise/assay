@@ -1,21 +1,24 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { link, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { TaskState, type Task } from "@a2a-js/sdk";
 import { planDiscriminativeMoireExperiments } from "@assay/agents";
 import {
+  AUDIT_ARTIFACT_SCHEMA_VERSION,
   AUDIT_CHECK_IDS,
   AVAILABILITY_AUDIT_SOURCE_REF,
   canonicalizeStrategySpec,
+  COST_STRESS_SOURCE_REF,
   HOMOGENEITY_AUDIT_SOURCE_REF,
   hashStrategySpec,
+  PARAMETER_GRID_SOURCE_REF,
   parseAuditArtifact,
   REGIME_SPLIT_SOURCE_REF,
   type AuditArtifact,
   type AuditCheckId,
-  type AuditCheckResult,
+  type JsonValue,
 } from "@assay/contracts";
 import { createAssayA2AClient, extractAuditArtifact } from "../../../apps/web/src/lib/a2a-client";
 import { deriveVerdict } from "../../../apps/a2a-server/src/audit-orchestrator";
@@ -34,6 +37,9 @@ export const V9_EXPECTED_COMPLETED_MONTH_ENDS = 36;
 export const V9_REAL_INPUT =
   "沪深 300 每月底买过去 20 天涨幅最大的 50 只，等权持有，宣称年化 18% 夏普 1.9";
 export const V9_REAL_ARTIFACT_PATH = "artifacts/v9/assay-real-data-run.json";
+export const V9_UNACCEPTED_DIAGNOSTIC_DIR = ".cache/assay/run-logs";
+export const V9_UNACCEPTED_DIAGNOSTIC_VERSION = "assay-v9-unaccepted-diagnostic-v1";
+export const V9_MECHANISM_REPLAY_VERSION = "assay-v9-mechanism-replay-v1";
 const ASSAY_CACHE_ROOT = ".cache/assay";
 const V9_CACHE_RELATIVE_ROOT = "v9-p1-v1";
 const V9_CACHE_ROOT = `${ASSAY_CACHE_ROOT}/${V9_CACHE_RELATIVE_ROOT}`;
@@ -67,29 +73,12 @@ const V9_READY_MODE_BY_DATASET = {
   comparatorFactors: "library_and_classic",
 } as const;
 
-const CHECK_EVIDENCE_REQUIREMENTS: Readonly<
-  Record<AuditCheckId, { metric: string; sourceRef: string }>
-> = {
-  "param-robustness": {
-    metric: "neighborhoodSharpeRetention",
-    sourceRef: "artifact:backtest/param-grid",
-  },
-  "data-availability": {
-    metric: "corrected.delta",
-    sourceRef: AVAILABILITY_AUDIT_SOURCE_REF,
-  },
-  "cost-stress": {
-    metric: "pessimisticAnnualReturn",
-    sourceRef: "artifact:backtest/cost-ladder",
-  },
-  "regime-dependency": {
-    metric: "dominantEnvironment.pnlShare",
-    sourceRef: REGIME_SPLIT_SOURCE_REF,
-  },
-  "homogeneity-decay": {
-    metric: "summary.maxAbsMeanSpearman",
-    sourceRef: HOMOGENEITY_AUDIT_SOURCE_REF,
-  },
+const CHECK_SOURCE_REF_REQUIREMENTS: Readonly<Record<AuditCheckId, string>> = {
+  "param-robustness": PARAMETER_GRID_SOURCE_REF,
+  "data-availability": AVAILABILITY_AUDIT_SOURCE_REF,
+  "cost-stress": COST_STRESS_SOURCE_REF,
+  "regime-dependency": REGIME_SPLIT_SOURCE_REF,
+  "homogeneity-decay": HOMOGENEITY_AUDIT_SOURCE_REF,
 };
 
 interface V9DatasetSnapshot {
@@ -135,6 +124,29 @@ export interface V9RealAcceptanceBundle {
   readonly codeRevision: string;
   readonly cacheSnapshot: V9CacheSnapshot;
   readonly artifact: AuditArtifact;
+}
+
+export interface V9UnacceptedDiagnostic {
+  readonly schemaVersion: typeof V9_UNACCEPTED_DIAGNOSTIC_VERSION;
+  readonly artifactRole: "unaccepted-diagnostic";
+  readonly acceptanceStatus: "unaccepted";
+  readonly reasonCode: "PRE_ASSERTION_CANDIDATE";
+  readonly capturedFrom: "completed-a2a-task";
+  readonly capturedAt: string;
+  readonly candidate: Omit<V9RealAcceptanceBundle, "artifactRole">;
+}
+
+export interface V9MechanismAssertionResult {
+  readonly assertion: string;
+  readonly status: "pass" | "fail" | "blocked";
+  readonly expected: JsonValue;
+  readonly actual: JsonValue;
+}
+
+export interface V9MechanismReplayReport {
+  readonly schemaVersion: typeof V9_MECHANISM_REPLAY_VERSION;
+  readonly passed: boolean;
+  readonly assertions: readonly V9MechanismAssertionResult[];
 }
 
 interface V9CacheInspection {
@@ -717,105 +729,470 @@ export async function inspectV9Cache(): Promise<V9CacheInspection> {
   };
 }
 
-function assertCheckEvidence(check: AuditCheckResult): void {
-  if (check.conclusion === "insufficient_evidence") {
-    requireValue(
-      check.missingEvidence.length > 0,
-      `${check.id} must explain insufficient evidence`,
-    );
-    requireValue(
-      check.missingEvidence.every((item) =>
-        item.sourceRefs.every((sourceRef) => !sourceRef.startsWith("runtime-error:")),
-      ),
-      `${check.id} fell back because its instrument or agent execution failed`,
-    );
-    return;
-  }
-  const requirement = CHECK_EVIDENCE_REQUIREMENTS[check.id];
-  requireValue(
-    check.evidence.some(
-      (item) =>
-        item.metric === requirement.metric &&
-        typeof item.value === "number" &&
-        Number.isFinite(item.value) &&
-        item.sourceRefs.includes(requirement.sourceRef),
-    ),
-    `${check.id} must contain its frozen numeric metric and sourceRef`,
-  );
+function pushAssertion(
+  assertions: V9MechanismAssertionResult[],
+  assertion: string,
+  expected: JsonValue,
+  actual: JsonValue,
+  passed: boolean,
+): void {
+  assertions.push({
+    assertion,
+    status: passed ? "pass" : "fail",
+    expected,
+    actual,
+  });
 }
 
-export function assertV9RealMechanism(value: unknown): V9RealAcceptanceBundle {
-  requireValue(isRecord(value), "v9 acceptance bundle must be an object");
-  requireValue(value.schemaVersion === V9_REAL_BUNDLE_VERSION, "v9 bundle version is invalid");
-  requireValue(value.artifactRole === "real-data-acceptance", "v9 bundle role is invalid");
-  requireValue(value.input === V9_REAL_INPUT, "v9 bundle input is not frozen");
-  requireValue(value.dataMode === V9_REAL_DATA_MODE, "v9 bundle data mode is invalid");
-  requireValue(
-    typeof value.codeRevision === "string" && /^[a-f0-9]{40}$/.test(value.codeRevision),
-    "v9 bundle codeRevision is invalid",
-  );
-  requireValue(
-    typeof value.generatedAt === "string" && !Number.isNaN(Date.parse(value.generatedAt)),
-    "v9 bundle generatedAt is invalid",
-  );
-  const codeRevision = value.codeRevision;
-  const cacheSnapshot = parseCacheSnapshot(value.cacheSnapshot);
-  const artifact = parseAuditArtifact(value.artifact);
-  const result = artifact.results[0];
-  requireValue(result !== undefined, "v9 Artifact omitted its strategy result");
-  requireValue(
-    result.checks.length === AUDIT_CHECK_IDS.length &&
-      result.checks.every((check, index) => check.id === AUDIT_CHECK_IDS[index]),
-    "v9 Artifact did not preserve all five canonical checks",
-  );
-  result.checks.forEach(assertCheckEvidence);
-  requireValue(artifact.claimComparison !== null, "v9 Artifact omitted claimComparison");
-  requireValue(
-    artifact.claimComparison.claimed.annualReturn === 0.18 &&
-      artifact.claimComparison.claimed.sharpe === 1.9 &&
-      artifact.claimComparison.claimed.maxDrawdown === undefined &&
-      artifact.claimComparison.knownConventionDiffs.length === 0 &&
-      Number.isFinite(artifact.claimComparison.reproduced.sharpe) &&
-      Number.isFinite(artifact.claimComparison.reproduced.annualReturn),
-    "v9 claimComparison differs from the frozen claim or lacks reproduced evidence",
-  );
-  requireValue(
-    artifact.provenance.dataAsOf === cacheSnapshot.dataAsOf,
-    "v9 Artifact dataAsOf is not bound to its cache snapshot",
-  );
-  requireValue(
-    artifact.provenance.codeRevision === codeRevision,
-    "v9 Artifact code revision is not bound to its acceptance bundle",
-  );
-  requireValue(
-    result.strategySpec !== undefined &&
-      artifact.provenance.inputHash ===
-        hashStrategySpec(canonicalizeStrategySpec(result.strategySpec)),
-    "v9 Artifact input hash is not bound to its canonical StrategySpec",
-  );
-  const plannedMoire = planDiscriminativeMoireExperiments(result.checks, {
-    costBaselineMode: "uncorrected",
+function pushBlockedAssertion(
+  assertions: V9MechanismAssertionResult[],
+  assertion: string,
+  expected: JsonValue,
+  dependency: string,
+): void {
+  assertions.push({
+    assertion,
+    status: "blocked",
+    expected,
+    actual: `blocked by ${dependency}`,
   });
-  const plannedMoireByCheck = new Map<AuditCheckId, string>(
-    plannedMoire.map((experiment) => [experiment.checkId, experiment.id]),
+}
+
+function safeAssertionError(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return "UnknownError";
+  }
+  const message = error.message.trim();
+  if (
+    message.length === 0 ||
+    message.length > 300 ||
+    /(?:^|\s)\/(?:Users|home|private|tmp|var|etc)\//u.test(message) ||
+    /https?:\/\//iu.test(message)
+  ) {
+    return safeErrorType(error);
+  }
+  try {
+    assertOutputSafe({ message });
+    return message;
+  } catch {
+    return safeErrorType(error);
+  }
+}
+
+function safeVisibleString(value: unknown): string {
+  if (typeof value !== "string") {
+    return value === null ? "null" : typeof value;
+  }
+  if (value.length > 200) {
+    return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+  }
+  try {
+    assertOutputSafe({ value });
+    return value;
+  } catch {
+    return "[redacted]";
+  }
+}
+
+function inputDigest(value: unknown): string {
+  return typeof value === "string"
+    ? `sha256:${createHash("sha256").update(value).digest("hex")}`
+    : typeof value;
+}
+
+interface V9MechanismEvaluation {
+  readonly report: V9MechanismReplayReport;
+  readonly bundle?: V9RealAcceptanceBundle;
+}
+
+function runV9MechanismAssertions(value: unknown): V9MechanismEvaluation {
+  const assertions: V9MechanismAssertionResult[] = [];
+  const record = isRecord(value) ? value : undefined;
+  pushAssertion(
+    assertions,
+    "bundle.object",
+    "JSON object",
+    record === undefined ? (Array.isArray(value) ? "array" : typeof value) : "JSON object",
+    record !== undefined,
   );
-  const refined = result.checks.filter((check) => check.refinedByMoire !== undefined);
-  requireValue(
-    plannedMoire.length === refined.length &&
+  pushAssertion(
+    assertions,
+    "bundle.schemaVersion",
+    V9_REAL_BUNDLE_VERSION,
+    safeVisibleString(record?.schemaVersion),
+    record?.schemaVersion === V9_REAL_BUNDLE_VERSION,
+  );
+  pushAssertion(
+    assertions,
+    "bundle.artifactRole",
+    "real-data-acceptance",
+    safeVisibleString(record?.artifactRole),
+    record?.artifactRole === "real-data-acceptance",
+  );
+  pushAssertion(
+    assertions,
+    "bundle.input",
+    inputDigest(V9_REAL_INPUT),
+    inputDigest(record?.input),
+    record?.input === V9_REAL_INPUT,
+  );
+  const rawCacheSnapshot = isRecord(record?.cacheSnapshot) ? record.cacheSnapshot : undefined;
+  const rawCacheVersion = rawCacheSnapshot?.cacheVersion;
+  const expectedDataMode =
+    typeof rawCacheVersion === "string"
+      ? `${rawCacheVersion}-validated-official-post-cache`
+      : `${V9_CACHE_VERSION}-validated-official-post-cache`;
+  pushAssertion(
+    assertions,
+    "bundle.dataMode.binds-cacheVersion",
+    expectedDataMode,
+    safeVisibleString(record?.dataMode),
+    record?.dataMode === expectedDataMode,
+  );
+  const validCodeRevision =
+    typeof record?.codeRevision === "string" && /^[a-f0-9]{40}$/.test(record.codeRevision);
+  pushAssertion(
+    assertions,
+    "bundle.codeRevision",
+    "40 lowercase hexadecimal characters",
+    typeof record?.codeRevision === "string"
+      ? safeVisibleString(record.codeRevision)
+      : safeVisibleString(record?.codeRevision),
+    validCodeRevision,
+  );
+  const validGeneratedAt =
+    typeof record?.generatedAt === "string" && !Number.isNaN(Date.parse(record.generatedAt));
+  pushAssertion(
+    assertions,
+    "bundle.generatedAt",
+    "parseable ISO timestamp",
+    typeof record?.generatedAt === "string"
+      ? safeVisibleString(record.generatedAt)
+      : safeVisibleString(record?.generatedAt),
+    validGeneratedAt,
+  );
+
+  let cacheSnapshot: V9CacheSnapshot | undefined;
+  try {
+    cacheSnapshot = parseCacheSnapshot(record?.cacheSnapshot);
+    pushAssertion(assertions, "cacheSnapshot.schema", "valid v9 cache snapshot", "valid", true);
+  } catch (error) {
+    pushAssertion(
+      assertions,
+      "cacheSnapshot.schema",
+      "valid v9 cache snapshot",
+      safeAssertionError(error),
+      false,
+    );
+  }
+
+  let artifact: AuditArtifact | undefined;
+  try {
+    artifact = parseAuditArtifact(record?.artifact);
+    pushAssertion(assertions, "artifact.schema", "valid AuditArtifact", "valid", true);
+  } catch (error) {
+    pushAssertion(
+      assertions,
+      "artifact.schema",
+      "valid AuditArtifact",
+      safeAssertionError(error),
+      false,
+    );
+  }
+  if (artifact === undefined) {
+    pushBlockedAssertion(
+      assertions,
+      "artifact.currentSchemaVersion",
+      AUDIT_ARTIFACT_SCHEMA_VERSION,
+      "artifact.schema",
+    );
+  } else {
+    pushAssertion(
+      assertions,
+      "artifact.currentSchemaVersion",
+      AUDIT_ARTIFACT_SCHEMA_VERSION,
+      artifact.schemaVersion,
+      artifact.schemaVersion === AUDIT_ARTIFACT_SCHEMA_VERSION,
+    );
+  }
+
+  const result = artifact?.results[0];
+  if (artifact === undefined) {
+    pushBlockedAssertion(
+      assertions,
+      "artifact.strategyResult",
+      "one strategy result",
+      "artifact.schema",
+    );
+  } else {
+    pushAssertion(
+      assertions,
+      "artifact.strategyResult",
+      "one strategy result",
+      result === undefined ? "missing" : "present",
+      result !== undefined,
+    );
+  }
+
+  if (result === undefined) {
+    pushBlockedAssertion(
+      assertions,
+      "checks.canonicalOrder",
+      [...AUDIT_CHECK_IDS],
+      "artifact.strategyResult",
+    );
+    for (const id of AUDIT_CHECK_IDS) {
+      pushBlockedAssertion(
+        assertions,
+        `checks.${id}.executionEvidence`,
+        "finite numeric evidence carrying the canonical sourceRef or explicit missing evidence without runtime fallback",
+        "artifact.strategyResult",
+      );
+      pushBlockedAssertion(
+        assertions,
+        `checks.${id}.sourceRef`,
+        CHECK_SOURCE_REF_REQUIREMENTS[id],
+        "artifact.strategyResult",
+      );
+    }
+  } else {
+    const actualCheckIds = result.checks.map((check) => check.id);
+    pushAssertion(
+      assertions,
+      "checks.canonicalOrder",
+      [...AUDIT_CHECK_IDS],
+      actualCheckIds,
+      result.checks.length === AUDIT_CHECK_IDS.length &&
+        result.checks.every((check, index) => check.id === AUDIT_CHECK_IDS[index]),
+    );
+    for (const id of AUDIT_CHECK_IDS) {
+      const check = result.checks.find((candidate) => candidate.id === id);
+      if (check === undefined) {
+        pushAssertion(
+          assertions,
+          `checks.${id}.executionEvidence`,
+          "finite numeric evidence carrying the canonical sourceRef or explicit missing evidence without runtime fallback",
+          "missing check",
+          false,
+        );
+        pushAssertion(
+          assertions,
+          `checks.${id}.sourceRef`,
+          CHECK_SOURCE_REF_REQUIREMENTS[id],
+          "missing check",
+          false,
+        );
+        continue;
+      }
+      const numericEvidenceCount = check.evidence.filter(
+        (item) => typeof item.value === "number" && Number.isFinite(item.value),
+      ).length;
+      const requiredSourceRef = CHECK_SOURCE_REF_REQUIREMENTS[id];
+      const numericEvidenceWithRequiredSourceRefCount = check.evidence.filter(
+        (item) =>
+          typeof item.value === "number" &&
+          Number.isFinite(item.value) &&
+          item.sourceRefs.includes(requiredSourceRef),
+      ).length;
+      const runtimeFallbackCount = check.missingEvidence.reduce(
+        (count, item) =>
+          count +
+          item.sourceRefs.filter((sourceRef) => sourceRef.startsWith("runtime-error:")).length,
+        0,
+      );
+      const executedEvidenceIsValid =
+        check.conclusion === "insufficient_evidence"
+          ? check.missingEvidence.length > 0 && runtimeFallbackCount === 0
+          : check.conclusion !== "not_applicable" && numericEvidenceWithRequiredSourceRefCount > 0;
+      pushAssertion(
+        assertions,
+        `checks.${id}.executionEvidence`,
+        "finite numeric evidence carrying the canonical sourceRef or explicit missing evidence without runtime fallback",
+        {
+          conclusion: check.conclusion,
+          numericEvidenceCount,
+          numericEvidenceWithRequiredSourceRefCount,
+          missingEvidenceCount: check.missingEvidence.length,
+          runtimeFallbackCount,
+        },
+        executedEvidenceIsValid,
+      );
+      const sourceRefs = [
+        ...check.evidence.flatMap((item) => item.sourceRefs),
+        ...check.missingEvidence.flatMap((item) => item.sourceRefs),
+      ];
+      pushAssertion(
+        assertions,
+        `checks.${id}.sourceRef`,
+        requiredSourceRef,
+        {
+          requiredRefPresent: sourceRefs.includes(requiredSourceRef),
+          sourceRefCount: sourceRefs.length,
+        },
+        sourceRefs.includes(requiredSourceRef),
+      );
+    }
+  }
+
+  if (artifact === undefined) {
+    pushBlockedAssertion(
+      assertions,
+      "claimComparison.present",
+      "non-null current-schema claimComparison",
+      "artifact.schema",
+    );
+    pushBlockedAssertion(
+      assertions,
+      "claimComparison.claimed",
+      { annualReturn: 0.18, sharpe: 1.9, maxDrawdown: "absent" },
+      "artifact.schema",
+    );
+    pushBlockedAssertion(
+      assertions,
+      "claimComparison.reproduced",
+      "finite annualReturn, sharpe, and maxDrawdown",
+      "artifact.schema",
+    );
+  } else {
+    const comparison = artifact.claimComparison;
+    pushAssertion(
+      assertions,
+      "claimComparison.present",
+      "non-null current-schema claimComparison",
+      comparison === null ? "null" : "present",
+      comparison !== null,
+    );
+    const claimedActual: JsonValue =
+      comparison === null
+        ? "blocked by claimComparison.present"
+        : {
+            annualReturn: comparison.claimed.annualReturn ?? "absent",
+            sharpe: comparison.claimed.sharpe ?? "absent",
+            maxDrawdown: comparison.claimed.maxDrawdown ?? "absent",
+          };
+    pushAssertion(
+      assertions,
+      "claimComparison.claimed",
+      { annualReturn: 0.18, sharpe: 1.9, maxDrawdown: "absent" },
+      claimedActual,
+      comparison !== null &&
+        comparison.claimed.annualReturn === 0.18 &&
+        comparison.claimed.sharpe === 1.9 &&
+        comparison.claimed.maxDrawdown === undefined,
+    );
+    const reproducedActual: JsonValue =
+      comparison === null
+        ? "blocked by claimComparison.present"
+        : {
+            annualReturnFinite: Number.isFinite(comparison.reproduced.annualReturn),
+            sharpeFinite: Number.isFinite(comparison.reproduced.sharpe),
+            maxDrawdownFinite: Number.isFinite(comparison.reproduced.maxDrawdown),
+          };
+    pushAssertion(
+      assertions,
+      "claimComparison.reproduced",
+      "finite annualReturn, sharpe, and maxDrawdown",
+      reproducedActual,
+      comparison !== null &&
+        Number.isFinite(comparison.reproduced.annualReturn) &&
+        Number.isFinite(comparison.reproduced.sharpe) &&
+        Number.isFinite(comparison.reproduced.maxDrawdown),
+    );
+  }
+
+  if (artifact === undefined || cacheSnapshot === undefined) {
+    pushBlockedAssertion(
+      assertions,
+      "provenance.dataAsOf",
+      "Artifact dataAsOf equals cache snapshot dataAsOf",
+      artifact === undefined ? "artifact.schema" : "cacheSnapshot.schema",
+    );
+  } else {
+    pushAssertion(
+      assertions,
+      "provenance.dataAsOf",
+      cacheSnapshot.dataAsOf,
+      artifact.provenance.dataAsOf,
+      artifact.provenance.dataAsOf === cacheSnapshot.dataAsOf,
+    );
+  }
+  if (artifact === undefined || !validCodeRevision) {
+    pushBlockedAssertion(
+      assertions,
+      "provenance.codeRevision",
+      "Artifact codeRevision equals bundle codeRevision",
+      artifact === undefined ? "artifact.schema" : "bundle.codeRevision",
+    );
+  } else {
+    pushAssertion(
+      assertions,
+      "provenance.codeRevision",
+      record.codeRevision as string,
+      artifact.provenance.codeRevision,
+      artifact.provenance.codeRevision === record.codeRevision,
+    );
+  }
+
+  if (artifact === undefined || result?.strategySpec === undefined) {
+    pushBlockedAssertion(
+      assertions,
+      "provenance.inputHash",
+      "hash of canonical StrategySpec",
+      artifact === undefined ? "artifact.schema" : "artifact.strategySpec",
+    );
+  } else {
+    const expectedHash = hashStrategySpec(canonicalizeStrategySpec(result.strategySpec));
+    pushAssertion(
+      assertions,
+      "provenance.inputHash",
+      expectedHash,
+      artifact.provenance.inputHash,
+      artifact.provenance.inputHash === expectedHash,
+    );
+  }
+
+  if (result === undefined) {
+    pushBlockedAssertion(
+      assertions,
+      "moire.execution",
+      "executed refinements equal frozen planner output",
+      "artifact.strategyResult",
+    );
+    pushBlockedAssertion(
+      assertions,
+      "moire.summary",
+      "summary exactly describes executed refinements",
+      "artifact.strategyResult",
+    );
+  } else {
+    const plannedMoire = planDiscriminativeMoireExperiments(result.checks, {
+      costBaselineMode: "uncorrected",
+    });
+    const plannedMoireByCheck = new Map<AuditCheckId, string>(
+      plannedMoire.map((experiment) => [experiment.checkId, experiment.id]),
+    );
+    const refined = result.checks.filter((check) => check.refinedByMoire !== undefined);
+    const executionMatches =
+      plannedMoire.length === refined.length &&
       result.checks.every((check) => {
         const expectedId = plannedMoireByCheck.get(check.id);
         return expectedId === undefined
           ? check.refinedByMoire === undefined
           : check.refinedByMoire?.startsWith(`[${expectedId}]`) === true;
-      }),
-    "v9 Artifact Moiré execution does not match the frozen trigger planner",
-  );
-  const refinementTexts = refined
-    .flatMap((check) => (check.refinedByMoire === undefined ? [] : [check.refinedByMoire]))
-    .sort();
-  const summarizedRefinements = [...result.moire.resolved, ...result.moire.unresolved].sort();
-  requireValue(
-    result.moire.disputesOpened === refined.length &&
+      });
+    pushAssertion(
+      assertions,
+      "moire.execution",
+      plannedMoire.map((experiment) => `${experiment.checkId}:${experiment.id}`).sort(),
+      refined.map((check) => check.id).sort(),
+      executionMatches,
+    );
+    const refinementTexts = refined
+      .flatMap((check) => (check.refinedByMoire === undefined ? [] : [check.refinedByMoire]))
+      .sort();
+    const summarizedRefinements = [...result.moire.resolved, ...result.moire.unresolved].sort();
+    const summaryMatches =
+      result.moire.disputesOpened === refined.length &&
       result.moire.resolved.length + result.moire.unresolved.length === refined.length &&
       JSON.stringify(summarizedRefinements) === JSON.stringify(refinementTexts) &&
       result.moire.resolved.every((item) => {
@@ -825,36 +1202,249 @@ export function assertV9RealMechanism(value: unknown): V9RealAcceptanceBundle {
           );
         return match !== null && match[1] === match[2];
       }) &&
-      result.moire.unresolved.every((item) => /^\[(?:M1|M2)\]\[unresolved\]\s/u.test(item)),
-    "v9 Artifact Moiré summary does not match executed refinements",
-  );
-  requireValue(
-    result.verdict === deriveVerdict(result.checks, artifact.claimComparison),
-    "v9 Artifact verdict differs from deterministic policy",
-  );
-  const bundle: V9RealAcceptanceBundle = {
-    schemaVersion: V9_REAL_BUNDLE_VERSION,
-    artifactRole: "real-data-acceptance",
-    generatedAt: value.generatedAt,
-    input: V9_REAL_INPUT,
-    dataMode: V9_REAL_DATA_MODE,
-    codeRevision,
-    cacheSnapshot,
-    artifact,
+      result.moire.unresolved.every((item) => /^\[(?:M1|M2)\]\[unresolved\]\s/u.test(item));
+    pushAssertion(
+      assertions,
+      "moire.summary",
+      {
+        disputesOpened: refined.length,
+        refinementCount: refined.length,
+        canonicalTagsAndResolvedSourceRefs: true,
+      },
+      {
+        disputesOpened: result.moire.disputesOpened,
+        resolvedCount: result.moire.resolved.length,
+        unresolvedCount: result.moire.unresolved.length,
+        canonicalTagsAndResolvedSourceRefs: summaryMatches,
+      },
+      summaryMatches,
+    );
+  }
+
+  if (result === undefined || artifact === undefined) {
+    pushBlockedAssertion(
+      assertions,
+      "verdict.productionPolicy",
+      "direct deriveVerdict(actual checks, actual claimComparison)",
+      "artifact.strategyResult",
+    );
+  } else {
+    let expectedVerdict: string;
+    try {
+      expectedVerdict = deriveVerdict(result.checks, artifact.claimComparison);
+      pushAssertion(
+        assertions,
+        "verdict.productionPolicy",
+        expectedVerdict,
+        result.verdict,
+        result.verdict === expectedVerdict,
+      );
+    } catch (error) {
+      pushAssertion(
+        assertions,
+        "verdict.productionPolicy",
+        "direct deriveVerdict(actual checks, actual claimComparison)",
+        safeAssertionError(error),
+        false,
+      );
+    }
+  }
+
+  try {
+    assertOutputSafe(value);
+    pushAssertion(assertions, "output.safety", "safe serialized output", "safe", true);
+  } catch {
+    pushAssertion(assertions, "output.safety", "safe serialized output", "unsafe", false);
+  }
+
+  const report: V9MechanismReplayReport = {
+    schemaVersion: V9_MECHANISM_REPLAY_VERSION,
+    passed: assertions.every((assertion) => assertion.status === "pass"),
+    assertions,
   };
-  assertOutputSafe(bundle);
-  return bundle;
+  assertOutputSafe(report);
+  const bundle: V9RealAcceptanceBundle | undefined =
+    report.passed &&
+    record !== undefined &&
+    validCodeRevision &&
+    validGeneratedAt &&
+    cacheSnapshot !== undefined &&
+    artifact !== undefined
+      ? {
+          schemaVersion: V9_REAL_BUNDLE_VERSION,
+          artifactRole: "real-data-acceptance",
+          generatedAt: record.generatedAt as string,
+          input: V9_REAL_INPUT,
+          dataMode: V9_REAL_DATA_MODE,
+          codeRevision: record.codeRevision as string,
+          cacheSnapshot,
+          artifact,
+        }
+      : undefined;
+  return { report, ...(bundle === undefined ? {} : { bundle }) };
 }
 
-async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
+export function replayV9RealMechanism(value: unknown): V9MechanismReplayReport {
+  return runV9MechanismAssertions(value).report;
+}
+
+export function assertV9RealMechanism(value: unknown): V9RealAcceptanceBundle {
+  const evaluation = runV9MechanismAssertions(value);
+  if (!evaluation.report.passed || evaluation.bundle === undefined) {
+    const mismatches = evaluation.report.assertions
+      .filter((assertion) => assertion.status !== "pass")
+      .map(
+        (assertion) =>
+          `${assertion.assertion}: expected=${JSON.stringify(assertion.expected)} actual=${JSON.stringify(assertion.actual)}`,
+      )
+      .join("; ");
+    throw new Error(`v9 mechanism assertions failed: ${mismatches}`);
+  }
+  return evaluation.bundle;
+}
+
+const MAX_V9_DIAGNOSTIC_BYTES = 2 * 1024 * 1024;
+
+async function writeSerializedJsonAtomic(path: string, contents: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
-  const temporaryPath = `${path}.${String(process.pid)}.tmp`;
+  const temporaryPath = `${path}.${String(process.pid)}.${randomUUID()}.tmp`;
   try {
-    await writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+    await writeFile(temporaryPath, contents, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
     await rename(temporaryPath, path);
   } finally {
     await rm(temporaryPath, { force: true });
   }
+}
+
+async function writeSerializedJsonExclusive(path: string, contents: string): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  const temporaryPath = `${path}.${String(process.pid)}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporaryPath, contents, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
+    try {
+      await link(temporaryPath, path);
+    } catch (error) {
+      if (isRecord(error) && error.code === "EEXIST") {
+        throw new Error("v9 unaccepted diagnostic already exists; refusing to overwrite");
+      }
+      throw error;
+    }
+  } finally {
+    await rm(temporaryPath, { force: true });
+  }
+}
+
+async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
+  await writeSerializedJsonAtomic(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function pathIsEqualOrInside(parent: string, candidate: string): boolean {
+  const pathFromParent = relative(parent, candidate);
+  return (
+    pathFromParent === "" ||
+    (pathFromParent !== ".." &&
+      !pathFromParent.startsWith(`..${sep}`) &&
+      !isAbsolute(pathFromParent))
+  );
+}
+
+function resolveV9DiagnosticRoot(diagnosticRoot: string): string {
+  const resolvedRoot = resolve(diagnosticRoot);
+  const repositoryRoot = resolve(".");
+  const defaultDiagnosticRoot = resolve(V9_UNACCEPTED_DIAGNOSTIC_DIR);
+  const isDedicatedRepositoryCache = pathIsEqualOrInside(defaultDiagnosticRoot, resolvedRoot);
+  const isOutsideRepository = !pathIsEqualOrInside(repositoryRoot, resolvedRoot);
+  requireValue(
+    isDedicatedRepositoryCache || isOutsideRepository,
+    "v9 unaccepted diagnostics must stay outside the repository or inside the dedicated diagnostic cache",
+  );
+  return resolvedRoot;
+}
+
+async function resolveV9DiagnosticRootForWrite(diagnosticRoot: string): Promise<string> {
+  const resolvedRoot = resolveV9DiagnosticRoot(diagnosticRoot);
+  await mkdir(resolvedRoot, { recursive: true });
+  const [physicalRoot, physicalRepositoryRoot] = await Promise.all([
+    realpath(resolvedRoot),
+    realpath(resolve(".")),
+  ]);
+  const defaultDiagnosticRoot = resolve(V9_UNACCEPTED_DIAGNOSTIC_DIR);
+  const isDedicatedRepositoryCache = pathIsEqualOrInside(defaultDiagnosticRoot, resolvedRoot);
+  const expectedPhysicalDiagnosticRoot = resolve(
+    physicalRepositoryRoot,
+    V9_UNACCEPTED_DIAGNOSTIC_DIR,
+  );
+  const physicalRootIsAllowed = isDedicatedRepositoryCache
+    ? pathIsEqualOrInside(expectedPhysicalDiagnosticRoot, physicalRoot)
+    : !pathIsEqualOrInside(physicalRepositoryRoot, physicalRoot);
+  requireValue(
+    physicalRootIsAllowed,
+    "v9 unaccepted diagnostic root resolves across its physical repository boundary",
+  );
+  return physicalRoot;
+}
+
+function v9UnacceptedDiagnosticFilename(bundle: V9RealAcceptanceBundle): string {
+  const timestamp = bundle.generatedAt.replaceAll(/[^0-9]/gu, "");
+  const revision = /^[a-f0-9]{40}$/u.test(bundle.codeRevision)
+    ? bundle.codeRevision.slice(0, 12)
+    : createHash("sha256").update(bundle.codeRevision).digest("hex").slice(0, 12);
+  return `v9-unaccepted-${revision}-${timestamp || "undated"}.json`;
+}
+
+export function v9UnacceptedDiagnosticPath(
+  bundle: V9RealAcceptanceBundle,
+  diagnosticRoot = V9_UNACCEPTED_DIAGNOSTIC_DIR,
+): string {
+  const resolvedRoot = resolveV9DiagnosticRoot(diagnosticRoot);
+  const filename = v9UnacceptedDiagnosticFilename(bundle);
+  const outputPath = resolve(resolvedRoot, filename);
+  requireValue(
+    pathIsEqualOrInside(resolvedRoot, outputPath),
+    "v9 unaccepted diagnostic path escaped its diagnostic root",
+  );
+  return outputPath;
+}
+
+export async function persistV9UnacceptedDiagnostic(
+  bundle: V9RealAcceptanceBundle,
+  diagnosticRoot = V9_UNACCEPTED_DIAGNOSTIC_DIR,
+): Promise<V9UnacceptedDiagnostic> {
+  const physicalRoot = await resolveV9DiagnosticRootForWrite(diagnosticRoot);
+  const outputPath = resolve(physicalRoot, v9UnacceptedDiagnosticFilename(bundle));
+  const diagnostic: V9UnacceptedDiagnostic = {
+    schemaVersion: V9_UNACCEPTED_DIAGNOSTIC_VERSION,
+    artifactRole: "unaccepted-diagnostic",
+    acceptanceStatus: "unaccepted",
+    reasonCode: "PRE_ASSERTION_CANDIDATE",
+    capturedFrom: "completed-a2a-task",
+    capturedAt: new Date().toISOString(),
+    candidate: {
+      schemaVersion: bundle.schemaVersion,
+      generatedAt: bundle.generatedAt,
+      input: bundle.input,
+      dataMode: bundle.dataMode,
+      codeRevision: bundle.codeRevision,
+      cacheSnapshot: bundle.cacheSnapshot,
+      artifact: parseAuditArtifact(bundle.artifact),
+    },
+  };
+  assertOutputSafe(diagnostic);
+  const serialized = `${JSON.stringify(diagnostic, null, 2)}\n`;
+  requireValue(
+    Buffer.byteLength(serialized, "utf8") <= MAX_V9_DIAGNOSTIC_BYTES,
+    "v9 unaccepted diagnostic exceeds the bounded size limit",
+  );
+  await writeSerializedJsonExclusive(outputPath, serialized);
+  return diagnostic;
 }
 
 async function closeServer(server: Server): Promise<void> {
@@ -969,7 +1559,43 @@ export async function runV9RealAcceptance(): Promise<string> {
       cacheSnapshot,
       artifact,
     };
-    const accepted = assertV9RealMechanism(bundle);
+    const diagnosticPath = v9UnacceptedDiagnosticPath(bundle);
+    const diagnosticStartedAt = Date.now();
+    try {
+      await persistV9UnacceptedDiagnostic(bundle);
+      writeAcceptanceTimeline({
+        phase: "unaccepted_candidate_persisted",
+        outcome: "completed",
+        durationMs: Date.now() - diagnosticStartedAt,
+      });
+    } catch (error) {
+      writeAcceptanceTimeline({
+        phase: "unaccepted_candidate_persisted",
+        outcome: "failed",
+        durationMs: Date.now() - diagnosticStartedAt,
+        errorType: safeErrorType(error),
+      });
+      throw error;
+    }
+    const mechanismStartedAt = Date.now();
+    writeAcceptanceTimeline({ phase: "mechanism_assertion_started" });
+    let accepted: V9RealAcceptanceBundle;
+    try {
+      accepted = assertV9RealMechanism(bundle);
+      writeAcceptanceTimeline({
+        phase: "mechanism_assertion_finished",
+        outcome: "completed",
+        durationMs: Date.now() - mechanismStartedAt,
+      });
+    } catch (error) {
+      writeAcceptanceTimeline({
+        phase: "mechanism_assertion_finished",
+        outcome: "failed",
+        durationMs: Date.now() - mechanismStartedAt,
+        errorType: safeErrorType(error),
+      });
+      throw error;
+    }
     const outputPath = resolve(process.env.ASSAY_V9_OUTPUT?.trim() || V9_REAL_ARTIFACT_PATH);
     requireValue(
       outputPath !== resolve("artifacts/sprint/assay-vertical-run.json") &&
@@ -977,6 +1603,15 @@ export async function runV9RealAcceptance(): Promise<string> {
       "v9 output must not overwrite a mechanism fixture",
     );
     await writeJsonAtomic(outputPath, accepted);
+    try {
+      await rm(diagnosticPath, { force: true });
+    } catch (error) {
+      writeAcceptanceTimeline({
+        phase: "unaccepted_candidate_cleanup",
+        outcome: "failed",
+        errorType: safeErrorType(error),
+      });
+    }
     return V9_REAL_ARTIFACT_PATH;
   } finally {
     await closeServer(server);

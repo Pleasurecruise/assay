@@ -226,7 +226,16 @@ class ExperimentStdioIntegrationTest(unittest.TestCase):
             response = json.loads(completed.stdout)
             self.assertEqual(
                 set(response),
-                {"engineVersion", "baseline", "variants"},
+                {
+                    "engineVersion",
+                    "baseline",
+                    "variants",
+                    "summaryRef",
+                },
+            )
+            self.assertEqual(
+                response["summaryRef"],
+                "artifact:backtest/parameter-grid",
             )
             self.assertEqual(len(response["variants"]), 2)
 

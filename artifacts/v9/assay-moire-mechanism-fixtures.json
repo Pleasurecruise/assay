@@ -21,7 +21,7 @@
       "outcome": {
         "id": "M1",
         "kind": "regime_slice_of_grid",
-        "sourceRef": "artifact:moire/M1/sha256-dc0e4acaf1e6386ae3196c84b56488d51f203b347fc028cf0962bbcb78549102",
+        "sourceRef": "artifact:moire/M1/sha256-36dc9ad556d9af3d62f58abdbdd878bae129f57370a22b3f7b83ce0e0c73c823",
         "dominantEnvironmentId": "up-normal",
         "dominantRetention": 1,
         "otherEnvironmentRetentions": [
@@ -44,12 +44,12 @@
         "policyVersion": "1.0.0",
         "resolved": true,
         "changed": true,
-        "refinedByMoire": "[M1][resolved] 参数脆弱性集中于非主导环境。 dominant=up-normal:1.000000; others=down-high=0.214286,down-normal=0.250000,up-high=0.250000; sourceRef=artifact:moire/M1/sha256-dc0e4acaf1e6386ae3196c84b56488d51f203b347fc028cf0962bbcb78549102"
+        "refinedByMoire": "[M1][resolved] 参数脆弱性集中于非主导环境。 dominant=up-normal:1.000000; others=down-high=0.214286,down-normal=0.250000,up-high=0.250000; sourceRef=artifact:moire/M1/sha256-36dc9ad556d9af3d62f58abdbdd878bae129f57370a22b3f7b83ce0e0c73c823"
       },
       "moireEvidence": {
-        "sourceRef": "artifact:moire/M1/sha256-dc0e4acaf1e6386ae3196c84b56488d51f203b347fc028cf0962bbcb78549102",
-        "sha256": "dc0e4acaf1e6386ae3196c84b56488d51f203b347fc028cf0962bbcb78549102",
-        "canonicalJson": "{\"assumptions\":[\"Environment retention equals the median Sharpe of all 15 frozen grid variant entries divided by the separately reported baseline Sharpe in the same regime.\",\"A complete, unambiguous, hash-verified artifact set from the host context was reused.\",\"A return dated t uses the same t-1 MA200/vol60 historical two-thirds-quantile label as the regime audit.\",\"Regime labels use prepared index cache version assay-v9-p1-v1.\"],\"dominantEnvironmentId\":\"up-normal\",\"dominantRetention\":1.0,\"engineVersion\":\"s1a-1\",\"grid\":{\"dailyReturnRefs\":[\"artifact:backtest/param-grid/daily-returns/sha256-c6b7dffa3dbb0d0798a6cdc15f4e92374fb0e8662869c2e3483bc7260da5f5d0\",\"artifact:backtest/param-grid/daily-returns/sha256-4e68f57f82c038791c7cde53075e3ee1c8c903763cc0960de2162af43e780ac8\",\"artifact:backtest/param-grid/daily-returns/sha256-3a93969882a4edd9c0695798b280abdab059370e1821f77e0d14450c967feb4f\",\"artifact:backtest/param-grid/daily-returns/sha256-9167ae595029a1c50763c7b269b7ecc1d2d207618d46021426c9fa7a9b478c9a\",\"artifact:backtest/param-grid/daily-returns/sha256-498ea655239f40b733c8405d7c93988eb7d972bf6e663808a9a019a8ac18fd64\",\"artifact:backtest/param-grid/daily-returns/sha256-80310ae56748892f50b33b5f5582e3f02c720ab27c1851390e868edcaa9cc8c7\",\"artifact:backtest/param-grid/daily-returns/sha256-a23fcbe77f6050a1a76b9d576285ca91283f0ecedd3f5c35c8fccc0c0f7228b6\",\"artifact:backtest/param-grid/daily-returns/sha256-015faf06e21779a20aa24d2312d0c485670779df06bb96bd1e963e3560f615ae\",\"artifact:backtest/param-grid/daily-returns/sha256-e0921d1551e880213cad018209d12863b9ea0ae7cb59b0b98a271135d1219ace\",\"artifact:backtest/param-grid/daily-returns/sha256-272c7ecccdee302215985c86237ebfee70ce43ce689d509c1423ece12692d7b7\",\"artifact:backtest/param-grid/daily-returns/sha256-1f0446be494c06cceb2c39455e67a2f39c18408ca4585b5dadb8a18fad4b4ecd\",\"artifact:backtest/param-grid/daily-returns/sha256-121bf12cb76515b2541d5553c49134dc3f8d3fbf40fc59fbdf3533be8852eeaa\",\"artifact:backtest/param-grid/daily-returns/sha256-84d8c2b977b100d3bd3cb669ef666585f0e045819e2e3ebe931093375ce90c9a\",\"artifact:backtest/param-grid/daily-returns/sha256-c4ffe38f42b0b12e33bd3d46a233fcbadf81f45f9266523abbc14ed722902509\",\"artifact:backtest/param-grid/daily-returns/sha256-505d2d0090cd000b2e6de30986cb03310485497786d6dae879bab039c1ca5b86\",\"artifact:backtest/param-grid/daily-returns/sha256-c5bb0081ad0873fbbe9e0ec4d69ec727142077d883dc35d2f718e20e91e1bda7\"],\"mode\":\"existing_grid_artifacts\",\"panelIdentity\":\"sha256:c22df6cea14bb7cb3aad0fedc6b151ea8a3ec68e17ac10f0bf3d23fa586eefa7\",\"specHash\":\"sha256:f520d76398bd832f81911104a70384af06afa9bbac58511cd59e9247435347b3\",\"topN\":[30,50,70],\"variantCount\":15,\"windows\":[14,17,20,23,26]},\"id\":\"M1\",\"kind\":\"regime_slice_of_grid\",\"otherEnvironmentRetentions\":[{\"environmentId\":\"down-high\",\"retention\":0.2142857142857143},{\"environmentId\":\"down-normal\",\"retention\":0.24999999999999992},{\"environmentId\":\"up-high\",\"retention\":0.24999999999999997}],\"regime\":{\"indexIdentity\":\"assay-v9-p1-v1\",\"unlabeledNonzeroDays\":0},\"retentionDetails\":[{\"baselineSharpe\":29.015669747725816,\"environmentId\":\"down-high\",\"medianVariantSharpe\":6.217643517369818,\"retention\":0.2142857142857143,\"variantCount\":15},{\"baselineSharpe\":31.215380824202683,\"environmentId\":\"down-normal\",\"medianVariantSharpe\":7.803845206050668,\"retention\":0.24999999999999992,\"variantCount\":15},{\"baselineSharpe\":31.416556144810016,\"environmentId\":\"up-high\",\"medianVariantSharpe\":7.854139036202503,\"retention\":0.24999999999999997,\"variantCount\":15},{\"baselineSharpe\":31.305739022975455,\"environmentId\":\"up-normal\",\"medianVariantSharpe\":31.305739022975455,\"retention\":1.0,\"variantCount\":15}],\"schemaVersion\":\"moire-evidence-artifact-v1\"}"
+        "sourceRef": "artifact:moire/M1/sha256-36dc9ad556d9af3d62f58abdbdd878bae129f57370a22b3f7b83ce0e0c73c823",
+        "sha256": "36dc9ad556d9af3d62f58abdbdd878bae129f57370a22b3f7b83ce0e0c73c823",
+        "canonicalJson": "{\"assumptions\":[\"Environment retention equals the median Sharpe of all 15 frozen grid variant entries divided by the separately reported baseline Sharpe in the same regime.\",\"A complete, unambiguous, hash-verified artifact set from the host context was reused.\",\"A return dated t uses the same t-1 MA200/vol60 historical two-thirds-quantile label as the regime audit.\",\"Regime labels use prepared index cache version assay-v9-p1-v1.\"],\"dominantEnvironmentId\":\"up-normal\",\"dominantRetention\":1.0,\"engineVersion\":\"s1a-1\",\"grid\":{\"dailyReturnRefs\":[\"artifact:backtest/parameter-grid/daily-returns/sha256-c6b7dffa3dbb0d0798a6cdc15f4e92374fb0e8662869c2e3483bc7260da5f5d0\",\"artifact:backtest/parameter-grid/daily-returns/sha256-4e68f57f82c038791c7cde53075e3ee1c8c903763cc0960de2162af43e780ac8\",\"artifact:backtest/parameter-grid/daily-returns/sha256-3a93969882a4edd9c0695798b280abdab059370e1821f77e0d14450c967feb4f\",\"artifact:backtest/parameter-grid/daily-returns/sha256-9167ae595029a1c50763c7b269b7ecc1d2d207618d46021426c9fa7a9b478c9a\",\"artifact:backtest/parameter-grid/daily-returns/sha256-498ea655239f40b733c8405d7c93988eb7d972bf6e663808a9a019a8ac18fd64\",\"artifact:backtest/parameter-grid/daily-returns/sha256-80310ae56748892f50b33b5f5582e3f02c720ab27c1851390e868edcaa9cc8c7\",\"artifact:backtest/parameter-grid/daily-returns/sha256-a23fcbe77f6050a1a76b9d576285ca91283f0ecedd3f5c35c8fccc0c0f7228b6\",\"artifact:backtest/parameter-grid/daily-returns/sha256-015faf06e21779a20aa24d2312d0c485670779df06bb96bd1e963e3560f615ae\",\"artifact:backtest/parameter-grid/daily-returns/sha256-e0921d1551e880213cad018209d12863b9ea0ae7cb59b0b98a271135d1219ace\",\"artifact:backtest/parameter-grid/daily-returns/sha256-272c7ecccdee302215985c86237ebfee70ce43ce689d509c1423ece12692d7b7\",\"artifact:backtest/parameter-grid/daily-returns/sha256-1f0446be494c06cceb2c39455e67a2f39c18408ca4585b5dadb8a18fad4b4ecd\",\"artifact:backtest/parameter-grid/daily-returns/sha256-121bf12cb76515b2541d5553c49134dc3f8d3fbf40fc59fbdf3533be8852eeaa\",\"artifact:backtest/parameter-grid/daily-returns/sha256-84d8c2b977b100d3bd3cb669ef666585f0e045819e2e3ebe931093375ce90c9a\",\"artifact:backtest/parameter-grid/daily-returns/sha256-c4ffe38f42b0b12e33bd3d46a233fcbadf81f45f9266523abbc14ed722902509\",\"artifact:backtest/parameter-grid/daily-returns/sha256-505d2d0090cd000b2e6de30986cb03310485497786d6dae879bab039c1ca5b86\",\"artifact:backtest/parameter-grid/daily-returns/sha256-c5bb0081ad0873fbbe9e0ec4d69ec727142077d883dc35d2f718e20e91e1bda7\"],\"mode\":\"existing_grid_artifacts\",\"panelIdentity\":\"sha256:c22df6cea14bb7cb3aad0fedc6b151ea8a3ec68e17ac10f0bf3d23fa586eefa7\",\"specHash\":\"sha256:f520d76398bd832f81911104a70384af06afa9bbac58511cd59e9247435347b3\",\"topN\":[30,50,70],\"variantCount\":15,\"windows\":[14,17,20,23,26]},\"id\":\"M1\",\"kind\":\"regime_slice_of_grid\",\"otherEnvironmentRetentions\":[{\"environmentId\":\"down-high\",\"retention\":0.2142857142857143},{\"environmentId\":\"down-normal\",\"retention\":0.24999999999999992},{\"environmentId\":\"up-high\",\"retention\":0.24999999999999997}],\"regime\":{\"indexIdentity\":\"assay-v9-p1-v1\",\"unlabeledNonzeroDays\":0},\"retentionDetails\":[{\"baselineSharpe\":29.015669747725816,\"environmentId\":\"down-high\",\"medianVariantSharpe\":6.217643517369818,\"retention\":0.2142857142857143,\"variantCount\":15},{\"baselineSharpe\":31.215380824202683,\"environmentId\":\"down-normal\",\"medianVariantSharpe\":7.803845206050668,\"retention\":0.24999999999999992,\"variantCount\":15},{\"baselineSharpe\":31.416556144810016,\"environmentId\":\"up-high\",\"medianVariantSharpe\":7.854139036202503,\"retention\":0.24999999999999997,\"variantCount\":15},{\"baselineSharpe\":31.305739022975455,\"environmentId\":\"up-normal\",\"medianVariantSharpe\":31.305739022975455,\"retention\":1.0,\"variantCount\":15}],\"schemaVersion\":\"moire-evidence-artifact-v1\"}"
       },
       "artifact": {
         "schemaVersion": "1.1.0",
@@ -78,7 +78,7 @@
                   }
                 ],
                 "missingEvidence": [],
-                "refinedByMoire": "[M1][resolved] 参数脆弱性集中于非主导环境。 dominant=up-normal:1.000000; others=down-high=0.214286,down-normal=0.250000,up-high=0.250000; sourceRef=artifact:moire/M1/sha256-dc0e4acaf1e6386ae3196c84b56488d51f203b347fc028cf0962bbcb78549102"
+                "refinedByMoire": "[M1][resolved] 参数脆弱性集中于非主导环境。 dominant=up-normal:1.000000; others=down-high=0.214286,down-normal=0.250000,up-high=0.250000; sourceRef=artifact:moire/M1/sha256-36dc9ad556d9af3d62f58abdbdd878bae129f57370a22b3f7b83ce0e0c73c823"
               },
               {
                 "id": "data-availability",
@@ -148,7 +148,7 @@
             "moire": {
               "disputesOpened": 1,
               "resolved": [
-                "[M1][resolved] 参数脆弱性集中于非主导环境。 dominant=up-normal:1.000000; others=down-high=0.214286,down-normal=0.250000,up-high=0.250000; sourceRef=artifact:moire/M1/sha256-dc0e4acaf1e6386ae3196c84b56488d51f203b347fc028cf0962bbcb78549102"
+                "[M1][resolved] 参数脆弱性集中于非主导环境。 dominant=up-normal:1.000000; others=down-high=0.214286,down-normal=0.250000,up-high=0.250000; sourceRef=artifact:moire/M1/sha256-36dc9ad556d9af3d62f58abdbdd878bae129f57370a22b3f7b83ce0e0c73c823"
               ],
               "unresolved": []
             },
@@ -210,7 +210,7 @@
           "codeRevision": "moire-mechanism-fixture-v2"
         }
       },
-      "recordDigest": "sha256:a9968fa2329920f9feab0c196aae9eacea258bb9200dd8b957ab917be7dbf673"
+      "recordDigest": "sha256:19147a4f8888639d68698be8673fac3117c1fbf82f693c9e872724ee13d9c015"
     },
     {
       "fixtureId": "M2-corrected-cost-ladder-v2",
@@ -231,7 +231,7 @@
       "outcome": {
         "id": "M2",
         "kind": "corrected_cost_ladder",
-        "sourceRef": "artifact:moire/M2/sha256-a059704bea0f357fec7a7e3f22c00f3726ecaa083471820edb981aa9cd86b95e",
+        "sourceRef": "artifact:moire/M2/sha256-db1cd58ad1840421b2df79196fa956c32fc56d13061f06010dda76ec4c8ed338",
         "correctedCostConclusion": "fail"
       },
       "synthesis": {
@@ -239,13 +239,13 @@
         "policyVersion": "1.0.0",
         "resolved": true,
         "changed": true,
-        "refinedByMoire": "[M2][resolved] PIT 修正后成本结论档位翻转，以修正版为准。 original=pass_with_reservations; corrected=fail; sourceRef=artifact:moire/M2/sha256-a059704bea0f357fec7a7e3f22c00f3726ecaa083471820edb981aa9cd86b95e",
+        "refinedByMoire": "[M2][resolved] PIT 修正后成本结论档位翻转，以修正版为准。 original=pass_with_reservations; corrected=fail; sourceRef=artifact:moire/M2/sha256-db1cd58ad1840421b2df79196fa956c32fc56d13061f06010dda76ec4c8ed338",
         "effectiveConclusion": "fail"
       },
       "moireEvidence": {
-        "sourceRef": "artifact:moire/M2/sha256-a059704bea0f357fec7a7e3f22c00f3726ecaa083471820edb981aa9cd86b95e",
-        "sha256": "a059704bea0f357fec7a7e3f22c00f3726ecaa083471820edb981aa9cd86b95e",
-        "canonicalJson": "{\"assumptions\":[\"The fixed standard/realistic/pessimistic ladder is run once on the host-only PIT-corrected panel and eligibility mask.\",\"Frozen minimum rule: pessimistic annualReturn <= 0 maps to fail; a positive value maps to pass_with_reservations. The pass tier is intentionally unreachable in this minimum v9 instrument.\"],\"availabilityMode\":\"full_pit\",\"correctedContextCacheVersion\":\"assay-v9-p1-v1\",\"correctedContextDigest\":\"sha256:ea375adab15ff756d0a8cfe4e66ed9c59a6592e9d723ba08e2e5b0c30ff35448\",\"correctedContextPitDatasetVersion\":\"factor-close-trade-status-pit-v2\",\"correctedCostConclusion\":\"fail\",\"engineVersion\":\"s1a-1\",\"id\":\"M2\",\"kind\":\"corrected_cost_ladder\",\"ladder\":{\"baseline\":{\"annualReturn\":-0.06786788861326987,\"annualTurnover\":0.2728740787018655,\"maxDrawdown\":-0.09527309424687047,\"params\":{\"costModel\":\"none\",\"topN\":4,\"window\":20},\"sharpe\":-39.61174351298617},\"engineVersion\":\"s1a-1\",\"variants\":[{\"annualReturn\":-0.06799604914527624,\"annualTurnover\":0.2728722335288407,\"maxDrawdown\":-0.09545029908233638,\"params\":{\"costModel\":\"standard\",\"topN\":4,\"window\":20},\"sharpe\":-39.99902974404408},{\"annualReturn\":-0.06850576458997126,\"annualTurnover\":0.2728648739160325,\"maxDrawdown\":-0.09615496935158352,\"params\":{\"costModel\":\"realistic\",\"topN\":4,\"window\":20},\"sharpe\":-38.486956702935686},{\"annualReturn\":-0.06882475466120153,\"annualTurnover\":0.27286027164025867,\"maxDrawdown\":-0.09659588275253628,\"params\":{\"costModel\":\"pessimistic\",\"topN\":4,\"window\":20},\"sharpe\":-35.6985616937247}]},\"pessimisticAnnualReturn\":-0.06882475466120153,\"schemaVersion\":\"moire-evidence-artifact-v1\"}"
+        "sourceRef": "artifact:moire/M2/sha256-db1cd58ad1840421b2df79196fa956c32fc56d13061f06010dda76ec4c8ed338",
+        "sha256": "db1cd58ad1840421b2df79196fa956c32fc56d13061f06010dda76ec4c8ed338",
+        "canonicalJson": "{\"assumptions\":[\"The fixed standard/realistic/pessimistic ladder is run once on the host-only PIT-corrected panel and eligibility mask.\",\"Frozen minimum rule: pessimistic annualReturn <= 0 maps to fail; a positive value maps to pass_with_reservations. The pass tier is intentionally unreachable in this minimum v9 instrument.\"],\"availabilityMode\":\"full_pit\",\"correctedContextCacheVersion\":\"assay-v9-p1-v1\",\"correctedContextDigest\":\"sha256:ea375adab15ff756d0a8cfe4e66ed9c59a6592e9d723ba08e2e5b0c30ff35448\",\"correctedContextPitDatasetVersion\":\"factor-close-trade-status-pit-v2\",\"correctedCostConclusion\":\"fail\",\"engineVersion\":\"s1a-1\",\"id\":\"M2\",\"kind\":\"corrected_cost_ladder\",\"ladder\":{\"baseline\":{\"annualReturn\":-0.06786788861326987,\"annualTurnover\":0.2728740787018655,\"maxDrawdown\":-0.09527309424687047,\"params\":{\"costModel\":\"none\",\"topN\":4,\"window\":20},\"sharpe\":-39.61174351298617},\"engineVersion\":\"s1a-1\",\"summaryRef\":\"artifact:backtest/cost-stress\",\"variants\":[{\"annualReturn\":-0.06799604914527624,\"annualTurnover\":0.2728722335288407,\"maxDrawdown\":-0.09545029908233638,\"params\":{\"costModel\":\"standard\",\"topN\":4,\"window\":20},\"sharpe\":-39.99902974404408},{\"annualReturn\":-0.06850576458997126,\"annualTurnover\":0.2728648739160325,\"maxDrawdown\":-0.09615496935158352,\"params\":{\"costModel\":\"realistic\",\"topN\":4,\"window\":20},\"sharpe\":-38.486956702935686},{\"annualReturn\":-0.06882475466120153,\"annualTurnover\":0.27286027164025867,\"maxDrawdown\":-0.09659588275253628,\"params\":{\"costModel\":\"pessimistic\",\"topN\":4,\"window\":20},\"sharpe\":-35.6985616937247}]},\"pessimisticAnnualReturn\":-0.06882475466120153,\"schemaVersion\":\"moire-evidence-artifact-v1\"}"
       },
       "artifact": {
         "schemaVersion": "1.1.0",
@@ -306,7 +306,7 @@
                   }
                 ],
                 "missingEvidence": [],
-                "refinedByMoire": "[M2][resolved] PIT 修正后成本结论档位翻转，以修正版为准。 original=pass_with_reservations; corrected=fail; sourceRef=artifact:moire/M2/sha256-a059704bea0f357fec7a7e3f22c00f3726ecaa083471820edb981aa9cd86b95e"
+                "refinedByMoire": "[M2][resolved] PIT 修正后成本结论档位翻转，以修正版为准。 original=pass_with_reservations; corrected=fail; sourceRef=artifact:moire/M2/sha256-db1cd58ad1840421b2df79196fa956c32fc56d13061f06010dda76ec4c8ed338"
               },
               {
                 "id": "regime-dependency",
@@ -344,7 +344,7 @@
             "moire": {
               "disputesOpened": 1,
               "resolved": [
-                "[M2][resolved] PIT 修正后成本结论档位翻转，以修正版为准。 original=pass_with_reservations; corrected=fail; sourceRef=artifact:moire/M2/sha256-a059704bea0f357fec7a7e3f22c00f3726ecaa083471820edb981aa9cd86b95e"
+                "[M2][resolved] PIT 修正后成本结论档位翻转，以修正版为准。 original=pass_with_reservations; corrected=fail; sourceRef=artifact:moire/M2/sha256-db1cd58ad1840421b2df79196fa956c32fc56d13061f06010dda76ec4c8ed338"
               ],
               "unresolved": []
             },
@@ -410,7 +410,7 @@
           "codeRevision": "moire-mechanism-fixture-v2"
         }
       },
-      "recordDigest": "sha256:e54407493edd8770f4bc2c3fc700e755d88924e37255b0260df0f132c9be1dc2"
+      "recordDigest": "sha256:5c3dcf230fb0d0ace2227462877806f92c4b86b8d8702fbeea9e00360aa6a0cf"
     }
   ]
 }

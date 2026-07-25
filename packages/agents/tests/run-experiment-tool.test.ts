@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import type { AgentTool } from "@assay/agent-runtime";
+import { COST_STRESS_SOURCE_REF, PARAMETER_GRID_SOURCE_REF } from "@assay/contracts";
 import { describe, expect, test } from "vitest";
 import { createAuditCheckAgentDefinitions } from "../src/definitions";
 import {
@@ -38,6 +39,7 @@ describe("run_experiment tool", () => {
 
     expect(result.baseline.params.costModel).toBe("none");
     expect(result.variants).toEqual([]);
+    expect(result.summaryRef).toBeUndefined();
   });
 
   test("requires the frozen host baseline convention", async () => {
@@ -84,6 +86,7 @@ describe("run_experiment tool", () => {
       annualTurnover: 2,
     });
     expect(result.engineVersion).toBe("mock-v1");
+    expect(result.summaryRef).toBe(PARAMETER_GRID_SOURCE_REF);
   });
 
   test("surfaces a nonzero engine exit and stderr without inventing a result", async () => {
@@ -104,6 +107,7 @@ describe("run_experiment tool", () => {
     ["baseline-missing-metric", "response.baseline must contain exactly"],
     ["variant-invalid-metric", "response.variants[0].sharpe must be a finite number"],
     ["extra-top-level-field", "response must contain exactly"],
+    ["wrong-summary-ref", "response.summaryRef is invalid"],
   ])("rejects malformed engine result shape: %s", async (mockResponseShape, message) => {
     await expect(
       runExperimentSubprocess(mockProcess, {
@@ -217,6 +221,7 @@ describe("run_experiment tool", () => {
     );
     expect(JSON.parse(contentText(output))).toEqual({
       engineVersion: "mock-v1",
+      summaryRef: COST_STRESS_SOURCE_REF,
       baseline: {
         params: { window: 20, topN: 50, costModel: "standard" },
         annualReturn: 0.12,
@@ -298,8 +303,8 @@ describe("run_experiment tool", () => {
     expect(parameter.systemPrompt.join("\n")).toContain("<40%");
     expect(cost.systemPrompt.join("\n")).toContain("pessimistic 变体 annualReturn > 0");
     expect(cost.systemPrompt.join("\n")).toContain("normal 总成本的 1.5 倍");
-    expect(parameter.systemPrompt.join("\n")).toContain("artifact:backtest/param-grid");
-    expect(cost.systemPrompt.join("\n")).toContain("artifact:backtest/cost-ladder");
+    expect(parameter.systemPrompt.join("\n")).toContain(PARAMETER_GRID_SOURCE_REF);
+    expect(cost.systemPrompt.join("\n")).toContain(COST_STRESS_SOURCE_REF);
     expect(parameter.systemPrompt.join("\n")).not.toContain("deviatedFromGuideline");
     expect(cost.systemPrompt.join("\n")).not.toContain("deviatedFromGuideline");
     expect(parameter.systemPrompt.join("\n")).toContain("必须且只能调用一次 run_experiment");

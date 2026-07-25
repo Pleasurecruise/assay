@@ -269,7 +269,15 @@ class EngineProtocolTest(unittest.TestCase):
         json.dumps(ladder, allow_nan=False)
         self.assertEqual(
             set(grid),
-            {"engineVersion", "baseline", "variants"},
+            {"engineVersion", "baseline", "variants", "summaryRef"},
+        )
+        self.assertEqual(
+            grid["summaryRef"],
+            "artifact:backtest/parameter-grid",
+        )
+        self.assertEqual(
+            ladder["summaryRef"],
+            "artifact:backtest/cost-stress",
         )
         self.assertEqual(
             [row["params"]["costModel"] for row in ladder["variants"]],

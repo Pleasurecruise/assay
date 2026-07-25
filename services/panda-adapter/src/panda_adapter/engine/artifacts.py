@@ -13,13 +13,15 @@ from typing import Any, Final
 from .constants import (
     DAILY_RETURNS_ARTIFACT_SCHEMA_VERSION,
     ENGINE_VERSION,
+    PARAMETER_GRID_ARTIFACT_DIRECTORY,
+    PARAMETER_GRID_SOURCE_REF,
 )
 
 DEFAULT_BACKTEST_ARTIFACT_ROOT: Final = Path(
     ".cache/assay/backtest-artifacts-v1"
 )
 DAILY_RETURNS_REF_PREFIX: Final = (
-    "artifact:backtest/param-grid/daily-returns/sha256-"
+    f"{PARAMETER_GRID_SOURCE_REF}/daily-returns/sha256-"
 )
 
 
@@ -65,7 +67,11 @@ def persist_grid_daily_returns(
             str(DEFAULT_BACKTEST_ARTIFACT_ROOT),
         )
     )
-    path = artifact_root / "param-grid" / f"sha256-{digest}.json"
+    path = (
+        artifact_root
+        / PARAMETER_GRID_ARTIFACT_DIRECTORY
+        / f"sha256-{digest}.json"
+    )
     _write_content_addressed(path, content)
     return f"{DAILY_RETURNS_REF_PREFIX}{digest}"
 
@@ -80,7 +86,11 @@ def daily_returns_artifact_path(reference: str, *, root: Path) -> Path:
         character not in "0123456789abcdef" for character in digest
     ):
         raise ValueError("daily-return artifact digest is invalid")
-    return root / "param-grid" / f"sha256-{digest}.json"
+    return (
+        root
+        / PARAMETER_GRID_ARTIFACT_DIRECTORY
+        / f"sha256-{digest}.json"
+    )
 
 
 def _write_content_addressed(path: Path, content: bytes) -> None:

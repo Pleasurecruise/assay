@@ -10,6 +10,9 @@ import type { CanonicalStrategySpec } from "./strategy-spec";
  */
 export const AUDIT_TOOL_CONTRACT_VERSION = "1.0.0" as const;
 
+/** Frozen BACKTESTER D5/D10 experiment-summary identities. */
+export const PARAMETER_GRID_SOURCE_REF = "artifact:backtest/parameter-grid" as const;
+export const COST_STRESS_SOURCE_REF = "artifact:backtest/cost-stress" as const;
 export const AVAILABILITY_AUDIT_SOURCE_REF = "artifact:data-availability/pit-audit" as const;
 export const REGIME_SPLIT_SOURCE_REF = "artifact:regime-dependency/regime-split" as const;
 export const HOMOGENEITY_AUDIT_SOURCE_REF = "artifact:homogeneity-decay/spearman-ic" as const;

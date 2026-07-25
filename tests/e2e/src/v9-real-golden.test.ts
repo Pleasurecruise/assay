@@ -3,7 +3,10 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, test } from "vitest";
-import { loadV9OfflineMechanismFixture } from "./v9-real-data.fixture";
+import {
+  acceptanceCandidateFromV9MechanismFixture,
+  loadV9OfflineMechanismFixture,
+} from "./v9-real-data.fixture";
 import {
   assertV9RealGolden,
   deriveV9RealGolden,
@@ -21,7 +24,7 @@ function clone(value: V9RealGoldenSnapshot): V9RealGoldenSnapshot {
 
 describe("v9 final golden offline infrastructure", () => {
   test("derives stable acceptance facts instead of calendar or id noise", async () => {
-    const bundle = await loadV9OfflineMechanismFixture();
+    const bundle = acceptanceCandidateFromV9MechanismFixture(await loadV9OfflineMechanismFixture());
     const first = deriveV9RealGolden(bundle);
     const second = deriveV9RealGolden({
       ...bundle,
@@ -51,8 +54,31 @@ describe("v9 final golden offline infrastructure", () => {
     expect(first.deterministicVerdict).toBe(bundle.artifact.results[0]?.verdict);
   });
 
+  test("observes convention differences in the golden layer without predicting them in mechanism", async () => {
+    const bundle = acceptanceCandidateFromV9MechanismFixture(await loadV9OfflineMechanismFixture());
+    const claimComparison = bundle.artifact.claimComparison;
+    if (claimComparison === null) {
+      throw new Error("mechanism fixture omitted claim comparison");
+    }
+    const observedConventionDiffs = ["execution convention disclosed by the accepted candidate"];
+    const candidate = {
+      ...bundle,
+      artifact: {
+        ...bundle.artifact,
+        claimComparison: {
+          ...claimComparison,
+          knownConventionDiffs: observedConventionDiffs,
+        },
+      },
+    };
+
+    expect(deriveV9RealGolden(candidate).claimComparison.knownConventionDiffs).toEqual(
+      observedConventionDiffs,
+    );
+  });
+
   test("rejects tampering in every terminal acceptance layer", async () => {
-    const bundle = await loadV9OfflineMechanismFixture();
+    const bundle = acceptanceCandidateFromV9MechanismFixture(await loadV9OfflineMechanismFixture());
     const golden = deriveV9RealGolden(bundle);
     const mutations: V9RealGoldenSnapshot[] = [];
 
@@ -136,7 +162,9 @@ describe("v9 final golden offline infrastructure", () => {
     const bundlePath = join(directory, "accepted-bundle.json");
     const goldenPath = join(directory, "golden.json");
     try {
-      const bundle = await loadV9OfflineMechanismFixture();
+      const bundle = acceptanceCandidateFromV9MechanismFixture(
+        await loadV9OfflineMechanismFixture(),
+      );
       await writeFile(bundlePath, JSON.stringify(bundle), "utf8");
 
       const pinned = await pinAndVerifyV9RealGolden(bundlePath, goldenPath);

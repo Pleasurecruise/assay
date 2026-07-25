@@ -37,6 +37,7 @@ from .engine.artifacts import (
 from .engine.constants import (
     DAILY_RETURNS_ARTIFACT_SCHEMA_VERSION,
     ENGINE_VERSION,
+    PARAMETER_GRID_ARTIFACT_DIRECTORY,
     TRADING_DAYS_PER_YEAR,
 )
 from .engine.experiments import run_cost_ladder, run_grid
@@ -793,7 +794,7 @@ def _load_complete_grid_artifacts(
         str,
         list[tuple[str, list[dict[str, Any]]]],
     ] = {variant_id: [] for variant_id in expected}
-    directory = root / "param-grid"
+    directory = root / PARAMETER_GRID_ARTIFACT_DIRECTORY
     if not directory.is_dir():
         return None
     for path in sorted(directory.glob("sha256-*.json")):
@@ -886,7 +887,11 @@ def _read_grid_artifact_file(
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise RuntimeError("M1 grid artifact is unreadable") from error
     digest = sha256(content).hexdigest()
-    expected_path = root / "param-grid" / f"sha256-{digest}.json"
+    expected_path = (
+        root
+        / PARAMETER_GRID_ARTIFACT_DIRECTORY
+        / f"sha256-{digest}.json"
+    )
     if path.resolve() != expected_path.resolve():
         raise RuntimeError("M1 grid artifact content hash is invalid")
     if not isinstance(payload, Mapping) or set(payload) != {

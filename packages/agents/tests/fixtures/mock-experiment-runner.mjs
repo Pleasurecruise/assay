@@ -74,6 +74,11 @@ if (
       annualTurnover: 1.8,
     },
     variants,
+    ...(request.kind === "grid"
+      ? { summaryRef: "artifact:backtest/parameter-grid" }
+      : request.kind === "cost_ladder"
+        ? { summaryRef: "artifact:backtest/cost-stress" }
+        : {}),
   };
 
   if (request.spec.mockResponseShape === "baseline-missing-metric") {
@@ -82,6 +87,8 @@ if (
     response.variants[0].sharpe = "not-a-number";
   } else if (request.spec.mockResponseShape === "extra-top-level-field") {
     response.debug = true;
+  } else if (request.spec.mockResponseShape === "wrong-summary-ref") {
+    response.summaryRef = "artifact:backtest/wrong";
   }
 
   process.stdout.write(JSON.stringify(response));
