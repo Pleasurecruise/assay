@@ -23,6 +23,7 @@ import {
 } from "./run-experiment-tool";
 import { createRunHomogeneityTool, HOMOGENEITY_AUDIT_SOURCE_REF } from "./run-homogeneity-tool";
 import { createRunRegimeSplitTool, REGIME_SPLIT_SOURCE_REF } from "./run-regime-split-tool";
+import { createSubmitAuditCheckResultTool } from "./submit-audit-check-result-tool";
 
 const medium = "medium" as AgentDefinition["thinkingLevel"];
 const high = "high" as AgentDefinition["thinkingLevel"];
@@ -33,7 +34,8 @@ const sharedGuardrails = `
 并通过 sourceRefs 指向可复核的数据集或计算产物。不得把输出描述为投资建议、收益承诺
 或荐股。缺少数据或工具时返回 insufficient_evidence，不得编造行情、回测结果、因子值或来源。
 
-只输出一个 JSON 对象，不要使用 Markdown 代码围栏或附加解释。字段必须严格为：
+不要把最终结果作为普通文本输出。完成获批的唯一证据工具调用后，必须且只能调用一次
+submit_audit_check_result；该工具参数就是最终结果，字段必须严格为：
 {"id","conclusion","confidence","evidence","missingEvidence"}。
 conclusion 只能是 pass、pass_with_reservations、fail、insufficient_evidence。
 confidence 必须是 0 到 1 的数字。evidence 项为
@@ -43,6 +45,8 @@ missingEvidence 至少一项。调用工具后必须继续完成最终 JSON；�
 仅有思考过程。evidence.value 只能是有限数字、字符串或布尔值，严禁数组、对象或 null；
 区间和列表必须拆成多个标量 evidence（例如 min/max/count 各一项）。sourceRefs 必须始终是
 非空字符串数组，不能写成单个字符串。输出前自行检查这些类型，但不要输出检查过程。
+submit_audit_check_result 成功后立即结束，不再输出第二份结果；宿主只原样验证并留存你的
+提交，不计算或改写 conclusion 与 confidence。
 `.trim();
 
 function outputIdentityGuard(id: AuditCheckId): string {
@@ -217,6 +221,7 @@ export function createAuditCheckAgentDefinitions(
     } else if (experimentKind !== undefined) {
       tools.push(createRunExperimentTool(experimentKind, experimentProcess));
     }
+    tools.push(createSubmitAuditCheckResultTool(id));
     return {
       id,
       name: checkNames[id],

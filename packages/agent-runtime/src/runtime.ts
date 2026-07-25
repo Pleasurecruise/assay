@@ -1,4 +1,5 @@
 import type {
+  AuditCheckResult,
   RuntimeEvent,
   RuntimeEventPayload,
   RuntimeTaskRequest,
@@ -13,6 +14,11 @@ import {
   guardRuntimeToolCall,
   TRUSTED_SPEC_TOOL_NAMES,
 } from "./runtime-tool-guard";
+import {
+  assertAuditCheckSubmissionCompleted,
+  AUDIT_CHECK_SUBMISSION_TOOL_NAME,
+  parseAuditCheckSubmission,
+} from "./final-result";
 
 const DEFAULT_MAX_RUN_MS = 19 * 60 * 1_000;
 
@@ -98,6 +104,9 @@ export class AgentRuntime {
     let output = "";
     let runExperimentCallCount = 0;
     let successfulRunExperimentCallCount = 0;
+    let successfulAuditSubmissionCount = 0;
+    let submittedAuditResult: AuditCheckResult | undefined;
+    const pendingAuditSubmissions = new Map<string, AuditCheckResult>();
 
     const emit = async (payload: RuntimeEventPayload): Promise<void> => {
       const event: RuntimeEvent = {
@@ -115,6 +124,9 @@ export class AgentRuntime {
     const requiredTrustedSpecTool = tools.find((tool) =>
       TRUSTED_SPEC_TOOL_NAMES.some((name) => name === tool.name),
     )?.name;
+    const auditSubmissionTool = tools.find(
+      (tool) => tool.name === AUDIT_CHECK_SUBMISSION_TOOL_NAME,
+    )?.name;
     const agent = new Agent({
       initialState: {
         systemPrompt: [...definition.systemPrompt],
@@ -127,7 +139,42 @@ export class AgentRuntime {
       // OpenAI's optional reasoning.summary request field.
       hideThinkingSummary: true,
       getApiKey: this.#getApiKey,
+      getToolChoice: () =>
+        auditSubmissionTool !== undefined &&
+        successfulRunExperimentCallCount === 1 &&
+        successfulAuditSubmissionCount === 0
+          ? { type: "tool", name: auditSubmissionTool }
+          : undefined,
       beforeToolCall: async ({ toolCall, args }) => {
+        if (toolCall.name === AUDIT_CHECK_SUBMISSION_TOOL_NAME) {
+          if (successfulRunExperimentCallCount !== 1) {
+            return {
+              block: true,
+              reason: "The evidence tool must complete before the final audit submission.",
+            };
+          }
+          if (submittedAuditResult !== undefined) {
+            return {
+              block: true,
+              reason: "The final audit result has already been submitted.",
+            };
+          }
+          try {
+            pendingAuditSubmissions.set(
+              toolCall.id,
+              parseAuditCheckSubmission(toolCall.arguments, definition.id),
+            );
+          } catch (error) {
+            return {
+              block: true,
+              reason:
+                error instanceof Error
+                  ? error.message
+                  : "Final audit submission did not satisfy the frozen schema.",
+            };
+          }
+        }
+
         const guard = guardRuntimeToolCall(
           toolCall.name,
           args,
@@ -203,7 +250,18 @@ export class AgentRuntime {
           });
           break;
         case "tool_execution_end":
-          if (
+          if (event.toolName === AUDIT_CHECK_SUBMISSION_TOOL_NAME) {
+            const pending = pendingAuditSubmissions.get(event.toolCallId);
+            if (
+              event.isError !== true &&
+              pending !== undefined &&
+              submittedAuditResult === undefined
+            ) {
+              submittedAuditResult = pending;
+              successfulAuditSubmissionCount += 1;
+            }
+            pendingAuditSubmissions.delete(event.toolCallId);
+          } else if (
             TRUSTED_SPEC_TOOL_NAMES.some((name) => name === event.toolName) &&
             event.isError !== true
           ) {
@@ -253,6 +311,15 @@ export class AgentRuntime {
         successfulRunExperimentCallCount,
         requiredTrustedSpecTool,
       );
+      if (auditSubmissionTool !== undefined) {
+        assertAuditCheckSubmissionCompleted(
+          successfulAuditSubmissionCount,
+          submittedAuditResult,
+        );
+        output = JSON.stringify(submittedAuditResult);
+      } else {
+        output ||= lastAssistantText(agent.state.messages);
+      }
 
       await emit({
         type: "agent.completed",
