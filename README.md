@@ -107,6 +107,8 @@ PANDA_DATA_USERNAME=86+你的官网注册手机号
 PANDA_DATA_PASSWORD=你的官网密码
 ASSAY_A2A_CORS_ORIGIN=http://localhost:5173,http://127.0.0.1:5173
 ASSAY_AUTH_BASE_URL=http://localhost:5173
+# Optional for non-browser clients such as the Agent Card self-test tool.
+ASSAY_A2A_BEARER_TOKEN=至少32位随机字符串
 BETTER_AUTH_SECRET=至少32位随机字符串
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
@@ -171,6 +173,13 @@ The server listens on port `3001`; discovery and health endpoints are
 `http://127.0.0.1:3001/healthz`. The Agent Card currently advertises only
 `audit_strategy`; Factor and Compare are visible as coming-soon modes and
 cannot submit.
+
+When `ASSAY_A2A_BEARER_TOKEN` is configured, both the HTTP+JSON and JSON-RPC
+A2A endpoints require `Authorization: Bearer <token>`. Without this optional
+token, the A2A transports are public so external Agent Card checkers can call
+them. Better Auth remains scoped to browser authentication and private
+per-user audit-history APIs. The public Agent Card advertises the Bearer
+requirement without exposing the token itself.
 
 ## Model Configuration
 

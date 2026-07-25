@@ -315,7 +315,7 @@ describe("Assay A2A Skeleton over shared HTTP transports", () => {
       ]);
       expect(
         response.headers.get("access-control-allow-headers")?.toLowerCase().split(/,\s*/),
-      ).toEqual(["content-type", "a2a-version", "a2a-extensions"]);
+      ).toEqual(["content-type", "authorization", "a2a-version", "a2a-extensions"]);
       expect(response.headers.get("access-control-allow-private-network")).toBe("true");
       expect(await response.text()).toBe("");
       expect(parserCalls).toHaveLength(0);
@@ -495,13 +495,11 @@ describe("Assay A2A Skeleton over shared HTTP transports", () => {
           url: "http://127.0.0.1/a2a",
           protocolBinding: "HTTP+JSON",
           protocolVersion: "1.0",
-          tenant: "",
         },
         {
           url: "http://127.0.0.1/a2a/jsonrpc",
           protocolBinding: "JSONRPC",
           protocolVersion: "1.0",
-          tenant: "",
         },
       ]);
 

@@ -39,6 +39,25 @@ describe("readProductionConfig", () => {
     ).toThrow("BETTER_AUTH_SECRET must contain at least 32 characters");
   });
 
+  test("accepts an optional A2A bearer token without exposing a default", () => {
+    expect(readProductionConfig(BASE_ENVIRONMENT).a2aBearerToken).toBeUndefined();
+    expect(
+      readProductionConfig({
+        ...BASE_ENVIRONMENT,
+        ASSAY_A2A_BEARER_TOKEN: "test-a2a-token-that-is-at-least-thirty-two-characters",
+      }).a2aBearerToken,
+    ).toBe("test-a2a-token-that-is-at-least-thirty-two-characters");
+  });
+
+  test("rejects a short A2A bearer token", () => {
+    expect(() =>
+      readProductionConfig({
+        ...BASE_ENVIRONMENT,
+        ASSAY_A2A_BEARER_TOKEN: "too-short",
+      }),
+    ).toThrow("ASSAY_A2A_BEARER_TOKEN must contain at least 32 characters");
+  });
+
   test("accepts a deduplicated supplemental Ark credential pool", () => {
     const config = readProductionConfig({
       ...BASE_ENVIRONMENT,

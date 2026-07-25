@@ -5,6 +5,7 @@ export const DEFAULT_ASSAY_A2A_CORS_ORIGINS = [
 ] as const;
 
 export interface ProductionA2AConfig {
+  a2aBearerToken?: string;
   arkApiKey: string;
   arkApiKeys?: readonly string[];
   arkBaseUrl: string;
@@ -50,6 +51,17 @@ function requireAuthSecret(value: string | undefined): string {
     throw new Error("BETTER_AUTH_SECRET must contain at least 32 characters");
   }
   return secret;
+}
+
+function optionalBearerToken(value: string | undefined): string | undefined {
+  const token = value?.trim();
+  if (token === undefined || token.length === 0) {
+    return undefined;
+  }
+  if (token.length < 32) {
+    throw new Error("ASSAY_A2A_BEARER_TOKEN must contain at least 32 characters");
+  }
+  return token;
 }
 
 function utcDate(): string {
@@ -130,6 +142,7 @@ export function readProductionConfig(
     throw new Error("ASSAY_AUTH_BASE_URL is required");
   }
   return {
+    a2aBearerToken: optionalBearerToken(environment.ASSAY_A2A_BEARER_TOKEN),
     arkApiKey: requireNonEmpty(environment.ARK_API_KEY, "ARK_API_KEY"),
     arkApiKeys: optionalCredentialPool(environment.ARK_API_KEYS),
     arkBaseUrl: requireHttpUrl(arkBaseUrl, "ARK_BASE_URL"),

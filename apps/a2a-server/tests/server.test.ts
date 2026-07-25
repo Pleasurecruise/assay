@@ -58,6 +58,8 @@ describe("Assay A2A transports", () => {
       "POST",
       "--header",
       "Content-Type: application/json",
+      "--header",
+      "A2A-Version: 1.0",
       "--data",
       JSON.stringify({
         jsonrpc: "2.0",
@@ -79,7 +81,81 @@ describe("Assay A2A transports", () => {
     );
   });
 
-  test("mounts Better Auth and rejects unauthenticated private routes", async () => {
+  test("protects both A2A transports with an optional bearer token", async () => {
+    const executor: AgentExecutor = {
+      execute: async () => {
+        throw new Error("task lookup must not execute an audit");
+      },
+      cancelTask: async () => {
+        throw new Error("task lookup must not cancel an audit");
+      },
+    };
+    const token = "test-a2a-token-that-is-at-least-thirty-two-characters";
+    const service = createAssayA2AApp({ executor, a2aBearerToken: token });
+    server = service.app.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => server?.once("listening", resolve));
+    const address = server.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("test server did not expose a TCP port");
+    }
+    const origin = `http://127.0.0.1:${String(address.port)}`;
+    const jsonRpcBody = {
+      jsonrpc: "2.0",
+      id: "assay-bearer-handshake",
+      method: "tasks/get",
+      params: { id: "missing-task" },
+    };
+
+    const [cardResponse, unauthenticatedRest, unauthenticatedJsonRpc, authenticatedJsonRpc] =
+      await Promise.all([
+        fetch(`${origin}/.well-known/agent-card.json`),
+        fetch(`${origin}${ASSAY_A2A_REST_PATH}/tasks/missing`),
+        fetch(`${origin}${ASSAY_A2A_JSON_RPC_PATH}`, {
+          method: "POST",
+          headers: {
+            "A2A-Version": "1.0",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(jsonRpcBody),
+        }),
+        fetch(`${origin}${ASSAY_A2A_JSON_RPC_PATH}`, {
+          method: "POST",
+          headers: {
+            "A2A-Version": "1.0",
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(jsonRpcBody),
+        }),
+      ]);
+    const card = (await cardResponse.json()) as {
+      supportedInterfaces?: Array<Record<string, unknown>>;
+      securitySchemes?: Record<string, unknown>;
+      securityRequirements?: unknown[];
+    };
+    const authenticatedPayload = (await authenticatedJsonRpc.json()) as {
+      jsonrpc?: string;
+      id?: string;
+    };
+
+    expect(cardResponse.status).toBe(200);
+    expect(cardResponse.headers.get("cache-control")).toBe("no-cache");
+    expect(
+      card.supportedInterfaces?.every((agentInterface) => !Object.hasOwn(agentInterface, "tenant")),
+    ).toBe(true);
+    expect(card.securitySchemes).toHaveProperty("assayBearer");
+    expect(card.securityRequirements).toHaveLength(1);
+    expect(unauthenticatedRest.status).toBe(401);
+    expect(unauthenticatedRest.headers.get("www-authenticate")).toBe(
+      'Bearer realm="assay-a2a"',
+    );
+    expect(unauthenticatedJsonRpc.status).toBe(401);
+    expect(authenticatedJsonRpc.status).toBe(200);
+    expect(authenticatedPayload.jsonrpc).toBe("2.0");
+    expect(authenticatedPayload.id).toBe("assay-bearer-handshake");
+  });
+
+  test("keeps A2A public while Better Auth protects private user routes", async () => {
     const executor: AgentExecutor = {
       execute: async () => {
         throw new Error("unauthenticated requests must not execute an audit");
@@ -109,14 +185,28 @@ describe("Assay A2A transports", () => {
     }
     const origin = `http://127.0.0.1:${String(address.port)}`;
 
-    const [authHealth, auditHistory, a2a] = await Promise.all([
+    const [authHealth, auditHistory, restA2a, jsonRpcA2a] = await Promise.all([
       fetch(`${origin}/api/auth/ok`),
       fetch(`${origin}/api/audits`),
       fetch(`${origin}${ASSAY_A2A_REST_PATH}/tasks/missing`),
+      fetch(`${origin}${ASSAY_A2A_JSON_RPC_PATH}`, {
+        method: "POST",
+        headers: {
+          "A2A-Version": "1.0",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: "unauthenticated",
+          method: "tasks/get",
+          params: { id: "missing-task" },
+        }),
+      }),
     ]);
 
     expect(authHealth.status).toBe(200);
     expect(auditHistory.status).toBe(401);
-    expect(a2a.status).toBe(401);
+    expect(restA2a.status).not.toBe(401);
+    expect(jsonRpcA2a.status).not.toBe(401);
   });
 });

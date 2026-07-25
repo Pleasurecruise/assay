@@ -12,6 +12,7 @@ import {
   restHandler,
 } from "@a2a-js/sdk/server/express";
 import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
+import { createHash, timingSafeEqual } from "node:crypto";
 import express, { type Express, type Request, type RequestHandler } from "express";
 import { createAssayAgentCard } from "./agent-card";
 import type { AssayAuthService } from "./auth";
@@ -20,6 +21,7 @@ import type { AssayDatabase, StoredAuditRecord } from "./database";
 
 export interface CreateAssayA2AAppOptions {
   executor: AgentExecutor;
+  a2aBearerToken?: string;
   publicUrl?: string;
   corsOrigins?: readonly string[];
   agentCard?: AgentCard;
@@ -47,6 +49,7 @@ export interface AssayA2AApp {
 export const ASSAY_A2A_REST_PATH = "/a2a";
 export const ASSAY_A2A_JSON_RPC_PATH = "/a2a/jsonrpc";
 const AUTHENTICATED_USER_ID = Symbol("authenticatedUserId");
+const A2A_BEARER_USER_ID = "assay-a2a-bearer";
 
 type AuthenticatedRequest = Request & {
   [AUTHENTICATED_USER_ID]?: string;
@@ -64,6 +67,9 @@ export function createAssayA2AApp(options: CreateAssayA2AAppOptions): AssayA2AAp
     createAssayAgentCard(
       `${publicUrl}${ASSAY_A2A_REST_PATH}`,
       `${publicUrl}${ASSAY_A2A_JSON_RPC_PATH}`,
+      {
+        bearerAuthentication: options.a2aBearerToken !== undefined,
+      },
     );
   const taskStore = options.taskStore ?? new InMemoryTaskStore();
   const requestHandler = new DefaultRequestHandler(agentCard, taskStore, options.executor);
@@ -79,7 +85,7 @@ export function createAssayA2AApp(options: CreateAssayA2AAppOptions): AssayA2AAp
       response.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
       response.setHeader(
         "Access-Control-Allow-Headers",
-        "Content-Type, A2A-Version, A2A-Extensions",
+        "Content-Type, Authorization, A2A-Version, A2A-Extensions",
       );
       if (request.get("Access-Control-Request-Private-Network") === "true") {
         response.setHeader("Access-Control-Allow-Private-Network", "true");
@@ -124,11 +130,19 @@ export function createAssayA2AApp(options: CreateAssayA2AAppOptions): AssayA2AAp
       response.status(deleted ? 204 : 404).end();
     });
   }
-  if (requireSession !== undefined) {
-    app.use(ASSAY_A2A_REST_PATH, requireSession);
+  const requireA2AAuthentication = createRequireA2AAuthentication(options.a2aBearerToken);
+  if (requireA2AAuthentication !== undefined) {
+    app.use(ASSAY_A2A_JSON_RPC_PATH, requireA2AAuthentication);
+    app.use(ASSAY_A2A_REST_PATH, requireA2AAuthentication);
   }
-  const a2aUserBuilder = createA2AUserBuilder(options.authService);
-  app.use(`/${AGENT_CARD_PATH}`, agentCardHandler({ agentCardProvider: requestHandler }));
+  const a2aUserBuilder = createA2AUserBuilder(requireA2AAuthentication !== undefined);
+  app.use(
+    `/${AGENT_CARD_PATH}`,
+    agentCardHandler({
+      agentCardProvider: requestHandler,
+      cache: { maxAge: 0 },
+    }),
+  );
   app.use(
     ASSAY_A2A_JSON_RPC_PATH,
     jsonRpcHandler({
@@ -201,8 +215,42 @@ function createRequireSession(
   };
 }
 
-function createA2AUserBuilder(authService: AssayAuthService | undefined) {
-  if (authService === undefined) {
+function createRequireA2AAuthentication(
+  bearerToken: string | undefined,
+): RequestHandler | undefined {
+  if (bearerToken === undefined) {
+    return undefined;
+  }
+  const expectedBearerDigest = createHash("sha256").update(bearerToken).digest();
+
+  return (request, response, next) => {
+    const suppliedBearerToken = readBearerToken(request);
+    if (
+      suppliedBearerToken !== undefined &&
+      timingSafeEqual(
+        createHash("sha256").update(suppliedBearerToken).digest(),
+        expectedBearerDigest,
+      )
+    ) {
+      response.locals.userId = A2A_BEARER_USER_ID;
+      (request as AuthenticatedRequest)[AUTHENTICATED_USER_ID] = A2A_BEARER_USER_ID;
+      next();
+      return;
+    }
+
+    response.setHeader("WWW-Authenticate", 'Bearer realm="assay-a2a"');
+    response.status(401).json({ error: "Authentication required" });
+  };
+}
+
+function readBearerToken(request: Request): string | undefined {
+  const authorization = request.get("Authorization");
+  const match = authorization?.match(/^Bearer[ \t]+(\S+)$/i);
+  return match?.[1];
+}
+
+function createA2AUserBuilder(authenticationRequired: boolean) {
+  if (!authenticationRequired) {
     return UserBuilder.noAuthentication;
   }
   return async (request: Request) => {

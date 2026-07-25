@@ -2,25 +2,50 @@ import type { AgentCard } from "@a2a-js/sdk";
 import { AUDIT_REQUEST_SCHEMA_VERSION } from "@assay/contracts";
 
 export const A2A_SERVER_VERSION = "0.1.0";
+export const A2A_BEARER_SECURITY_SCHEME = "assayBearer";
 
-export function createAssayAgentCard(restUrl: string, jsonRpcUrl: string): AgentCard {
+export interface AssayAgentCardOptions {
+  bearerAuthentication?: boolean;
+}
+
+export function createAssayAgentCard(
+  restUrl: string,
+  jsonRpcUrl: string,
+  options: AssayAgentCardOptions = {},
+): AgentCard {
+  const securitySchemes: AgentCard["securitySchemes"] =
+    options.bearerAuthentication === true
+      ? {
+          [A2A_BEARER_SECURITY_SCHEME]: {
+            scheme: {
+              $case: "httpAuthSecurityScheme",
+              value: {
+                description: "Opaque bearer token supplied by the Assay operator.",
+                scheme: "Bearer",
+                bearerFormat: "opaque",
+              },
+            },
+          },
+        }
+      : {};
+  const securityRequirements: AgentCard["securityRequirements"] =
+    options.bearerAuthentication === true
+      ? [
+          {
+            schemes: {
+              [A2A_BEARER_SECURITY_SCHEME]: { list: [] },
+            },
+          },
+        ]
+      : [];
+
   return {
     name: "Assay Strategy Audit",
     description:
       "Audits supported index-universe ranking strategies with five independent robustness checks. Outputs are technical audits, not investment advice.",
     supportedInterfaces: [
-      {
-        url: restUrl,
-        protocolBinding: "HTTP+JSON",
-        protocolVersion: "1.0",
-        tenant: "",
-      },
-      {
-        url: jsonRpcUrl,
-        protocolBinding: "JSONRPC",
-        protocolVersion: "1.0",
-        tenant: "",
-      },
+      createTenantlessInterface(restUrl, "HTTP+JSON"),
+      createTenantlessInterface(jsonRpcUrl, "JSONRPC"),
     ],
     provider: undefined,
     version: A2A_SERVER_VERSION,
@@ -30,8 +55,8 @@ export function createAssayAgentCard(restUrl: string, jsonRpcUrl: string): Agent
       extendedAgentCard: false,
       extensions: [],
     },
-    securitySchemes: {},
-    securityRequirements: [],
+    securitySchemes,
+    securityRequirements,
     defaultInputModes: ["text/plain"],
     defaultOutputModes: ["application/json", "text/markdown"],
     skills: [
@@ -46,9 +71,23 @@ export function createAssayAgentCard(restUrl: string, jsonRpcUrl: string): Agent
         examples: ["Audit a CSI 300 monthly momentum strategy from 2021-01-01 to 2025-12-31."],
         inputModes: ["text/plain"],
         outputModes: ["application/json", "text/markdown"],
-        securityRequirements: [],
+        securityRequirements,
       },
     ],
     signatures: [],
   };
+}
+
+function createTenantlessInterface(
+  url: string,
+  protocolBinding: "HTTP+JSON" | "JSONRPC",
+): AgentCard["supportedInterfaces"][number] {
+  // @a2a-js/sdk 1.0 models the protobuf default as a required string, while
+  // the JSON wire field is optional. Emitting tenant: "" is rejected by
+  // strict Agent Card validators, so omit it for this single-tenant service.
+  return {
+    url,
+    protocolBinding,
+    protocolVersion: "1.0",
+  } as AgentCard["supportedInterfaces"][number];
 }

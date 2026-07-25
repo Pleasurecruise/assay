@@ -134,6 +134,7 @@ export async function createProductionA2AApp(config: ProductionA2AConfig): Promi
   });
   return createAssayA2AApp({
     executor,
+    a2aBearerToken: config.a2aBearerToken,
     authService,
     database,
     publicUrl: config.publicUrl,
