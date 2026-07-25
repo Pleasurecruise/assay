@@ -150,6 +150,7 @@ describe("LocalDataPackageResolver", () => {
       dataRef: `assay-local-data-v1:audit_g01:${PACKAGE_ID}:${expectedManifestDigest}`,
       packageId: PACKAGE_ID,
       sources: [
+        `assay:local-data-package:${PACKAGE_ID}:${expectedManifestDigest}`,
         `pandadata:market-data:${checksums.marketData}`,
         `pandadata:audit-support:${checksums.auditSupport}`,
         `pandadata:pit-membership:${checksums.pitMembership}`,

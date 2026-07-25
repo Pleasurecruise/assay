@@ -472,6 +472,7 @@ export class LocalDataPackageResolver {
       dataRef: `${LOCAL_DATA_REF_VERSION}:${auditId}:${manifest.packageId}:${digest}`,
       packageId: manifest.packageId,
       sources: [
+        `assay:local-data-package:${manifest.packageId}:${digest}`,
         `pandadata:market-data:${manifest.checksums.marketData}`,
         `pandadata:audit-support:${manifest.checksums.auditSupport}`,
         `pandadata:pit-membership:${manifest.checksums.pitMembership}`,

@@ -87,6 +87,9 @@ export async function createProductionA2AApp(config: ProductionA2AConfig): Promi
     apiKey: config.arkApiKey,
     baseUrl: config.arkBaseUrl,
     model: config.arkModel,
+    ...(config.arkParserMaxAttempts === undefined
+      ? {}
+      : { maxAttempts: config.arkParserMaxAttempts }),
   });
   const intake = new StrategyIntake({
     parser,

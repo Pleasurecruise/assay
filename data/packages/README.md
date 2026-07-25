@@ -1,39 +1,66 @@
-# Complete case data packages
+# Canonical Local Data Registry
 
-This directory contains the versioned, case-level data inputs used to build
-Assay's ignored runtime registry. The datasets are not sampled, aggregated, or
-compressed for Git.
+This directory has two separate responsibilities:
 
-The current package,
-`csi300-momentum-20d-monthly-top50-equal`, contains:
+- `registry.json` binds a claims-free `DataPlan` and semantic runtime
+  `packageId` to a canonical source package.
+- `csi300-momentum-20d-monthly-top50-equal/` owns the single committed copy of
+  the CSI 300 market panel, point-in-time membership, audit-support provenance,
+  and its integrity manifest.
 
-- the byte-exact 216,688-row equity daily panel used by the audit;
+The source directory name is retained for compatibility with the original
+canonical package. It is a data owner, not a runtime routing shortcut.
+`data:install` validates the source once and deterministically materializes one
+independent runtime directory per binding under
+`.cache/assay/local-packages/<packageId>/`.
+
+Runtime selection is always:
+
+```text
+natural language
+  -> frozen StrategySpec and separate claims
+  -> claims-free DataPlan
+  -> strategyKey
+  -> unique runtime package
+```
+
+The registry must never contain case labels, claims, execution costs, raw
+natural-language aliases, or a fallback package. Every binding has exactly
+`packageId`, `sourceDataPackageId`, and `dataPlan`.
+
+Do not duplicate `equity-daily.csv`, the PIT tree, or provenance for another
+binding. Generated runtime copies belong only in `.cache/` and are not
+committed.
+
+## Shared source boundary
+
+The source package contains the complete reviewed inputs; they are not sampled,
+aggregated, or compressed for Git:
+
+- the byte-exact 216,688-row equity daily panel;
 - 37 point-in-time CSI 300 membership snapshots;
 - all 112 promoted fallback-provenance files;
-- a source summary and the full promoted preparation report.
+- the source summary and promoted preparation report.
 
-The package manifest records the current data boundary honestly. Historical
-member daily prices, CSI 300 index daily prices, and comparator factors are
-still `degraded` because no complete, verified dataset was promoted for those
-inputs. A degraded dataset has `path: null`; it must not be represented by a
-placeholder file under `datasets/`.
+Historical-member daily prices, CSI 300 index daily prices, and comparator
+factors remain explicitly `degraded` because no complete verified dataset was
+promoted. A degraded dataset has `path: null` and no placeholder under
+`datasets/`.
 
-Real provider payloads that were never complete enough to promote are retained
-only under `provenance/incomplete-attempts/`: 366 historical-member fragments
-and four comparator-factor payloads. Their manifest records why they are not
-runtime-eligible. Request-splitting records, download parts, resumable request
-state, tool caches, run logs, derived backtest contexts, and temporary outputs
-remain under `.cache/assay` and are not versioned.
+Provider payloads that were incomplete remain only under
+`provenance/incomplete-attempts/`; they are verified provenance, not runtime
+inputs. Download parts, request-splitting state, tool caches, logs, derived
+backtest contexts, and temporary outputs remain under `.cache/assay` and are
+not versioned.
 
-Install and semantically validate the runtime copy with:
+## Build and install
+
+Install and semantically validate all three generated runtime packages with:
 
 ```bash
 bun run data:prepare
 ```
 
-This produces `.cache/assay/local-packages/`. The A2A resolver and Python audit
-loader read only that generated runtime registry.
-
-Maintainers can rebuild the committed case package from reviewed provider
-caches with `bun run data:package`, or refresh those caches and rebuild with
-`bun run data:rebuild`.
+Maintainers can rebuild the shared source and deterministic registry from
+reviewed provider caches with `bun run data:package`, or refresh the provider
+caches first with `bun run data:rebuild`.

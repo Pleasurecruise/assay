@@ -2,14 +2,36 @@ import { createHash, randomUUID } from "node:crypto";
 import { copyFile, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { strategyForData, toCanonicalStrategySpec } from "@assay/contracts";
-import { DeterministicStrategyDataPlanner, type DataPlan } from "@assay/finance-tools";
+import {
+  DeterministicStrategyDataPlanner,
+  LOCAL_DATA_REQUIREMENTS,
+  STRATEGY_DATA_PLAN_SCHEMA_VERSION,
+  type DataPlan,
+  type LocalDataRequirement,
+} from "@assay/finance-tools";
 
 export const CASE_DATA_PACKAGE_SCHEMA_VERSION = "assay-case-data-package-v1" as const;
+export const CASE_DATA_REGISTRY_SCHEMA_VERSION = "assay-case-data-registry-v1" as const;
 export const CASE_DATA_PACKAGE_ROOT = "data/packages" as const;
-export const CSI300_MOMENTUM_CASE_PACKAGE_ID = "csi300-momentum-20d-monthly-top50-equal" as const;
+export const CASE_DATA_REGISTRY_FILENAME = "registry.json" as const;
+export const CSI300_MOMENTUM_SOURCE_DATA_PACKAGE_ID =
+  "csi300-momentum-20d-monthly-top50-equal" as const;
+export const CSI300_MOMENTUM_14D_TOP30_PACKAGE_ID =
+  "csi300-momentum-14d-monthly-top30-equal" as const;
+export const CSI300_MOMENTUM_20D_TOP50_PACKAGE_ID =
+  "csi300-momentum-20d-monthly-top50-equal" as const;
+export const CSI300_MOMENTUM_26D_TOP70_PACKAGE_ID =
+  "csi300-momentum-26d-monthly-top70-equal" as const;
+/** Compatibility name retained for callers of the original single-package API. */
+export const CSI300_MOMENTUM_CASE_PACKAGE_ID = CSI300_MOMENTUM_20D_TOP50_PACKAGE_ID;
 
 const SHA256 = /^sha256-[a-f0-9]{64}$/u;
 const PACKAGE_ID = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/u;
+const COMPACT_DATE = /^\d{8}$/u;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/u;
+const REQUIRED_CASE_DATA_REQUIREMENTS = LOCAL_DATA_REQUIREMENTS.filter(
+  (requirement) => requirement !== "strategy_signal_factors",
+);
 const DATASET_NAMES = [
   "equityDaily",
   "indexMembership",
@@ -74,6 +96,22 @@ export interface LoadedCaseDataPackage {
   readonly manifestPath: string;
   readonly manifest: CaseDataPackageManifest;
   readonly manifestBytes: Buffer;
+}
+
+export interface CaseDataPackageBinding {
+  readonly packageId: string;
+  readonly sourceDataPackageId: string;
+  readonly dataPlan: DataPlan;
+}
+
+export interface CaseDataPackageRegistry {
+  readonly schemaVersion: typeof CASE_DATA_REGISTRY_SCHEMA_VERSION;
+  readonly bindings: readonly CaseDataPackageBinding[];
+}
+
+export interface LoadedCaseDataBinding {
+  readonly binding: CaseDataPackageBinding;
+  readonly source: LoadedCaseDataPackage;
 }
 
 export interface ExportCsi300CasePackageOptions {
@@ -415,39 +453,245 @@ export async function validateCaseDataPackage(
   return { packageRoot: root, manifestPath, manifest, manifestBytes };
 }
 
-export async function validateCaseDataRegistry(
-  root: string,
-): Promise<readonly LoadedCaseDataPackage[]> {
-  const registry = resolve(root);
-  await requirePath(registry, "directory", "case package registry");
-  const names: string[] = [];
-  for (const entry of await readdir(registry, { withFileTypes: true })) {
-    requireValue(!entry.isSymbolicLink(), "case package registry cannot contain symlinks");
-    if (entry.isDirectory()) names.push(entry.name);
-    else requireValue(entry.isFile(), "case package registry contains unsupported entry");
+function validCalendarDate(value: string, pattern: RegExp): boolean {
+  if (!pattern.test(value)) return false;
+  const iso =
+    value.length === 8 ? `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}` : value;
+  const timestamp = Date.parse(`${iso}T00:00:00Z`);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === iso;
+}
+
+function compactToIso(value: string): string {
+  return `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`;
+}
+
+function parseDataPlan(value: unknown, location: string): DataPlan {
+  requireValue(
+    isRecord(value) &&
+      exact(value, [
+        "schemaVersion",
+        "strategyKey",
+        "indexSymbol",
+        "window",
+        "requiredCoverage",
+        "requirements",
+      ]) &&
+      value.schemaVersion === STRATEGY_DATA_PLAN_SCHEMA_VERSION &&
+      typeof value.strategyKey === "string" &&
+      SHA256.test(value.strategyKey) &&
+      typeof value.indexSymbol === "string" &&
+      value.indexSymbol.length > 0 &&
+      isRecord(value.window) &&
+      exact(value.window, ["start", "end"]) &&
+      typeof value.window.start === "string" &&
+      typeof value.window.end === "string" &&
+      validCalendarDate(value.window.start, COMPACT_DATE) &&
+      validCalendarDate(value.window.end, COMPACT_DATE) &&
+      value.window.start <= value.window.end &&
+      isRecord(value.requiredCoverage) &&
+      exact(value.requiredCoverage, ["start", "end"]) &&
+      typeof value.requiredCoverage.start === "string" &&
+      typeof value.requiredCoverage.end === "string" &&
+      validCalendarDate(value.requiredCoverage.start, ISO_DATE) &&
+      validCalendarDate(value.requiredCoverage.end, ISO_DATE) &&
+      value.requiredCoverage.start <= compactToIso(value.window.start) &&
+      value.requiredCoverage.end >= compactToIso(value.window.end) &&
+      Array.isArray(value.requirements) &&
+      value.requirements.length > 0,
+    `${location} is invalid`,
+  );
+  const requirements = value.requirements as unknown[];
+  requireValue(
+    requirements.every(
+      (requirement): requirement is LocalDataRequirement =>
+        typeof requirement === "string" &&
+        LOCAL_DATA_REQUIREMENTS.some((candidate) => candidate === requirement),
+    ),
+    `${location}.requirements is invalid`,
+  );
+  const normalizedRequirements = LOCAL_DATA_REQUIREMENTS.filter((requirement) =>
+    requirements.includes(requirement),
+  );
+  requireValue(
+    requirements.length === normalizedRequirements.length &&
+      requirements.every((requirement, index) => requirement === normalizedRequirements[index]) &&
+      REQUIRED_CASE_DATA_REQUIREMENTS.every((requirement) => requirements.includes(requirement)),
+    `${location}.requirements must be complete, unique, and canonically ordered`,
+  );
+  return value as unknown as DataPlan;
+}
+
+function parseBinding(value: unknown, location: string): CaseDataPackageBinding {
+  requireValue(
+    isRecord(value) &&
+      exact(value, ["packageId", "sourceDataPackageId", "dataPlan"]) &&
+      typeof value.packageId === "string" &&
+      PACKAGE_ID.test(value.packageId) &&
+      typeof value.sourceDataPackageId === "string" &&
+      PACKAGE_ID.test(value.sourceDataPackageId),
+    `${location} is invalid`,
+  );
+  parseDataPlan(value.dataPlan, `${location}.dataPlan`);
+  return value as unknown as CaseDataPackageBinding;
+}
+
+export function parseCaseDataRegistry(raw: Uint8Array): CaseDataPackageRegistry {
+  let value: unknown;
+  try {
+    value = JSON.parse(Buffer.from(raw).toString("utf8"));
+  } catch {
+    throw new Error("case data registry is unreadable");
   }
-  names.sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)));
-  requireValue(names.length > 0, "case package registry is empty");
-  return await Promise.all(
-    names.map(async (name) => await validateCaseDataPackage(join(registry, name))),
+  requireValue(
+    isRecord(value) &&
+      exact(value, ["schemaVersion", "bindings"]) &&
+      value.schemaVersion === CASE_DATA_REGISTRY_SCHEMA_VERSION &&
+      Array.isArray(value.bindings) &&
+      value.bindings.length > 0,
+    "case data registry is invalid",
+  );
+  value.bindings.forEach((binding, index) => parseBinding(binding, `registry binding ${index}`));
+  return value as unknown as CaseDataPackageRegistry;
+}
+
+function validateBindingAgainstSource(
+  binding: CaseDataPackageBinding,
+  source: LoadedCaseDataPackage,
+): void {
+  const { dataPlan } = binding;
+  const { manifest } = source;
+  requireValue(
+    binding.sourceDataPackageId === manifest.packageId &&
+      dataPlan.indexSymbol === manifest.universe.indexSymbol &&
+      dataPlan.window.start === manifest.window.start &&
+      dataPlan.window.end === manifest.window.end &&
+      manifest.coverage.start <= dataPlan.requiredCoverage.start &&
+      manifest.coverage.end >= dataPlan.requiredCoverage.end &&
+      manifest.coverage.asOf >= dataPlan.requiredCoverage.end,
+    `${binding.packageId} data plan is not covered by ${binding.sourceDataPackageId}`,
+  );
+  requireValue(
+    manifest.datasets.equityDaily.status === "ready" &&
+      manifest.datasets.indexMembership.status === "ready" &&
+      !dataPlan.requirements.includes("strategy_signal_factors"),
+    `${binding.packageId} requires unavailable source data`,
   );
 }
 
-export function csi300MomentumDataPlan(): DataPlan {
+export async function validateCaseDataRegistry(
+  root: string,
+): Promise<readonly LoadedCaseDataBinding[]> {
+  const registry = resolve(root);
+  await requirePath(registry, "directory", "case package registry");
+  const registryPath = join(registry, CASE_DATA_REGISTRY_FILENAME);
+  await requirePath(registryPath, "file", "case data registry manifest");
+  const parsed = parseCaseDataRegistry(await readFile(registryPath));
+  const packageIds = new Set<string>();
+  const strategyKeys = new Set<string>();
+  const sourceIds = new Set(parsed.bindings.map(({ sourceDataPackageId }) => sourceDataPackageId));
+  for (const entry of await readdir(registry, { withFileTypes: true })) {
+    requireValue(!entry.isSymbolicLink(), "case package registry cannot contain symlinks");
+    if (entry.isDirectory()) {
+      requireValue(sourceIds.has(entry.name), "case package registry contains an unreferenced source");
+    } else {
+      requireValue(
+        entry.isFile() &&
+          (entry.name === CASE_DATA_REGISTRY_FILENAME || entry.name === "README.md"),
+        "case package registry contains an unsupported entry",
+      );
+    }
+  }
+  const sourceById = new Map<string, Promise<LoadedCaseDataPackage>>();
+  const bindings = [...parsed.bindings].sort((left, right) =>
+    Buffer.compare(Buffer.from(left.packageId, "utf8"), Buffer.from(right.packageId, "utf8")),
+  );
+  const loaded: LoadedCaseDataBinding[] = [];
+  for (const binding of bindings) {
+    requireValue(!packageIds.has(binding.packageId), "case data registry has duplicate packageId");
+    requireValue(
+      !strategyKeys.has(binding.dataPlan.strategyKey),
+      "case data registry has duplicate strategyKey",
+    );
+    packageIds.add(binding.packageId);
+    strategyKeys.add(binding.dataPlan.strategyKey);
+    let sourcePromise = sourceById.get(binding.sourceDataPackageId);
+    if (sourcePromise === undefined) {
+      sourcePromise = validateCaseDataPackage(
+        join(registry, binding.sourceDataPackageId),
+        binding.sourceDataPackageId,
+      );
+      sourceById.set(binding.sourceDataPackageId, sourcePromise);
+    }
+    const source = await sourcePromise;
+    validateBindingAgainstSource(binding, source);
+    loaded.push({ binding, source });
+  }
+  return loaded;
+}
+
+function csi300MomentumPlan(window: number, topN: number): DataPlan {
   return new DeterministicStrategyDataPlanner().plan(
     strategyForData(
       toCanonicalStrategySpec({
         specVersion: "1",
         universe: { index: "000300.SH" },
-        signal: { kind: "template", template: "momentum", params: { window: 20 } },
-        selection: { topN: 50, weighting: "equal" },
+        signal: { kind: "template", template: "momentum", params: { window } },
+        selection: { topN, weighting: "equal" },
         rebalance: { frequency: "monthly", at: "close" },
         window: { start: "20230723", end: "20260723" },
         costs: { model: "standard" },
-        claims: { annualReturn: 0.18, sharpe: 1.9 },
       }),
     ),
   );
+}
+
+export const CSI300_MOMENTUM_CASE_BINDINGS = [
+  {
+    packageId: CSI300_MOMENTUM_14D_TOP30_PACKAGE_ID,
+    sourceDataPackageId: CSI300_MOMENTUM_SOURCE_DATA_PACKAGE_ID,
+    dataPlan: csi300MomentumPlan(14, 30),
+  },
+  {
+    packageId: CSI300_MOMENTUM_20D_TOP50_PACKAGE_ID,
+    sourceDataPackageId: CSI300_MOMENTUM_SOURCE_DATA_PACKAGE_ID,
+    dataPlan: csi300MomentumPlan(20, 50),
+  },
+  {
+    packageId: CSI300_MOMENTUM_26D_TOP70_PACKAGE_ID,
+    sourceDataPackageId: CSI300_MOMENTUM_SOURCE_DATA_PACKAGE_ID,
+    dataPlan: csi300MomentumPlan(26, 70),
+  },
+] as const satisfies readonly CaseDataPackageBinding[];
+
+export function csi300MomentumDataPlan(): DataPlan {
+  return csi300MomentumDataPlanForPackage(CSI300_MOMENTUM_CASE_PACKAGE_ID);
+}
+
+export function csi300MomentumDataPlanForPackage(packageId: string): DataPlan {
+  const binding = CSI300_MOMENTUM_CASE_BINDINGS.find(
+    (candidate) => candidate.packageId === packageId,
+  );
+  requireValue(binding !== undefined, "unknown CSI300 momentum package");
+  return binding.dataPlan;
+}
+
+export function csi300MomentumCaseDataRegistry(): CaseDataPackageRegistry {
+  return {
+    schemaVersion: CASE_DATA_REGISTRY_SCHEMA_VERSION,
+    bindings: CSI300_MOMENTUM_CASE_BINDINGS,
+  };
+}
+
+export async function writeCsi300MomentumCaseDataRegistry(
+  root: string,
+): Promise<readonly LoadedCaseDataBinding[]> {
+  const registry = resolve(root);
+  await mkdir(registry, { recursive: true });
+  await writeFile(
+    join(registry, CASE_DATA_REGISTRY_FILENAME),
+    serializeJson(csi300MomentumCaseDataRegistry()),
+  );
+  return await validateCaseDataRegistry(registry);
 }
 
 function reportDataset(report: Record<string, unknown>, name: string): Record<string, unknown> {
@@ -910,3 +1154,6 @@ export async function exportCsi300MomentumCasePackage(
   });
   return { ...(await validateCaseDataPackage(packageRoot)), plan };
 }
+
+/** Canonical two-layer name; the legacy export remains available to existing callers. */
+export const exportCsi300MomentumSourceDataPackage = exportCsi300MomentumCasePackage;

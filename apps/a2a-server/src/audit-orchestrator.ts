@@ -175,22 +175,23 @@ function collectDataSources(
   checks: readonly AuditCheckResult[],
   acquisitionSources: readonly string[] = [],
 ): readonly { id: string; version: string }[] {
+  const isTrackedSource = (sourceRef: string): boolean =>
+    sourceRef.startsWith("pandadata:") ||
+    sourceRef.startsWith("assay:backtest:") ||
+    sourceRef.startsWith("assay:local-data-package:");
   const sourceRefs = new Set([
-    ...acquisitionSources.filter(
-      (sourceRef) => sourceRef.startsWith("pandadata:") || sourceRef.startsWith("assay:backtest:"),
-    ),
+    ...acquisitionSources.filter(isTrackedSource),
     ...checks.flatMap((check) =>
-      check.evidence.flatMap((evidence) =>
-        evidence.sourceRefs.filter(
-          (sourceRef) =>
-            sourceRef.startsWith("pandadata:") || sourceRef.startsWith("assay:backtest:"),
-        ),
-      ),
+      check.evidence.flatMap((evidence) => evidence.sourceRefs.filter(isTrackedSource)),
     ),
   ]);
   return [...sourceRefs].sort().map((id) => ({
     id,
-    version: id.startsWith("pandadata:") ? "panda_data@0.0.12" : "assay-backtester@1",
+    version: id.startsWith("pandadata:")
+      ? "panda_data@0.0.12"
+      : id.startsWith("assay:local-data-package:")
+        ? "assay-local-data-v1"
+        : "assay-backtester@1",
   }));
 }
 

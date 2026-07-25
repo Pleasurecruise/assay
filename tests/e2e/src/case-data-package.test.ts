@@ -2,15 +2,27 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import {
+  LocalDataPackageResolver,
+  type LocalDataPackageManifest,
+} from "@assay/a2a-server";
 import { afterEach, describe, expect, test } from "vitest";
 import {
   CASE_DATA_PACKAGE_ROOT,
+  CASE_DATA_REGISTRY_FILENAME,
+  CSI300_MOMENTUM_14D_TOP30_PACKAGE_ID,
+  CSI300_MOMENTUM_20D_TOP50_PACKAGE_ID,
+  CSI300_MOMENTUM_26D_TOP70_PACKAGE_ID,
+  CSI300_MOMENTUM_CASE_BINDINGS,
   CSI300_MOMENTUM_CASE_PACKAGE_ID,
+  collectTreeFiles,
   exportCsi300MomentumCasePackage,
+  sha256Bytes,
   validateCaseDataPackage,
+  validateCaseDataRegistry,
+  writeCsi300MomentumCaseDataRegistry,
 } from "../../../scripts/case_data_package";
 import { installLocalData } from "../../../scripts/install_local_data";
-import { loadCsi300MomentumRuntimePackage } from "./local-runtime-package";
 
 const temporaryRoots: string[] = [];
 
@@ -152,8 +164,11 @@ describe("complete case data package", () => {
       pitCacheRoot: pitRoot,
     };
     const exported = await exportCsi300MomentumCasePackage(options);
+    const bindings = await writeCsi300MomentumCaseDataRegistry(destinationRoot);
     const firstManifest = await readFile(exported.manifestPath);
+    const firstRegistry = await readFile(join(destinationRoot, CASE_DATA_REGISTRY_FILENAME));
     const exportedAgain = await exportCsi300MomentumCasePackage(options);
+    const bindingsAgain = await writeCsi300MomentumCaseDataRegistry(destinationRoot);
 
     expect(exported.manifest.datasets.equityDaily.statistics).toEqual({
       rowCount: 1,
@@ -177,11 +192,83 @@ describe("complete case data package", () => {
       await readFile(join(exported.packageRoot, "provenance", "preparation-report.json")),
     );
     expect(await readFile(exportedAgain.manifestPath)).toEqual(firstManifest);
+    expect(await readFile(join(destinationRoot, CASE_DATA_REGISTRY_FILENAME))).toEqual(
+      firstRegistry,
+    );
+    expect(bindings.map(({ binding }) => binding)).toEqual(
+      bindingsAgain.map(({ binding }) => binding),
+    );
+    expect(bindings).toHaveLength(3);
+    expect(new Set(bindings.map(({ source }) => source)).size).toBe(1);
+    expect(firstRegistry.toString("utf8")).not.toMatch(/"claims"|"costs"|"G0[123]"/u);
+
+    const registryValue = JSON.parse(firstRegistry.toString("utf8")) as {
+      bindings: Array<Record<string, unknown>>;
+    };
+    await writeJson(join(destinationRoot, CASE_DATA_REGISTRY_FILENAME), {
+      schemaVersion: "assay-case-data-registry-v1",
+      bindings: [...registryValue.bindings, registryValue.bindings[0]],
+    });
+    await expect(validateCaseDataRegistry(destinationRoot)).rejects.toThrow(
+      "duplicate packageId",
+    );
+    const duplicateKey = structuredClone(registryValue);
+    const firstKey = (
+      duplicateKey.bindings[0]?.dataPlan as { strategyKey?: unknown } | undefined
+    )?.strategyKey;
+    const secondPlan = duplicateKey.bindings[1]?.dataPlan as
+      | { strategyKey?: unknown }
+      | undefined;
+    if (secondPlan !== undefined) {
+      secondPlan.strategyKey = firstKey;
+    }
+    await writeJson(join(destinationRoot, CASE_DATA_REGISTRY_FILENAME), {
+      schemaVersion: "assay-case-data-registry-v1",
+      bindings: duplicateKey.bindings,
+    });
+    await expect(validateCaseDataRegistry(destinationRoot)).rejects.toThrow(
+      "duplicate strategyKey",
+    );
+    const uncovered = structuredClone(registryValue);
+    const firstPlan = uncovered.bindings[0]?.dataPlan as
+      | { requiredCoverage?: { start?: string } }
+      | undefined;
+    if (firstPlan?.requiredCoverage !== undefined) {
+      firstPlan.requiredCoverage.start = "2023-07-22";
+    }
+    await writeJson(join(destinationRoot, CASE_DATA_REGISTRY_FILENAME), {
+      schemaVersion: "assay-case-data-registry-v1",
+      bindings: uncovered.bindings,
+    });
+    await expect(validateCaseDataRegistry(destinationRoot)).rejects.toThrow(
+      "data plan is not covered",
+    );
+    await writeFile(join(destinationRoot, CASE_DATA_REGISTRY_FILENAME), firstRegistry);
+
+    const runtimeRoot = join(workspaceRoot, "runtime");
+    await installLocalData({ sourceRoot: destinationRoot, runtimeRoot });
+    const installedManifestPath = join(
+      runtimeRoot,
+      CSI300_MOMENTUM_20D_TOP50_PACKAGE_ID,
+      "manifest.json",
+    );
+    const installedManifest = await readFile(installedManifestPath);
+    await writeFile(
+      join(exported.packageRoot, "datasets", "equity-daily.csv"),
+      "tampered\n",
+    );
+    await expect(
+      installLocalData({ sourceRoot: destinationRoot, runtimeRoot }),
+    ).rejects.toThrow("checksum failed");
+    expect(await readFile(installedManifestPath)).toEqual(installedManifest);
   });
 
   test("contains the complete real case bytes and explicit degraded boundaries", async () => {
-    const packageRoot = resolve(CASE_DATA_PACKAGE_ROOT, CSI300_MOMENTUM_CASE_PACKAGE_ID);
+    const sourceRoot = resolve(CASE_DATA_PACKAGE_ROOT);
+    const packageRoot = resolve(sourceRoot, CSI300_MOMENTUM_CASE_PACKAGE_ID);
     const loaded = await validateCaseDataPackage(packageRoot, CSI300_MOMENTUM_CASE_PACKAGE_ID);
+    const bindings = await validateCaseDataRegistry(sourceRoot);
+    const sourceFiles = await collectTreeFiles(sourceRoot);
 
     expect(loaded.manifest.datasets.equityDaily).toMatchObject({
       status: "ready",
@@ -208,6 +295,25 @@ describe("complete case data package", () => {
     expect(await readFile(join(packageRoot, "provenance", "source-summary.json"))).not.toEqual(
       await readFile(join(packageRoot, "provenance", "preparation-report.json")),
     );
+    expect(
+      sourceFiles.filter(({ path }) => path.endsWith("/datasets/equity-daily.csv")),
+    ).toHaveLength(1);
+    expect(bindings.map(({ binding }) => binding)).toEqual(CSI300_MOMENTUM_CASE_BINDINGS);
+    expect(bindings.map(({ binding }) => binding.packageId)).toEqual([
+      CSI300_MOMENTUM_14D_TOP30_PACKAGE_ID,
+      CSI300_MOMENTUM_20D_TOP50_PACKAGE_ID,
+      CSI300_MOMENTUM_26D_TOP70_PACKAGE_ID,
+    ]);
+    expect(new Set(bindings.map(({ binding }) => binding.dataPlan.strategyKey)).size).toBe(3);
+    expect(new Set(bindings.map(({ binding }) => binding.sourceDataPackageId)).size).toBe(1);
+    expect(
+      new Set(bindings.map(({ source }) => source).map(({ packageRoot }) => packageRoot)).size,
+    ).toBe(1);
+    expect(bindings.map(({ binding }) => binding.dataPlan.strategyKey)).toEqual([
+      "sha256-9242fb1add11336293dd23983415e1493e25bdf924c06d04159b645b7f1c8195",
+      "sha256-a9d796047db6ccb208f3d82df70287afbb50ddca1fd544f67718155a4dc1bddb",
+      "sha256-15a2f8c08d6a7f1e2f8013d1c663c325cf9666b30a06a5d8382aefcfc99f21f9",
+    ]);
   });
 
   test("installs only promoted case datasets into the runtime registry", async () => {
@@ -224,30 +330,79 @@ describe("complete case data package", () => {
     const sourceMarket = await readFile(sourceMarketPath);
 
     const installed = await installLocalData({ sourceRoot, runtimeRoot });
-    const runtime = await loadCsi300MomentumRuntimePackage(runtimeRoot);
-    const runtimeAuditManifestPath = join(runtime.packageRoot, "audit-support", "manifest.json");
+    const resolver = new LocalDataPackageResolver({ root: runtimeRoot });
+    const runtimeManifests = await Promise.all(
+      installed.packageIds.map(async (packageId) => {
+        const manifestPath = join(runtimeRoot, packageId, "manifest.json");
+        const bytes = await readFile(manifestPath);
+        return {
+          manifestPath,
+          digest: sha256Bytes(bytes),
+          manifest: JSON.parse(bytes.toString("utf8")) as LocalDataPackageManifest,
+        };
+      }),
+    );
+    const runtimeByPackageId = new Map(
+      runtimeManifests.map((loaded) => [loaded.manifest.packageId, loaded]),
+    );
+    const runtime = runtimeByPackageId.get(CSI300_MOMENTUM_20D_TOP50_PACKAGE_ID);
+    expect(runtime).toBeDefined();
+    const runtimePackageRoot = join(runtimeRoot, CSI300_MOMENTUM_20D_TOP50_PACKAGE_ID);
+    const runtimeAuditManifestPath = join(
+      runtimePackageRoot,
+      "audit-support",
+      "manifest.json",
+    );
     const runtimeAuditManifest = JSON.parse(
       await readFile(runtimeAuditManifestPath, "utf8"),
     ) as Record<string, unknown>;
 
-    expect(installed.packageIds).toEqual([CSI300_MOMENTUM_CASE_PACKAGE_ID]);
-    expect(await readFile(join(runtime.packageRoot, "market-data.csv"))).toEqual(sourceMarket);
-    expect(runtime.manifest.capabilities.index_daily).toBe("degraded");
-    expect(runtime.manifest.capabilities.comparator_factors).toBe("degraded");
+    expect(installed.packageIds).toEqual([
+      CSI300_MOMENTUM_14D_TOP30_PACKAGE_ID,
+      CSI300_MOMENTUM_20D_TOP50_PACKAGE_ID,
+      CSI300_MOMENTUM_26D_TOP70_PACKAGE_ID,
+    ]);
+    expect(await readFile(join(runtimePackageRoot, "market-data.csv"))).toEqual(sourceMarket);
+    expect(runtime?.manifest.capabilities.index_daily).toBe("degraded");
+    expect(runtime?.manifest.capabilities.comparator_factors).toBe("degraded");
+    expect(new Set(runtimeManifests.map(({ digest }) => digest)).size).toBe(3);
+    for (const checksum of ["marketData", "auditSupport", "pitMembership"] as const) {
+      expect(
+        new Set(runtimeManifests.map(({ manifest }) => manifest.checksums[checksum])).size,
+      ).toBe(1);
+    }
+    for (const binding of CSI300_MOMENTUM_CASE_BINDINGS) {
+      expect(runtimeByPackageId.get(binding.packageId)?.manifest.strategyKey).toBe(
+        binding.dataPlan.strategyKey,
+      );
+      await expect(
+        resolver.resolve(binding.dataPlan, `runtime_${binding.packageId}`),
+      ).resolves.toMatchObject({ packageId: binding.packageId });
+    }
+    await expect(
+      resolver.resolve(
+        {
+          ...CSI300_MOMENTUM_CASE_BINDINGS[0].dataPlan,
+          strategyKey:
+            "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        },
+        "runtime_unregistered",
+      ),
+    ).rejects.toMatchObject({ code: "unsupported_strategy" });
     expect(runtimeAuditManifest).toHaveProperty("generatedAt");
-    expect(existsSync(join(runtime.packageRoot, "audit-support", "preparation-report.json"))).toBe(
-      false,
-    );
-    expect(existsSync(join(runtime.packageRoot, "provenance", "incomplete-attempts"))).toBe(false);
+    expect(
+      existsSync(join(runtimePackageRoot, "audit-support", "preparation-report.json")),
+    ).toBe(false);
+    expect(existsSync(join(runtimePackageRoot, "provenance", "incomplete-attempts"))).toBe(false);
 
     const originalRuntimeAuditManifest = await readFile(runtimeAuditManifestPath);
     await writeFile(
       runtimeAuditManifestPath,
       Buffer.concat([originalRuntimeAuditManifest, Buffer.from(" ")]),
     );
-    await expect(loadCsi300MomentumRuntimePackage(runtimeRoot)).rejects.toThrow(
-      "integrity verification failed",
-    );
+    await expect(resolver.validateRegistry()).rejects.toMatchObject({
+      code: "package_integrity_failed",
+    });
     await installLocalData({ sourceRoot, runtimeRoot });
     expect(await readFile(runtimeAuditManifestPath)).toEqual(originalRuntimeAuditManifest);
     expect(await readFile(sourceMarketPath)).toEqual(sourceMarket);

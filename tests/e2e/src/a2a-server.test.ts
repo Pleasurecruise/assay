@@ -1,9 +1,15 @@
+import { createHash } from "node:crypto";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { TaskState } from "@a2a-js/sdk";
 import { type ParallelAuditRunner } from "../../../apps/a2a-server/src/audit-orchestrator";
 import { InMemoryAuditArtifactStore } from "../../../apps/a2a-server/src/artifact-store";
-import { AssayAgentExecutor, type StrategyIntakePort } from "../../../apps/a2a-server/src/executor";
+import {
+  AssayAgentExecutor,
+  type AssayAgentExecutorOptions,
+  type StrategyIntakePort,
+} from "../../../apps/a2a-server/src/executor";
+import { LocalDataPackageError } from "../../../apps/a2a-server/src/local-data-package";
 import { createAssayA2AApp } from "../../../apps/a2a-server/src/server";
 import { createAssayA2AClient, extractAuditArtifact } from "../../../apps/web/src/lib/a2a-client";
 import {
@@ -18,12 +24,22 @@ import {
 } from "@assay/contracts";
 import { StrategyIntake, type NaturalLanguageStrategyParser } from "@assay/intake";
 import { describe, expect, test } from "vitest";
+import {
+  GOLDEN_SHARED_RUNTIME_CHECKSUMS,
+  GOLDEN_STRATEGY_CASES,
+  canonicalSpecForGoldenCase,
+  dataPlanForGoldenCase,
+} from "./golden-cases";
 
 const GENERATED_AT = "2026-07-24T04:00:00.000Z";
 const DATA_AS_OF = "2026-07-24";
 const CORS_ORIGIN = "http://localhost:5173";
 const TEST_DATA_REF =
   "assay-local-data-v1:audit_e2e:test-package:sha256-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+function fixtureManifestDigest(packageId: string): `sha256-${string}` {
+  return `sha256-${createHash("sha256").update(packageId).digest("hex")}`;
+}
 
 const COMPLETE_SPEC = {
   specVersion: "1",
@@ -73,6 +89,11 @@ interface TestHarness {
   baseUrl: string;
   store: InMemoryAuditArtifactStore;
   requests: ParallelAuditChecksRequest[];
+}
+
+interface TestServerOptions {
+  dataResolver?: AssayAgentExecutorOptions["dataResolver"];
+  claimReproducer?: AssayAgentExecutorOptions["claimReproducer"];
 }
 
 function incompleteSpecWithoutWindow(): unknown {
@@ -135,18 +156,24 @@ async function withTestServer(
   intake: StrategyIntakePort,
   run: (harness: TestHarness) => Promise<void>,
   runnerFactory: TestRunnerFactory = fakeRunner,
+  options: TestServerOptions = {},
 ): Promise<void> {
   const store = new InMemoryAuditArtifactStore();
   const requests: ParallelAuditChecksRequest[] = [];
   const executor = new AssayAgentExecutor({
     intake,
-    dataResolver: {
-      resolve: async () => ({
-        dataRef: TEST_DATA_REF,
-        sources: ["local-data-package:test"],
-      }),
-    },
+    dataResolver:
+      options.dataResolver ??
+      {
+        resolve: async () => ({
+          dataRef: TEST_DATA_REF,
+          sources: ["local-data-package:test"],
+        }),
+      },
     runner: runnerFactory(requests),
+    ...(options.claimReproducer === undefined
+      ? {}
+      : { claimReproducer: options.claimReproducer }),
     artifactStore: store,
     dataAsOf: DATA_AS_OF,
     codeRevision: "e2e-fixture",
@@ -266,6 +293,197 @@ function artifactFrom(task: WireTask) {
 }
 
 describe("Assay A2A Skeleton over shared HTTP transports", () => {
+  test("routes all frozen golden strategies through one label-free A2A lifecycle", async () => {
+    const parserCalls: string[] = [];
+    const specByInput = new Map<
+      string,
+      ReturnType<typeof canonicalSpecForGoldenCase>
+    >(
+      GOLDEN_STRATEGY_CASES.map((goldenCase) => [
+        goldenCase.input,
+        canonicalSpecForGoldenCase(goldenCase),
+      ] as const),
+    );
+    const intake = new StrategyIntake({
+      parser: {
+        async parse(input) {
+          parserCalls.push(input);
+          const spec = specByInput.get(input);
+          if (spec === undefined) {
+            throw new Error("Unexpected golden-case input");
+          }
+          return structuredClone(spec);
+        },
+      },
+      dataAsOf: "2026-07-23",
+      capabilitySnapshotId: "local-data-registry:golden-fixture",
+      codeRevision: "e2e-fixture",
+    });
+    const caseByStrategyKey = new Map<
+      string,
+      (typeof GOLDEN_STRATEGY_CASES)[number]
+    >(
+      GOLDEN_STRATEGY_CASES.map((goldenCase) => [
+        goldenCase.strategyKey,
+        goldenCase,
+      ] as const),
+    );
+    const resolutions: Array<{
+      plan: ReturnType<typeof dataPlanForGoldenCase>;
+      packageId: string;
+      dataRef: string;
+    }> = [];
+    const dataResolver: NonNullable<AssayAgentExecutorOptions["dataResolver"]> = {
+      async resolve(plan, auditId) {
+        const goldenCase = caseByStrategyKey.get(plan.strategyKey);
+        if (goldenCase === undefined) {
+          throw new LocalDataPackageError("unsupported_strategy");
+        }
+        expect(plan).toEqual(dataPlanForGoldenCase(goldenCase));
+        const manifestDigest = fixtureManifestDigest(goldenCase.packageId);
+        expect(manifestDigest).not.toBe(goldenCase.strategyKey);
+        const dataRef =
+          `assay-local-data-v1:${auditId}:${goldenCase.packageId}:${manifestDigest}`;
+        resolutions.push({
+          plan: structuredClone(plan),
+          packageId: goldenCase.packageId,
+          dataRef,
+        });
+        return {
+          dataRef,
+          packageId: goldenCase.packageId,
+          sources: [
+            `assay:local-data-package:${goldenCase.packageId}:${manifestDigest}`,
+            `pandadata:market-data:${GOLDEN_SHARED_RUNTIME_CHECKSUMS.marketData}`,
+            `pandadata:audit-support:${GOLDEN_SHARED_RUNTIME_CHECKSUMS.auditSupport}`,
+            `pandadata:pit-membership:${GOLDEN_SHARED_RUNTIME_CHECKSUMS.pitMembership}`,
+          ],
+        };
+      },
+    };
+    const claimReproducer: NonNullable<AssayAgentExecutorOptions["claimReproducer"]> = {
+      async reproduce(spec) {
+        if (spec.claims === undefined) {
+          return null;
+        }
+        return {
+          claimed: spec.claims,
+          reproduced: {
+            annualReturn: spec.claims.annualReturn ?? 0,
+            sharpe: spec.claims.sharpe ?? 0,
+            maxDrawdown: spec.claims.maxDrawdown ?? -0.2,
+          },
+          gaps: {
+            ...(spec.claims.annualReturn === undefined ? {} : { annualReturn: 0 }),
+            ...(spec.claims.sharpe === undefined ? {} : { sharpe: 0 }),
+            ...(spec.claims.maxDrawdown === undefined ? {} : { maxDrawdown: 0 }),
+          },
+          knownConventionDiffs: [],
+        };
+      },
+    };
+
+    await withTestServer(
+      intake,
+      async ({ baseUrl, requests, store }) => {
+        const artifacts: ReturnType<typeof artifactFrom>[] = [];
+        for (const [index, goldenCase] of GOLDEN_STRATEGY_CASES.entries()) {
+          const task = await sendStrategy(
+            baseUrl,
+            `msg_frozen_strategy_${index + 1}`,
+            goldenCase.input,
+          );
+          const artifact = artifactFrom(task);
+          artifacts.push(artifact);
+
+          expect(artifact.results[0]?.strategySpec).toEqual(
+            canonicalSpecForGoldenCase(goldenCase),
+          );
+          expect(artifact.results[0]?.strategySpec?.claims).toEqual(goldenCase.claims);
+          expect(artifact.claimComparison?.claimed).toEqual(goldenCase.claims);
+          expect(artifact.provenance.inputHash).toBe(goldenCase.specHash);
+          expect(await store.load(task.id)).toEqual(artifact);
+        }
+
+        expect(parserCalls).toEqual(
+          GOLDEN_STRATEGY_CASES.map((goldenCase) => goldenCase.input),
+        );
+        expect(requests).toHaveLength(GOLDEN_STRATEGY_CASES.length);
+        expect(resolutions).toHaveLength(GOLDEN_STRATEGY_CASES.length);
+        expect(new Set(resolutions.map(({ plan }) => plan.strategyKey)).size).toBe(3);
+        expect(new Set(resolutions.map(({ packageId }) => packageId)).size).toBe(3);
+
+        const commonChecksumSourceSets: string[] = [];
+        for (const [index, goldenCase] of GOLDEN_STRATEGY_CASES.entries()) {
+          const resolution = resolutions[index];
+          const artifact = artifacts[index];
+          const request = requests[index];
+          if (resolution === undefined || artifact === undefined || request === undefined) {
+            throw new Error(`Missing ${goldenCase.label} lifecycle observation`);
+          }
+
+          expect(Object.hasOwn(goldenCase.strategy, "claims")).toBe(false);
+          expect(Object.hasOwn(resolution.plan, "claims")).toBe(false);
+          expect(resolution.plan).toEqual(dataPlanForGoldenCase(goldenCase));
+          expect(resolution.packageId).toBe(goldenCase.packageId);
+          expect(request.subject.input).toBe(
+            canonicalizeStrategySpec(canonicalSpecForGoldenCase(goldenCase)),
+          );
+          expect(request.metadata?.dataRef).toBe(resolution.dataRef);
+
+          const localPackageSource =
+            `assay:local-data-package:${goldenCase.packageId}:${fixtureManifestDigest(goldenCase.packageId)}`;
+          expect(artifact.provenance.dataSources).toEqual([
+            {
+              id: localPackageSource,
+              version: "assay-local-data-v1",
+            },
+            {
+              id: `pandadata:audit-support:${GOLDEN_SHARED_RUNTIME_CHECKSUMS.auditSupport}`,
+              version: "panda_data@0.0.12",
+            },
+            {
+              id: `pandadata:market-data:${GOLDEN_SHARED_RUNTIME_CHECKSUMS.marketData}`,
+              version: "panda_data@0.0.12",
+            },
+            {
+              id: `pandadata:pit-membership:${GOLDEN_SHARED_RUNTIME_CHECKSUMS.pitMembership}`,
+              version: "panda_data@0.0.12",
+            },
+          ]);
+          commonChecksumSourceSets.push(
+            JSON.stringify(
+              artifact.provenance.dataSources.filter(({ id }) =>
+                id.startsWith("pandadata:"),
+              ),
+            ),
+          );
+        }
+        expect(new Set(commonChecksumSourceSets).size).toBe(1);
+
+        const parserCallCount = parserCalls.length;
+        const firstGoldenCase = GOLDEN_STRATEGY_CASES[0];
+        if (firstGoldenCase === undefined) {
+          throw new Error("At least one golden strategy case is required");
+        }
+        const unsupportedPlan = {
+          ...dataPlanForGoldenCase(firstGoldenCase),
+          strategyKey:
+            "sha256-ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" as const,
+        };
+        await expect(
+          dataResolver.resolve(unsupportedPlan, "audit_unregistered"),
+        ).rejects.toMatchObject({
+          name: "LocalDataPackageError",
+          code: "unsupported_strategy",
+        });
+        expect(parserCalls).toHaveLength(parserCallCount);
+      },
+      fakeRunner,
+      { dataResolver, claimReproducer },
+    );
+  });
+
   test("drives the browser client from CORS preflight through a parsed Artifact", async () => {
     const input =
       "Audit a CSI 300 strategy from 20210101 through 20251231: rank by trailing " +

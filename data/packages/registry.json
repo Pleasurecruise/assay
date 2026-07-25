@@ -1,0 +1,80 @@
+{
+  "schemaVersion": "assay-case-data-registry-v1",
+  "bindings": [
+    {
+      "packageId": "csi300-momentum-14d-monthly-top30-equal",
+      "sourceDataPackageId": "csi300-momentum-20d-monthly-top50-equal",
+      "dataPlan": {
+        "schemaVersion": "assay-local-data-plan-v1",
+        "strategyKey": "sha256-9242fb1add11336293dd23983415e1493e25bdf924c06d04159b645b7f1c8195",
+        "indexSymbol": "000300.SH",
+        "window": {
+          "start": "20230723",
+          "end": "20260723"
+        },
+        "requiredCoverage": {
+          "start": "2023-07-23",
+          "end": "2026-07-23"
+        },
+        "requirements": [
+          "trade_calendar",
+          "pit_membership",
+          "adjusted_close",
+          "trade_status",
+          "index_daily",
+          "comparator_factors"
+        ]
+      }
+    },
+    {
+      "packageId": "csi300-momentum-20d-monthly-top50-equal",
+      "sourceDataPackageId": "csi300-momentum-20d-monthly-top50-equal",
+      "dataPlan": {
+        "schemaVersion": "assay-local-data-plan-v1",
+        "strategyKey": "sha256-a9d796047db6ccb208f3d82df70287afbb50ddca1fd544f67718155a4dc1bddb",
+        "indexSymbol": "000300.SH",
+        "window": {
+          "start": "20230723",
+          "end": "20260723"
+        },
+        "requiredCoverage": {
+          "start": "2023-07-23",
+          "end": "2026-07-23"
+        },
+        "requirements": [
+          "trade_calendar",
+          "pit_membership",
+          "adjusted_close",
+          "trade_status",
+          "index_daily",
+          "comparator_factors"
+        ]
+      }
+    },
+    {
+      "packageId": "csi300-momentum-26d-monthly-top70-equal",
+      "sourceDataPackageId": "csi300-momentum-20d-monthly-top50-equal",
+      "dataPlan": {
+        "schemaVersion": "assay-local-data-plan-v1",
+        "strategyKey": "sha256-15a2f8c08d6a7f1e2f8013d1c663c325cf9666b30a06a5d8382aefcfc99f21f9",
+        "indexSymbol": "000300.SH",
+        "window": {
+          "start": "20230723",
+          "end": "20260723"
+        },
+        "requiredCoverage": {
+          "start": "2023-07-23",
+          "end": "2026-07-23"
+        },
+        "requirements": [
+          "trade_calendar",
+          "pit_membership",
+          "adjusted_close",
+          "trade_status",
+          "index_daily",
+          "comparator_factors"
+        ]
+      }
+    }
+  ]
+}

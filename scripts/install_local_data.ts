@@ -16,6 +16,7 @@ import {
   sha256Bytes,
   treeDigest,
   validateCaseDataRegistry,
+  type CaseDataPackageBinding,
   type CaseDataPackageManifest,
   type CaseDatasetName,
   type LoadedCaseDataPackage,
@@ -135,6 +136,7 @@ function runtimeCapability(status: "ready" | "degraded"): LocalDataCapabilitySta
 }
 
 async function materializeRuntimePackage(
+  binding: CaseDataPackageBinding,
   source: LoadedCaseDataPackage,
   destinationRoot: string,
 ): Promise<void> {
@@ -142,7 +144,7 @@ async function materializeRuntimePackage(
   requireValue(
     manifest.datasets.equityDaily.status === "ready" &&
       manifest.datasets.indexMembership.status === "ready",
-    `${manifest.packageId} cannot run without equity daily and PIT membership datasets`,
+    `${binding.packageId} cannot run without equity daily and PIT membership datasets`,
   );
   const preparationReportPath = join(
     source.packageRoot,
@@ -153,15 +155,15 @@ async function materializeRuntimePackage(
   try {
     preparationReportValue = JSON.parse(preparationReport.toString("utf8"));
   } catch {
-    throw new Error(`${manifest.packageId} preparation report is unreadable`);
+    throw new Error(`${binding.packageId} preparation report is unreadable`);
   }
   const runtimeAuditManifest = transformCanonicalReport(
     preparationReportValue,
     manifest,
-    `${manifest.packageId} preparation report`,
+    `${binding.packageId} preparation report`,
   );
 
-  const packageRoot = join(destinationRoot, manifest.packageId);
+  const packageRoot = join(destinationRoot, binding.packageId);
   await mkdir(join(packageRoot, "audit-support", "fallback-provenance"), { recursive: true });
   await mkdir(
     join(
@@ -207,10 +209,13 @@ async function materializeRuntimePackage(
   ]);
   const runtimeManifest: LocalDataPackageManifest = {
     schemaVersion: LOCAL_DATA_PACKAGE_SCHEMA_VERSION,
-    packageId: manifest.packageId,
-    strategyKey: manifest.strategyKey,
-    universe: manifest.universe,
-    window: manifest.window,
+    packageId: binding.packageId,
+    strategyKey: binding.dataPlan.strategyKey,
+    universe: {
+      indexSymbol: binding.dataPlan.indexSymbol,
+      membershipMode: manifest.universe.membershipMode,
+    },
+    window: binding.dataPlan.window,
     coverage: manifest.coverage,
     capabilities: {
       trade_calendar: "ready",
@@ -266,7 +271,7 @@ export async function installLocalData(
 
   // Validate every canonical package and all declared bytes before touching runtime state.
   const packages = await validateCaseDataRegistry(sourceRoot);
-  const packageIds = packages.map(({ manifest }) => manifest.packageId);
+  const packageIds = packages.map(({ binding }) => binding.packageId);
   const runtimeParent = dirname(runtimeRoot);
   const runtimeName = basename(runtimeRoot);
   const temporaryRoot = join(
@@ -283,8 +288,8 @@ export async function installLocalData(
   let movedExisting = false;
   let installed = false;
   try {
-    for (const source of packages) {
-      await materializeRuntimePackage(source, temporaryRoot);
+    for (const { binding, source } of packages) {
+      await materializeRuntimePackage(binding, source, temporaryRoot);
     }
     const stagedPackageIds = await new LocalDataPackageResolver({
       root: temporaryRoot,

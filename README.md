@@ -80,11 +80,13 @@ mise exec -- bun run check
 All npm registry dependencies are exact-pinned. Vite+ uses Bun as the package
 manager through the root `packageManager` declaration.
 
-The repository commits the complete registered case package under
-`data/packages/<semantic-package-id>/`. Its real equity history is neither
-compressed nor sampled: 216,688 rows covering 300 stocks and 727 trading days
-(about 7.2 MiB), plus 37 point-in-time membership snapshots and 112 fallback
-provenance records.
+The repository commits one complete canonical source package plus a
+claims-free strategy registry under `data/packages/`. The source equity
+history is neither compressed nor sampled: 216,688 rows covering 300 stocks
+and 727 trading days (about 7.2 MiB), plus 37 point-in-time membership
+snapshots and 112 fallback provenance records. The registry binds three
+different strategy keys to three semantic runtime package IDs without
+duplicating those source bytes in Git.
 
 ```bash
 cp .env.example .env
@@ -92,11 +94,13 @@ cp .env.example .env
 mise exec -- bun run e2e:checks
 ```
 
-`data:install` first verifies the canonical case manifest and every declared
-dataset/provenance integrity value. It then deterministically converts that
-package into the existing runtime layout and runtime manifest under
-`.cache/assay/local-packages/<semantic-package-id>/`. `data:validate` runs the
-offline Python semantic validation against the generated runtime package.
+`data:install` first verifies the canonical source manifest, every declared
+dataset/provenance integrity value, and every registry binding. It then
+deterministically materializes one runtime layout and manifest per strategy
+under `.cache/assay/local-packages/<semantic-package-id>/`. The three runtime
+packages have different package IDs and strategy keys but identical
+market-data, PIT-membership, and audit-support checksums. `data:validate` runs
+the offline Python semantic validation against the generated runtime registry.
 `data:prepare` is the ordinary setup command and expands to
 `data:install && data:validate`. The A2A server and Python audit code read only
 that runtime registry; they never use `data/packages/` as their runtime root
@@ -143,9 +147,9 @@ verifies `marketData`, the entire `auditSupport` tree, and the entire
 `pitMembership` tree produced by installation.
 `data:rebuild` is the maintainer path and expands to
 `data:base && data:audit-support && data:package && data:prepare`. When
-provider caches already exist, `data:package` rebuilds only the committed case
-package; run `data:prepare` afterward to install and semantically validate the
-update. See
+provider caches already exist, `data:package` rebuilds the committed canonical
+source package and claims-free binding registry; run `data:prepare` afterward
+to install and semantically validate the update. See
 [Local Data Package Pipeline](docs/product/LOCAL_DATA_PACKAGE_PIPELINE.md) for
 the runtime boundary.
 

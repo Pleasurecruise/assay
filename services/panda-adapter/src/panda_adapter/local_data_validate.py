@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import argparse
+import os
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
 from .local_data import (
+    LOCAL_DATA_PACKAGE_ROOT_ENV,
     LOCAL_DATA_REF_VERSION,
     load_local_audit_data,
     local_data_package_root,
 )
+
+DEFAULT_LOCAL_DATA_PACKAGE_ROOT = Path(".cache/assay/local-packages")
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,12 +66,20 @@ def main() -> int:
     parser.add_argument(
         "--root",
         type=Path,
-        required=True,
+        default=None,
         help="Installed local-data registry (normally .cache/assay/local-packages).",
     )
     args = parser.parse_args()
+    configured_root = args.root
+    if configured_root is None:
+        environment_root = os.environ.get(LOCAL_DATA_PACKAGE_ROOT_ENV, "").strip()
+        configured_root = (
+            Path(environment_root)
+            if environment_root
+            else DEFAULT_LOCAL_DATA_PACKAGE_ROOT
+        )
     try:
-        validated = validate_local_data_registry(args.root)
+        validated = validate_local_data_registry(configured_root)
     except (OSError, RuntimeError, ValueError) as error:
         parser.error(str(error))
     for package in validated:

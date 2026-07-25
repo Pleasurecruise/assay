@@ -29,6 +29,13 @@ ordering and host-only data binding. `AgentRuntime` owns one isolated
 oh-my-pi invocation. `ParallelAuditCheckRunner` owns internal fan-out and
 result validation.
 
+Local data identity is registry-driven. The repository contains one shared
+canonical source package and three claims-free `DataPlan` bindings. Running
+`bun run data:prepare` validates that source and deterministically materializes
+three immutable runtime packages under `ASSAY_LOCAL_DATA_PACKAGE_ROOT`.
+Performance claims are retained in the frozen `StrategySpec` for reproduction
+and audit, but never participate in package selection.
+
 ## Isolation
 
 Every check creates a fresh `@oh-my-pi/pi-agent-core` Agent. Checks may share
@@ -109,9 +116,14 @@ The official A2A JavaScript SDK provides:
 One external Task represents one complete audit. Internal checks are not
 separate A2A agents. Streaming and push notifications are not advertised.
 
+Golden acceptance starts one A2A server and submits the three frozen
+natural-language inputs sequentially through that same server lifecycle. The
+labels G01, G02, and G03 exist only in fixtures and acceptance records; they
+are never sent as routing keys or used by runtime package resolution.
+
 ## Remaining Work
 
-- provision the real G01 local package in each deployment;
-- register G02 and G03 only after their strategies and datasets are frozen;
+- run `bun run data:prepare` in each deployment and provision the generated
+  three-package runtime registry before starting the service;
 - implement public factor and comparison skills;
 - add multi-turn clarification and durable remote Task recovery.

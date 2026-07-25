@@ -1,176 +1,233 @@
-# Local Golden Package E2E
+# Three Frozen Cases Online E2E
 
 ## Scope
 
-`bun run e2e:checks` runs the golden input through the production A2A path:
+`bun run e2e:checks` is the single final acceptance entry point. It performs
+exactly one preparation-and-online suite:
 
 ```text
-natural-language strategy
-  → Ark StrategyIntake
-  → data-relevant DataPlan
-  → deterministic local package resolution
+data:prepare
+  → validate the canonical registry and its single data owner
+  → materialize and validate three runtime packages
+  → start one production A2A server
+  → submit G01, then G02, then G03
+  → write one accepted suite Artifact
+```
+
+Do not run `data:prepare`, start the A2A server, call Ark, replay V9, or refresh
+a golden Artifact separately before this command. `e2e:checks` already owns the
+required preparation and server lifecycle.
+
+For every submitted natural-language request, the production path remains:
+
+```text
+natural language
+  → Ark fills StrategySpec and claims
+  → deterministic validation and freeze
+  → claims-free DataPlan
+  → strategyKey
+  → unique local runtime package
   → one host-bound dataRef
   → Claim Reproduction
-  → five checks
+  → five audit checks
   → Moiré
-  → deriveVerdict
+  → verdict
   → AuditArtifact
 ```
 
-The test submits the equivalent of:
+The model never receives or selects a case label or `packageId`. `G01`, `G02`,
+and `G03` are test-fixture labels only.
+
+## Frozen cases
+
+All three cases use the same evaluation window, CSI 300 point-in-time
+membership, equal weighting, monthly close rebalancing, and the standard cost
+model. Their data-relevant strategies and claims are frozen as follows:
+
+| Label | Natural-language strategy | Claims | Runtime packageId |
+| --- | --- | --- | --- |
+| G01 | CSI 300; trailing 20-trading-day momentum; Top 50 | annual return `0.18`, Sharpe `1.9` | `csi300-momentum-20d-monthly-top50-equal` |
+| G02 | CSI 300; trailing 14-trading-day momentum; Top 30 | annual return `0.60`, Sharpe `2.3` | `csi300-momentum-14d-monthly-top30-equal` |
+| G03 | CSI 300; trailing 26-trading-day momentum; Top 70 | annual return `0.20`, Sharpe `0.9` | `csi300-momentum-26d-monthly-top70-equal` |
+
+The exact natural-language inputs, also frozen in
+`tests/e2e/src/golden-cases.ts`, are:
 
 ```text
-For the CSI 300, buy the 50 stocks with the highest trailing 20-day return at
-each month end, weight them equally, and audit the claimed 18% annual return
-and 1.9 Sharpe.
+G01: 沪深 300 每月底买过去 20 天涨幅最大的 50 只，等权持有，宣称年化 18% 夏普 1.9
+
+G02: 请审计这套策略：2023-07-23 至 2026-07-23，在沪深 300 成分股中，每月底按过去 14 个交易日涨幅排序，买入前 30 只并等权持有。策略报告宣称年化收益 60%，夏普 2.3。
+
+G03: 请独立复核：2023-07-23 至 2026-07-23，在沪深 300 成分股中，每月底按过去 26 个交易日涨幅排序，持有前 70 只，等权配置。管理人宣称年化收益 20%，夏普 0.9。
 ```
 
-The repository commits the complete registered case package under
-`data/packages/<semantic-package-id>/`. Its equity history is real,
-uncompressed, and unsampled: 216,688 rows, 300 stocks, and 727 trading days
-(about 7.2 MiB). The package also contains 37 point-in-time CSI 300 membership
-snapshots and 112 fallback provenance records.
+The corresponding strategy keys are:
 
-The canonical Git tree is:
+| Label | strategyKey |
+| --- | --- |
+| G01 | `sha256-a9d796047db6ccb208f3d82df70287afbb50ddca1fd544f67718155a4dc1bddb` |
+| G02 | `sha256-9242fb1add11336293dd23983415e1493e25bdf924c06d04159b645b7f1c8195` |
+| G03 | `sha256-15a2f8c08d6a7f1e2f8013d1c663c325cf9666b30a06a5d8382aefcfc99f21f9` |
+
+Claims remain part of the audited `StrategySpec`, but are removed before the
+`DataPlan` and `strategyKey` are produced. Changing claims alone must not
+change package selection.
+
+## Canonical registry and shared data
+
+Git contains one physical copy of the reviewed market, PIT, and provenance
+data. It does not contain one copy per case:
 
 ```text
-data/packages/csi300-momentum-20d-monthly-top50-equal/
-├── manifest.json
-├── datasets/
-│   ├── equity-daily.csv
-│   └── index-membership/000300.SH/
-└── provenance/
-    ├── source-summary.json
-    ├── fallback-records/
-    ├── incomplete-attempts/
-    └── preparation-report.json
+data/packages/
+├── README.md
+├── registry.json
+└── csi300-momentum-20d-monthly-top50-equal/
+    ├── manifest.json
+    ├── datasets/
+    │   ├── equity-daily.csv
+    │   └── index-membership/000300.SH/
+    └── provenance/
+        ├── source-summary.json
+        ├── fallback-records/
+        ├── incomplete-attempts/
+        └── preparation-report.json
 ```
 
-`bun run e2e:checks` runs `data:prepare` before the online flow, so a fresh
-checkout does not need a separate manual installation step. `data:install`
-verifies the complete canonical package, then deterministically converts it
-into the existing runtime layout and manifest at
-`.cache/assay/local-packages/<semantic-package-id>/`. `data:validate` then runs
-the offline Python semantic validation against the generated runtime package.
-`data:prepare` is the ordinary setup alias for
-`data:install && data:validate`. The E2E makes a real Ark model call but does
-not call PandaData at runtime. It is opt-in and is not part of the ordinary
-unit-test command.
+`registry.json` uses `assay-case-data-registry-v1`. Each claims-free binding
+has exactly:
 
-Run `bun run data:prepare` independently before a deployment or direct A2A
-server start. Maintainer-only `data:rebuild` expands to
-`data:base && data:audit-support && data:package && data:prepare`. If provider
-caches already exist, `data:package` rebuilds only the complete case package; run
-`data:prepare` afterward to install and validate it. The resumable workspace
-stays under `.cache/assay`, which is never committed.
+```text
+packageId
+sourceDataPackageId
+dataPlan
+```
+
+All three bindings reference the same
+`sourceDataPackageId=csi300-momentum-20d-monthly-top50-equal`. The source owns
+the byte-exact 216,688-row equity panel, 37 point-in-time CSI 300 membership
+snapshots, 112 promoted fallback-provenance files, and the preparation
+evidence.
+
+Historical-member daily prices, CSI 300 index daily prices, and comparator
+factors remain explicitly degraded. Non-promoted payloads under
+`provenance/incomplete-attempts/` are evidence only and never become runtime
+datasets.
+
+`data:install` validates this source once, then deterministically materializes
+three independent ignored runtime packages:
+
+```text
+.cache/assay/local-packages/
+├── csi300-momentum-14d-monthly-top30-equal/
+├── csi300-momentum-20d-monthly-top50-equal/
+└── csi300-momentum-26d-monthly-top70-equal/
+```
+
+Each runtime directory contains its own `manifest.json`, `market-data.csv`,
+`audit-support/`, and `pit-membership/`. Runtime copies are generated under
+`.cache`; they are not additional Git data owners.
+
+The three runtime manifests have different `packageId`, `strategyKey`, and
+manifest digest. Their underlying immutable boundaries must be identical:
+
+| Boundary | Shared checksum |
+| --- | --- |
+| marketData | `sha256-27779f08aac594467eb16be723a2ac0e743042fddb078e4ca704ea6484dd9382` |
+| auditSupport | `sha256-d8018da42a6e8e4ddf074741b3ab55cda9e3e6040f6a448ac13903d7b9563886` |
+| pitMembership | `sha256-8a5b143d9faeb18d49f73564a1ab5e84a628e1da975b83f57376b3bc1a27dc4a` |
+
+Both the TypeScript resolver and Python audit loader read only the installed
+runtime registry. Neither treats `data/packages/` as a runtime directory, and
+neither falls back to online PandaData.
+
+## One online suite lifecycle
+
+The suite validates all three installed packages before starting the server.
+It then creates one production A2A application and one listening server.
+
+Using one client against that server, it submits the frozen natural-language
+inputs strictly in this order:
+
+```text
+G01 task reaches COMPLETED and passes mechanism assertions
+  → G02 task reaches COMPLETED and passes mechanism assertions
+    → G03 task reaches COMPLETED and passes mechanism assertions
+```
+
+Only the natural-language text is sent. The label, expected strategy,
+strategyKey, claims, and packageId stay on the test side as assertions.
+
+There is no suite retry loop, and Ark parsing is configured for one attempt.
+If sending, polling, task completion, Artifact extraction, or a mechanism
+assertion fails, the exception stops the loop immediately. No later case is
+submitted and Ark is not called again automatically. The acceptance timeline
+records the failure stage, and the server is closed by the suite lifecycle.
+The accepted suite Artifact is not written for a partial run.
 
 ## Environment
 
-Load the root `.env` without printing it. The online test requires:
+Load the root `.env` without printing it. The online suite requires:
 
 ```dotenv
 ARK_API_KEY=...
 ARK_MODEL_DEEPSEEK=...
-ASSAY_CODE_REVISION=...
-ASSAY_DATA_AS_OF=2026-07-23
-ASSAY_LOCAL_DATA_PACKAGE_ROOT=.cache/assay/local-packages
-ASSAY_AUDIT_OUTPUT_ROOT=.cache/assay/audit-output
+ASSAY_CODE_REVISION=<the tested 40-character Git commit>
 ```
 
-`ASSAY_LOCAL_DATA_PACKAGE_ROOT` already defaults to
-`.cache/assay/local-packages`, so that line is optional. Before the A2A server
-starts, the E2E loads and validates the installed semantic package without
-rewriting it:
+`ARK_BASE_URL` is optional and defaults to the configured Volcano Ark endpoint.
+No PandaData credential is required because all audit data comes from the
+installed local registry.
+
+Python subprocesses use:
 
 ```text
-.cache/assay/local-packages/
-└── csi300-momentum-20d-monthly-top50-equal/
-    ├── manifest.json
-    ├── market-data.csv
-    ├── audit-support/
-    │   ├── manifest.json
-    │   └── fallback-provenance/
-    └── pit-membership/
-        └── index-weights/
-            └── 000300_SH/
+services/panda-adapter/.venv/bin/python
 ```
 
-The canonical manifest freezes the complete equity file, the whole membership
-tree, and every declared provenance descriptor by integrity value. It also records
-`historical-member-daily`, `index-daily`, and `comparator-factors` as
-`status: degraded` with `path: null`, because formally verifiable data for
-those datasets has not been obtained. The package must not invent placeholder
-files under `datasets/`.
-
-`provenance/incomplete-attempts/` retains only genuine, non-promoted payload:
-366 historical-member files covering 25 of 79 missing stocks, and four
-comparator payload files containing 33 rows for one date. Index-daily produced
-no payload. These records remain provenance only; the manifest paths stay
-`null`, and neither resolver nor audit loader may treat them as dataset input.
-
-Installation validates those canonical bytes before converting the equity
-file, membership tree, fallback records, and preparation report. The generated
-runtime package deliberately omits canonical-only
-`provenance/source-summary.json` and `provenance/incomplete-attempts/`.
-
-Runtime resolution is a separate check: the runtime manifest binds
-`marketData`, the entire `auditSupport` tree, and the entire `pitMembership`
-tree. All three boundaries must verify before a `dataRef` is created.
-
-Both the A2A resolver and Python audit loader are pointed at this installed
-registry. Neither treats `data/packages/` as a runtime directory.
-
-The package is read-only during E2E execution. `.cache/assay` is never
-committed; only parts, checkpoints, request splits, tooling and uv caches, run
-logs, temporary outputs, and derived host-corrected data remain outside the
-complete Git package. In particular, the comparator attempt's eleven
-`.split.json` request files and all `.parts` files are excluded.
-`ASSAY_AUDIT_OUTPUT_ROOT` is the separate writable location for task-scoped
-derived artifacts.
-
-Python subprocesses use `uv run --project services/panda-adapter` by default on
-every platform. A specific interpreter may still be pinned when needed:
-
-```dotenv
-# Windows
-ASSAY_EXPERIMENT_PYTHON=services/panda-adapter/.venv/Scripts/python.exe
-# Linux/macOS
-# ASSAY_EXPERIMENT_PYTHON=services/panda-adapter/.venv/bin/python
-```
+The runtime registry is read-only. Task-scoped derived files are written under
+`.cache/assay/audit-output`; diagnostics for an unaccepted candidate remain
+under `.cache/assay/run-logs` and are not golden Artifacts.
 
 ## Run
+
+Run the final acceptance once:
 
 ```bash
 bun run e2e:checks
 ```
 
-The command first runs `data:prepare` (`data:install && data:validate`), then
-starts the online Ark/A2A acceptance flow.
+The command expands to `data:prepare` followed by the online Ark/A2A suite.
+Do not pre-run its constituent stages as separate acceptance attempts.
 
-On success, the sanitized result is written to:
+On complete success, the sanitized suite result is written to:
 
 ```text
-artifacts/v9/assay-real-data-run.json
+artifacts/v9/assay-golden-cases-run.json
 ```
+
+The legacy single-case path `artifacts/v9/assay-real-data-run.json` is not
+overwritten.
 
 ## Pass conditions
 
-The command succeeds only when:
+The command succeeds only when all of the following are true:
 
-- the golden sentence is parsed into the expected strategy and claims;
-- the data-relevant strategy produces the `strategyKey` registered by the
-  semantic package;
-- local package resolution runs after Intake and before every audit stage;
-- all three package-manifest checksums are verified before the package is bound;
-- the Artifact records the frozen package's original PandaData provenance;
-- Claim Reproduction receives `18%` and `1.9`;
-- all five checks execute against the same host-bound `dataRef`;
-- Moiré and the existing verdict path complete;
-- the A2A task reaches `COMPLETED` with a valid `AuditArtifact`.
+- the three natural-language inputs parse into their exact frozen strategies
+  and separate claims;
+- the three `strategyKey` values are distinct and match the frozen values;
+- the three runtime `packageId` values are distinct and resolve from their
+  claims-free `DataPlan`;
+- all three runtime packages expose the same market, audit-support, and PIT
+  checksums while retaining different manifest identities;
+- claims-only changes resolve to the same package;
+- an unregistered strategy is rejected and cannot select a fallback package;
+- each case completes Claim Reproduction with its own claims;
+- each case executes all five audit checks against its host-bound `dataRef`;
+- each case completes Moiré and the existing verdict derivation;
+- all three A2A tasks reach `COMPLETED` with valid `AuditArtifact` values;
+- the cases complete in frozen G01, G02, G03 order within one server lifecycle;
+- one `assay-v9-golden-case-suite-v1` Artifact is persisted at the suite path.
 
-No PandaData credentials are required. Do not paste `.env`, provider
-responses, local absolute paths, or Ark credentials into reports.
-
-`G01` is only the test-case label for this input and its expected result. It is
-not part of the runtime identity; the package ID is the semantic
-`csi300-momentum-20d-monthly-top50-equal`.
+Do not paste `.env`, provider responses, local absolute paths, or Ark
+credentials into reports.

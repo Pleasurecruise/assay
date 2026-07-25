@@ -1,7 +1,8 @@
 # Local Data Package Pipeline｜三案例本地数据方案
 
-> Status: implemented for the G01 test case; G02/G03 package registration
-> pending. `G01` is a test label, not a runtime package identifier.
+> Status: implemented for the G01/G02/G03 golden fixtures. The three strategy
+> identities share one canonical data owner and materialize as three runtime
+> packages. `G01`/`G02`/`G03` are test labels, not runtime identifiers.
 >
 > Decision date: 2026-07-25.
 >
@@ -12,8 +13,8 @@
 
 竞赛运行时不再实时调用 PandaData。
 
-为每个已确定案例准备完整案例数据包，并在部署环境安装成不可变本地数据包。当前已
-登记 G01 测试案例，G02/G03 待确认。运行时：
+仓库只提交一份完整、经过校验的共享数据源，再用 claims-free registry 登记三个
+策略身份。部署时安装器把三个登记项物化成不可变 runtime package。运行时：
 
 ```text
 A2A 自然语言
@@ -137,7 +138,7 @@ type LocalDataRequirement =
 - requirements 根据 strategy 和既有审计需求由普通代码生成；
 - requirements 顺序稳定、去重；
 - `window` 是策略的冻结评估窗口；
-- G01 的 `requiredCoverage` 先固定为已登记请求区间
+- G01、G02、G03 的 `requiredCoverage` 都固定为已登记请求区间
   `2023-07-23..2026-07-23`。这是 V9 数据包的 provider anchor 到
   `asOf` 区间；首个实际交易日是 2023-07-24。既有审计对窗口初段的 regime
   历史不足继续使用 V9 中已经声明并验证的 degradation，不把不存在的盘前数据伪装成完整
@@ -150,8 +151,28 @@ type LocalDataRequirement =
 
 ## 5. 本地数据包与匹配
 
-Git 为每个已登记案例提交完整数据包；`data:prepare` 将它安装并验证为运行时
-只读包。manifest 必须同时描述已取得的数据和明确未取得的数据：
+Git 只提交一份完整数据 owner；`registry.json` 把三个 claims-free `DataPlan`
+绑定到三个语义 runtime `packageId`，并都引用这一份 owner。`data:prepare`
+验证一次 source bytes，再物化和验证三个运行时只读包。
+
+Registry 条目精确定义为：
+
+```ts
+interface CaseDataPackageBinding {
+  packageId: string;
+  sourceDataPackageId: string;
+  dataPlan: LocalDataPlan;
+}
+
+interface CaseDataPackageRegistry {
+  schemaVersion: "assay-case-data-registry-v1";
+  bindings: readonly CaseDataPackageBinding[];
+}
+```
+
+Registry 使用 exact-key 校验，不允许 case label、claims、costs、原始自然语言
+alias 或 fallback package。共享 source manifest 继续描述已取得的数据和明确
+未取得的数据：
 
 ```ts
 interface CaseIntegrity {
@@ -216,10 +237,11 @@ interface CaseDataPackageManifest {
 }
 ```
 
-这里有意采用“一份 manifest 对应一个 strategyKey”，不在一个包里维护
-`supportedStrategyKeys` 列表。自然语言同义表达、claims 变化和审计内部的 costs 口径变化，
-会先归一化为同一个 strategyKey；真正改变取数需求的策略必须拥有独立 manifest，避免
-宽泛别名意外命中同一数据。
+Source manifest 只负责数据字节和 provenance 完整性；runtime binding 只负责
+`DataPlan → strategyKey → packageId`。二者不能重新混在一个宽泛
+`supportedStrategyKeys` 列表里。自然语言同义表达、claims 变化和审计内部的
+costs 口径变化先归一化为同一个 strategyKey；真正改变策略身份的定义必须有
+独立 binding，但可以显式引用同一份 source bytes。
 
 当前完整案例包中的真实行情没有压缩或抽样：
 
@@ -242,10 +264,10 @@ payload 若确有保留价值，只能进入 `provenance/incomplete-attempts/`�
 这些内容只是未晋级 provenance，不是 `datasets/` 或 runtime 输入，不能被
 resolver 或 audit loader 当作可用数据发现。
 
-当前 Python 审计引擎只实现沪深 300 price-momentum，因此 manifest 只接受
-`000300.SH` 与当前已实现的数据/降级契约；不能通过伪造 manifest 提前宣称
-G02/G03 universe、factor 数据或上述三个未取得数据集已经 ready。后续案例
-确定后，先同时扩展 TS/Python 契约和审计引擎，再登记新包。
+当前 Python 审计引擎实现沪深 300 price-momentum，并从冻结 StrategySpec
+读取任意受支持的正整数 momentum window 与 Top N。因此 14/20/26 日和
+Top 30/50/70 复用相同行情与 PIT 是真实计算，不是 alias。不能通过 registry
+伪造新的 universe、factor 数据，或把上述三个未取得数据集宣称为 ready。
 
 仓库提交完整的安装/生成脚本，以及
 `data/packages/<semantic-package-id>/` 下的完整案例数据包。真实行情、PIT
@@ -256,6 +278,7 @@ Git 中的包结构为：
 
 ```text
 data/packages/
+├── registry.json
 └── csi300-momentum-20d-monthly-top50-equal/
     ├── manifest.json
     ├── datasets/
@@ -283,9 +306,9 @@ bun run data:prepare
 `data:install && data:validate`：
 
 ```text
-data/packages/<semantic-package-id>
-  → data:install（canonical 校验 + 确定性转换）
-  → .cache/assay/local-packages/<semantic-package-id>
+data/packages/registry.json + one shared source package
+  → data:install（source 校验 + 三个 binding 的确定性转换）
+  → .cache/assay/local-packages/<runtime-package-id> × 3
   → data:validate（离线 Python 语义校验）
   → ready
 ```
@@ -294,16 +317,15 @@ data/packages/<semantic-package-id>
 
 ```text
 .cache/assay/local-packages/
-└── csi300-momentum-20d-monthly-top50-equal/
-    ├── manifest.json
-    ├── market-data.csv
-    ├── audit-support/
-    │   ├── manifest.json
-    │   └── fallback-provenance/
-    └── pit-membership/
-        └── index-weights/
-            └── 000300_SH/
+├── csi300-momentum-14d-monthly-top30-equal/
+├── csi300-momentum-20d-monthly-top50-equal/
+└── csi300-momentum-26d-monthly-top70-equal/
 ```
+
+每个 runtime 目录都包含 `manifest.json`、`market-data.csv`、
+`audit-support/` 和 `pit-membership/`。三个 manifest 的 packageId、
+strategyKey 和 digest 不同；marketData、auditSupport、pitMembership 的
+三类 checksum 必须分别完全相同。
 
 转换规则是固定代码：
 
@@ -325,12 +347,12 @@ A2A resolver 与 Python loader 运行时都只读
 
 `e2e:checks` 会在在线流程前自动执行 `data:prepare`，无需手工预跑。
 
-维护者需要更新基础数据或增加 G02/G03 时，使用 `bun run data:rebuild`，其
+维护者需要更新基础数据或增加新的策略 binding 时，使用 `bun run data:rebuild`，其
 精确定义是
 `data:base && data:audit-support && data:package && data:prepare`，即全量
-provider 重建完整案例包后再安装并验证。如果完整 provider 缓存已经存在，
-`bun run data:package` 只从缓存重建完整案例包，不更新 runtime registry；需要
-运行时副本时再执行 `data:prepare`。
+provider 重建共享 source 与 registry 后再安装并验证。如果完整 provider 缓存已经
+存在，`bun run data:package` 从缓存重建共享 source 和确定性 registry；需要
+runtime 副本时再执行 `data:prepare`。
 
 Git 只排除运行无关的本地工作状态：`.cache` 下的 parts、断点、请求拆分、
 tooling cache、uv cache、run logs、临时输出和 derived host-corrected 数据。
@@ -338,9 +360,13 @@ tooling cache、uv cache、run logs、临时输出和 derived host-corrected 数
 不能以“减小仓库”为由排除真实行情、正式 PIT 快照、已晋级 provenance，或
 上述确为数据 payload 的 incomplete attempts。
 
-registry 根目录中：
+canonical registry 中：
 
-- 每个一级目录对应一个包，目录名必须等于 `packageId`；
+- `registry.json` 的 packageId 和 strategyKey 各自唯一；
+- 三个 binding 的 `sourceDataPackageId` 指向同一个已校验 source 目录；
+- Git 只能存在一份 `datasets/equity-daily.csv` 和一套 PIT/provenance 树；
+- runtime registry 的每个一级目录对应一个 runtime package，目录名必须等于
+  `packageId`；
 - TypeScript resolver 与 Python loader 都只读取
   `<packageId>/manifest.json`；
 - `paths` 都是相对该 package 目录的路径，禁止绝对路径、`..` 和符号链接逃逸；
@@ -431,19 +457,26 @@ strategy_intake
 
 ## 7. 三个案例登记
 
-当前仓库只明确给出了一个完整案例，其余两个在确定前不做假设。
+三个测试 fixture 已冻结：
 
-| Case | 输入与策略                                                                                                                    | Claims             | packageId                                 |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------ | ----------------------------------------- |
-| G01  | 沪深 300；20 日动量；月频；Top 50；等权；输入为“沪深 300 每月底买过去 20 天涨幅最大的 50 只，等权持有，宣称年化 18% 夏普 1.9” | 年化 18%、夏普 1.9 | `csi300-momentum-20d-monthly-top50-equal` |
-| G02  | 待确认                                                                                                                        | 待确认             | 待登记                                    |
-| G03  | 待确认                                                                                                                        | 待确认             | 待登记                                    |
+| Case | 策略 | Claims | packageId |
+| ---- | ---- | ------ | --------- |
+| G01 | 沪深 300；20 日动量；月末 Top 50；等权 | 年化 18%、夏普 1.9 | `csi300-momentum-20d-monthly-top50-equal` |
+| G02 | 沪深 300；14 日动量；月末 Top 30；等权 | 年化 60%、夏普 2.3 | `csi300-momentum-14d-monthly-top30-equal` |
+| G03 | 沪深 300；26 日动量；月末 Top 70；等权 | 年化 20%、夏普 0.9 | `csi300-momentum-26d-monthly-top70-equal` |
+
+三者的回测窗口都是 `20230723..20260723`，rebalance 为
+`monthly / close`，costs 为 `standard`。对应 strategyKey 分别为：
+
+- `sha256-a9d796047db6ccb208f3d82df70287afbb50ddca1fd544f67718155a4dc1bddb`
+- `sha256-9242fb1add11336293dd23983415e1493e25bdf924c06d04159b645b7f1c8195`
+- `sha256-15a2f8c08d6a7f1e2f8013d1c663c325cf9666b30a06a5d8382aefcfc99f21f9`
 
 `G01`、`G02`、`G03` 只用于测试用例、验收记录和预期结果。运行时不会先识别
 `G01` 再跳转数据；它只会把自然语言归一化为 strategy，生成 `strategyKey` 和
-`LocalDataPlan`，再匹配语义命名的 packageId。因此当前 packageId 不包含 `G01`。
+`LocalDataPlan`，再匹配语义命名的 packageId。因此 packageId 不包含任何 G 标签。
 
-每个案例实现前补齐：
+新增案例前必须补齐：
 
 - 标准自然语言输入和允许的等价表达；
 - 规范 strategy 与 claims；
@@ -489,15 +522,15 @@ claims 的变化不创建新数据包。
 
 ## 10. 实施与验收顺序
 
-当前 G01 测试链路的投影、plan、manifest、resolver、executor 接线、完整案例包
-和本地安装路径已完成。
-后续 G02/G03 各自确认后，按同一流程扩展契约、生成语义包并增加测试，不预先伪造
-尚未确定的数据能力。
+G01/G02/G03 的投影、plan、claims-free registry、resolver、共享 source、
+runtime 安装和参数化验收链路已完成。三个案例不复制 provider bytes，也不扩张
+当前数据能力。
 
 每次新增案例的验收顺序：
 
 1. 冻结 strategy、claims、`evaluationAsOf` 和数据需求；
-2. 生成语义命名的数据包并登记对应 `strategyKey`；
+2. 判断能否复用已验证 source；生成语义 runtime binding 并登记对应
+   `strategyKey`；
 3. 运行局部单元测试与边界测试；
 4. 全部代码和包接完后，只运行一次完整在线 A2A E2E。
 
@@ -525,7 +558,9 @@ e2e:checks
 
 验收条件：
 
-- 当前 G01 测试案例从公开 A2A 入口完成；G02/G03 登记后遵循同一条件；
+- G01、G02、G03 在一个 A2A server lifecycle 中依次完成；
+- 三个自然语言输入分别冻结为预期 StrategySpec 和独立 claims；
+- 三个 strategyKey 和 runtime packageId 各自唯一，三类底层 checksum 相同；
 - 同义输入解析到相同包；
 - 只改 claims 时 plan、package 和 manifest identity 不变；不同 Task 的
   `dataRef` 仍使用各自 `auditId`；
