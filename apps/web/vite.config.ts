@@ -10,7 +10,7 @@ export default defineConfig({
     },
   },
   server: {
-    allowedHosts: ["advx.kitty-hamal.ts.net"],
+    allowedHosts: ["advx.you-find.me"],
     proxy: {
       "/.well-known": "http://127.0.0.1:3001",
       "/a2a": "http://127.0.0.1:3001",
