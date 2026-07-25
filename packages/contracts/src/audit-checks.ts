@@ -1,5 +1,5 @@
 export const AUDIT_CHECK_SCHEMA_VERSION = "1.0.0" as const;
-export const AUDIT_CHECK_HARD_DEADLINE_MS = 360_000;
+export const AUDIT_CHECK_HARD_DEADLINE_MS = 480_000;
 
 export const AUDIT_CHECK_IDS = [
   "param-robustness",

@@ -1,4 +1,10 @@
-import type { EarlyExitReasonCode, MissingEvidence } from "@assay/contracts";
+import {
+  SPRINT_PARAMETER_GRID_TOP_N,
+  SPRINT_PARAMETER_GRID_WINDOWS,
+  type CanonicalStrategySpec,
+  type EarlyExitReasonCode,
+  type MissingEvidence,
+} from "@assay/contracts";
 import type { NaturalLanguageStrategyParser } from "./natural-language-parser";
 import {
   freezeStrategySpec,
@@ -27,6 +33,32 @@ export type StrategyIntakeResult =
 
 export interface StrategyIntakeOptions extends FreezeStrategyOptions {
   parser: NaturalLanguageStrategyParser;
+}
+
+/**
+ * The audited-neighborhood gate. Library signals carry no window parameter,
+ * so only topN is gated for them; template signals gate both dimensions.
+ */
+function parameterGridGateIssues(spec: CanonicalStrategySpec): readonly IntakeValidationIssue[] {
+  const issues: IntakeValidationIssue[] = [];
+  if (
+    spec.signal.kind === "template" &&
+    !SPRINT_PARAMETER_GRID_WINDOWS.includes(spec.signal.params.window)
+  ) {
+    issues.push({
+      path: "/signal/params/window",
+      code: "parameter_outside_audited_grid",
+      message: `signal window ${String(spec.signal.params.window)} is outside the audited parameter-grid support [${SPRINT_PARAMETER_GRID_WINDOWS.join(", ")}]`,
+    });
+  }
+  if (!SPRINT_PARAMETER_GRID_TOP_N.includes(spec.selection.topN)) {
+    issues.push({
+      path: "/selection/topN",
+      code: "parameter_outside_audited_grid",
+      message: `selection topN ${String(spec.selection.topN)} is outside the audited parameter-grid support [${SPRINT_PARAMETER_GRID_TOP_N.join(", ")}]`,
+    });
+  }
+  return issues;
 }
 
 const FENCED_CODE_BLOCK_PATTERN = /```[\s\S]*?```/;
@@ -257,6 +289,17 @@ export class StrategyIntake {
     }
 
     const frozen = freezeStrategySpec(validation.spec, this.#freezeOptions);
+    const gateIssues = parameterGridGateIssues(frozen.spec);
+    if (gateIssues.length > 0) {
+      return {
+        kind: "early_exit",
+        reasonCode: "unsupported_input",
+        summary:
+          "The strategy's baseline parameters fall outside the audited parameter-grid support, so the predeclared robustness neighborhood cannot cover them.",
+        issues: gateIssues,
+        missingInformation: gateIssues.map(toMissingInformation),
+      };
+    }
     return {
       kind: "ready",
       frozen:

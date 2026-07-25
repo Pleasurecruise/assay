@@ -238,6 +238,12 @@ export class AgentRuntime {
     let auditSubmissionAttemptCount = 0;
     let submittedAuditResult: AuditCheckResult | undefined;
     const pendingAuditSubmissions = new Map<string, AuditCheckResult>();
+    let completedEvidenceTool:
+      | {
+          readonly name: string;
+          readonly details: unknown;
+        }
+      | undefined;
 
     const emit = async (payload: RuntimeEventPayload): Promise<void> => {
       const event: RuntimeEvent = {
@@ -292,7 +298,7 @@ export class AgentRuntime {
       // Advance the protocol state inside the agent loop, before the framework
       // emits tool_execution_end. Event subscribers consume a separate async
       // stream and can otherwise lose a race with the next getToolChoice call.
-      afterToolCall: ({ toolCall, isError }) => {
+      afterToolCall: ({ toolCall, result, isError }) => {
         if (toolCall.name === AUDIT_CHECK_SUBMISSION_TOOL_NAME) {
           const pending = pendingAuditSubmissions.get(toolCall.id);
           if (isError !== true && pending !== undefined && submittedAuditResult === undefined) {
@@ -310,6 +316,10 @@ export class AgentRuntime {
           TRUSTED_SPEC_TOOL_NAMES.some((name) => name === toolCall.name) &&
           isError !== true
         ) {
+          completedEvidenceTool = {
+            name: toolCall.name,
+            details: result.details,
+          };
           successfulRunExperimentCallCount += 1;
         }
       },
@@ -325,10 +335,19 @@ export class AgentRuntime {
             submissionError = `submit_check_result allows at most ${String(MAX_AUDIT_CHECK_SUBMISSION_ATTEMPTS)} attempts.`;
           } else {
             try {
-              pendingAuditSubmissions.set(
-                toolCall.id,
-                parseAuditCheckSubmission(toolCall.arguments, definition.id),
-              );
+              const submission = parseAuditCheckSubmission(toolCall.arguments, definition.id);
+              if (definition.submissionValidator !== undefined) {
+                if (completedEvidenceTool === undefined) {
+                  throw new Error(
+                    "The completed evidence tool result is unavailable for submission validation.",
+                  );
+                }
+                await definition.submissionValidator({
+                  submission,
+                  evidenceTool: completedEvidenceTool,
+                });
+              }
+              pendingAuditSubmissions.set(toolCall.id, submission);
             } catch (error) {
               submissionError =
                 error instanceof Error

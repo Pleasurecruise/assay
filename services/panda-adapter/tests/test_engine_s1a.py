@@ -269,8 +269,22 @@ class EngineProtocolTest(unittest.TestCase):
         json.dumps(ladder, allow_nan=False)
         self.assertEqual(
             set(grid),
-            {"engineVersion", "baseline", "variants", "summaryRef"},
+            {
+                "engineVersion",
+                "baseline",
+                "variants",
+                "summaryRef",
+                "variantDailyReturns",
+            },
         )
+        self.assertEqual(
+            len(grid["variantDailyReturns"]), len(grid["variants"])
+        )
+        self.assertEqual(
+            len({len(series) for series in grid["variantDailyReturns"]}), 1
+        )
+        for series in grid["variantDailyReturns"]:
+            self.assertTrue(all(isinstance(value, float) for value in series))
         self.assertEqual(
             grid["summaryRef"],
             "artifact:backtest/parameter-grid",

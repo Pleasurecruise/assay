@@ -65,6 +65,7 @@ def run_grid(
     )
     seen_ids: set[str] = set()
     results: list[dict[str, Any]] = []
+    variant_daily_returns: list[list[float]] = []
     for value in variants:
         variant = dict(value)
         variant_id = variant.pop("variantId", None)
@@ -103,6 +104,12 @@ def run_grid(
                 daily_returns_ref=daily_returns_ref,
             )
         )
+        variant_daily_returns.append(
+            [float(row["return"]) for row in result["dailyReturns"]]
+        )
+    lengths = {len(series) for series in variant_daily_returns}
+    if len(lengths) != 1:
+        raise ValueError("grid variants produced misaligned daily-return series")
     return {
         "engineVersion": ENGINE_VERSION,
         "baseline": _result_summary(
@@ -112,6 +119,9 @@ def run_grid(
         ),
         "variants": results,
         "summaryRef": PARAMETER_GRID_SOURCE_REF,
+        # Inlined for the host-side overfitting statistics (PBO/DSR): aligned
+        # with "variants" order; the TS parser requires this key for grid.
+        "variantDailyReturns": variant_daily_returns,
     }
 
 

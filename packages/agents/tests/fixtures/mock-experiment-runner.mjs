@@ -67,6 +67,24 @@ if (
             },
           ];
 
+  const gridDailyReturns =
+    request.kind === "grid"
+      ? variants.map((variant, variantIndex) => {
+          const days = 64;
+          const series = [];
+          for (let day = 0; day < days; day += 1) {
+            // Deterministic pseudo-noise plus a variant-specific drift so the
+            // overfitting statistics have a well-defined, reproducible value.
+            series.push(
+              0.004 * Math.sin(day * (variantIndex + 2) * 0.7) +
+                0.0005 * ((variantIndex % 5) - 2) +
+                0.001,
+            );
+          }
+          return series;
+        })
+      : undefined;
+
   const response = {
     engineVersion: "mock-v1",
     baseline: {
@@ -78,7 +96,10 @@ if (
     },
     variants,
     ...(request.kind === "grid"
-      ? { summaryRef: "artifact:backtest/parameter-grid" }
+      ? {
+          summaryRef: "artifact:backtest/parameter-grid",
+          variantDailyReturns: gridDailyReturns,
+        }
       : request.kind === "cost_ladder"
         ? { summaryRef: "artifact:backtest/cost-stress" }
         : {}),
@@ -92,6 +113,14 @@ if (
     response.debug = true;
   } else if (request.spec.mockResponseShape === "wrong-summary-ref") {
     response.summaryRef = "artifact:backtest/wrong";
+  } else if (request.spec.mockResponseShape === "grid-missing-daily-returns") {
+    delete response.variantDailyReturns;
+  } else if (request.spec.mockResponseShape === "grid-misaligned-daily-returns") {
+    response.variantDailyReturns = response.variantDailyReturns?.slice(1);
+  } else if (request.spec.mockResponseShape === "grid-degenerate-daily-returns") {
+    response.variantDailyReturns = response.variantDailyReturns?.map((series) =>
+      series.map(() => 0.001),
+    );
   }
 
   process.stdout.write(JSON.stringify(response));

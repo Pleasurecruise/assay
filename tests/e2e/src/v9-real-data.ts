@@ -53,15 +53,14 @@ export const V9_FALLBACK_CLOSE_SOURCE_REF = "pandadata:get_stock_daily_post(clos
 export const V9_FALLBACK_PROVENANCE_SCHEMA_VERSION = "assay-base-official-post-fallback-index-v1";
 export const V9_EXPECTED_PIT_POINTS = 37;
 export const V9_EXPECTED_COMPLETED_MONTH_ENDS = 36;
-export const V9_REAL_POLL_TIMEOUT_MS = 600_000;
+export const V9_REAL_POLL_TIMEOUT_MS = 900_000;
 export const V9_REAL_INPUT = GOLDEN_STRATEGY_CASES[0]!.input;
 export const V9_REAL_ARTIFACT_PATH = "artifacts/v9/assay-real-data-run.json";
 export const V9_GOLDEN_SUITE_ARTIFACT_PATH = "artifacts/v9/assay-golden-cases-run.json";
 export const V9_UNACCEPTED_DIAGNOSTIC_DIR = ".cache/assay/run-logs";
 export const V9_UNACCEPTED_DIAGNOSTIC_VERSION = "assay-v9-unaccepted-diagnostic-v1";
 export const V9_MECHANISM_REPLAY_VERSION = "assay-v9-mechanism-replay-v1";
-const DEFAULT_LOCAL_PACKAGE_ROOT =
-  `${LOCAL_DATA_RUNTIME_ROOT}/${GOLDEN_STRATEGY_CASES[0]!.packageId}`;
+const DEFAULT_LOCAL_PACKAGE_ROOT = `${LOCAL_DATA_RUNTIME_ROOT}/${GOLDEN_STRATEGY_CASES[0]!.packageId}`;
 const V9_DATASET_NAMES = [
   "basePanel",
   "pitTimeline",
@@ -312,8 +311,7 @@ export function assertV9GoldenSuiteStructure(
     isRecord(sharedChecksums) &&
       (["marketData", "auditSupport", "pitMembership"] as const).every(
         (checksumName) =>
-          sharedChecksums[checksumName] ===
-          GOLDEN_SHARED_RUNTIME_CHECKSUMS[checksumName],
+          sharedChecksums[checksumName] === GOLDEN_SHARED_RUNTIME_CHECKSUMS[checksumName],
       ),
     "golden suite shared checksums do not match the frozen runtime data",
   );
@@ -1094,8 +1092,7 @@ function runV9MechanismAssertions(
       "strategySpec.claimsFreeDataPlan",
       goldenCase.strategyKey,
       actualStrategyKey,
-      !Object.hasOwn(claimsFreeStrategy, "claims") &&
-        actualStrategyKey === goldenCase.strategyKey,
+      !Object.hasOwn(claimsFreeStrategy, "claims") && actualStrategyKey === goldenCase.strategyKey,
     );
   }
 
@@ -1206,12 +1203,7 @@ function runV9MechanismAssertions(
       "non-null current-schema claimComparison",
       "artifact.schema",
     );
-    pushBlockedAssertion(
-      assertions,
-      "claimComparison.claimed",
-      expectedClaims,
-      "artifact.schema",
-    );
+    pushBlockedAssertion(assertions, "claimComparison.claimed", expectedClaims, "artifact.schema");
     pushBlockedAssertion(
       assertions,
       "claimComparison.reproduced",
@@ -1907,8 +1899,7 @@ export async function runV9RealAcceptance(): Promise<string> {
     arkModel,
     arkParserMaxAttempts: 1,
     dataAsOf: cacheSnapshot.dataAsOf,
-    capabilitySnapshotId:
-      `local-data-registry:${runtimeRegistry.registryCapabilityDigest.slice("sha256-".length)}`,
+    capabilitySnapshotId: `local-data-registry:${runtimeRegistry.registryCapabilityDigest.slice("sha256-".length)}`,
     codeRevision,
     publicUrl: "http://127.0.0.1",
     corsOrigins: ["http://localhost:5173"],
@@ -1936,13 +1927,7 @@ export async function runV9RealAcceptance(): Promise<string> {
         `${runtimePackage.goldenCase.label} cache snapshot is missing`,
       );
       acceptedCases.push(
-        await runGoldenCaseAgainstClient(
-          client,
-          runtimePackage,
-          caseSnapshot,
-          codeRevision,
-          index,
-        ),
+        await runGoldenCaseAgainstClient(client, runtimePackage, caseSnapshot, codeRevision, index),
       );
     }
     requireValue(

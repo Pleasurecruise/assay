@@ -4,6 +4,8 @@ export const CHECKS_WIRING_POLICY_VERSION = "1.0.0";
 
 export const AVAILABILITY_ANNUAL_RETURN_DELTA_FAIL_THRESHOLD = 0.02;
 export const AVAILABILITY_CONTAMINATED_SELECTION_RATE_FAIL_THRESHOLD = 0.1;
+export const PARAMETER_RETENTION_PASS_THRESHOLD = 0.7;
+export const PARAMETER_RETENTION_RESERVATION_THRESHOLD = 0.4;
 export const REGIME_PNL_SHARE_RESERVATION_THRESHOLD = 0.8;
 export const REGIME_PNL_SHARE_FAIL_THRESHOLD = 0.95;
 export const REGIME_MINIMUM_SLICE_DAYS = 60;
@@ -24,3 +26,14 @@ export const FAILURE_RECOVERY_CONDITION_BY_CHECK: Readonly<Partial<Record<AuditC
     "cost-stress": "降低调仓频率/换手后复审",
     "regime-dependency": "增加环境过滤规则",
   });
+
+/**
+ * Frozen sprint parameter-grid support for the parameter-robustness check
+ * (single source of truth). The agents package builds its frozen
+ * run_experiment grid from these values and the check prompt interpolates
+ * them, while Intake gates any baseline outside this support into an
+ * unsupported_input early exit — a predeclared neighborhood that does not
+ * contain the audited baseline cannot support a robustness conclusion.
+ */
+export const SPRINT_PARAMETER_GRID_WINDOWS: readonly number[] = Object.freeze([14, 17, 20, 23, 26]);
+export const SPRINT_PARAMETER_GRID_TOP_N: readonly number[] = Object.freeze([30, 50, 70]);
