@@ -1,0 +1,1041 @@
+{
+  "artifactProvenance": {
+    "codeRevision": "8173ed4b6bf1111fdf7fe95c45e6abf19f8605f1",
+    "dataAsOf": "2026-07-23",
+    "dataSources": [],
+    "inputHash": "sha256:a76adf550c3f94aa8892726f0ffa5de597725fe40406d0b409e2c351c8d063f6"
+  },
+  "artifactSchemaVersion": "1.1.0",
+  "bundleSchemaVersion": "assay-v9-real-acceptance-v1",
+  "cacheSnapshot": {
+    "basePanelSha256": "27779f08aac594467eb16be723a2ac0e743042fddb078e4ca704ea6484dd9382",
+    "cacheVersion": "assay-v9-p1-v1",
+    "dataAsOf": "2026-07-23",
+    "datasets": {
+      "basePanel": {
+        "assumptions": [
+          "111 identity-bound single-key get_factor(close) gaps were filled from get_stock_daily_post(close) only after both adjacent trading-date prices matched the primary source."
+        ],
+        "status": "ready"
+      },
+      "comparatorFactors": {
+        "assumptions": [
+          "ratio_pe_ttm and market_cap are unavailable; homogeneity analysis must use only the three self-built classic factors."
+        ],
+        "mode": "classic_only",
+        "reasonCode": "COMPARATOR_FACTORS_UNAVAILABLE",
+        "status": "degraded"
+      },
+      "historicalMembers": {
+        "assumptions": [
+          "Historical constituents could not be fully cached within the stage budget; availability correction must use remove-only mode."
+        ],
+        "mode": "remove_only",
+        "reasonCode": "HISTORICAL_MEMBER_DATA_UNAVAILABLE",
+        "status": "degraded"
+      },
+      "indexDaily": {
+        "assumptions": [
+          "CSI 300 index daily data is unavailable; regime analysis must use the disclosed constituent equal-weight proxy."
+        ],
+        "mode": "constituent_proxy",
+        "reasonCode": "INDEX_DAILY_UNAVAILABLE",
+        "status": "degraded"
+      },
+      "pitTimeline": {
+        "status": "ready"
+      }
+    },
+    "manifestSchemaVersion": "assay-p1-cache-manifest-v1",
+    "manifestSha256": "03cae41ca2381eb87eeb74e0d6a873418861fdee9654bad74a298728eebe24aa",
+    "priceSources": {
+      "fallbackFillCount": 111,
+      "fallbackFilledKeys": [
+        {
+          "date": "2026-04-15",
+          "symbol": "000001.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000002.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000063.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000100.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000157.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000166.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000301.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000333.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000338.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000408.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000425.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000538.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000568.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000596.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000617.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000625.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000630.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000651.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000657.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000708.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000725.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000768.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000776.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000792.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000807.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000858.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000895.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000938.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000963.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000975.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000977.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000988.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "000999.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "001280.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "001391.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "001965.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "001979.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002001.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002027.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002028.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002049.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002050.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002074.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002142.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002179.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002202.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002230.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002236.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002241.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002304.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002311.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002352.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002353.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002371.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002384.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002415.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002422.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002460.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002463.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002466.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002475.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002493.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002532.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002558.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002594.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002600.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002602.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002625.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002648.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002709.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002714.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002736.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002837.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002916.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002920.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "002938.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "003816.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300014.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300015.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300033.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300059.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300122.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300124.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300251.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300274.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300308.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300316.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300394.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300408.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300413.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300418.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300433.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300442.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300450.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300476.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300498.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300502.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300628.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300661.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300750.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300760.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300803.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300832.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300866.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300896.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "300999.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "301165.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "301236.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "301269.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "301308.SZ"
+        },
+        {
+          "date": "2026-04-15",
+          "symbol": "302132.SZ"
+        }
+      ],
+      "fallbackProvenanceSha256": "f79ee4fb45228b24cc0e770839d478ebff782123513e76af53ccc4cfb9ae0904",
+      "fallbackRejectedCount": 0,
+      "fallbackRejectedReasonCounts": {},
+      "fallbackSourceRef": "pandadata:get_stock_daily_post(close)",
+      "priceSourceMode": "factor-close-with-validated-official-post-fallback",
+      "primarySourceRef": "pandadata:get_factor(close)"
+    },
+    "state": "degraded"
+  },
+  "cacheVersion": "assay-v9-p1-v1",
+  "checks": [
+    {
+      "conclusion": "pass",
+      "id": "param-robustness",
+      "missingEvidence": [],
+      "moireRefinement": null,
+      "numericEvidence": [
+        {
+          "metric": "baselineSharpe",
+          "sourceRefs": [
+            "artifact:backtest/parameter-grid"
+          ],
+          "unit": "ratio",
+          "value": 1.044499266119358
+        },
+        {
+          "metric": "medianVariantSharpe",
+          "sourceRefs": [
+            "artifact:backtest/parameter-grid"
+          ],
+          "unit": "ratio",
+          "value": 1.0809683416970175
+        },
+        {
+          "metric": "neighborhoodSharpeRetention",
+          "sourceRefs": [
+            "artifact:backtest/parameter-grid"
+          ],
+          "unit": "ratio",
+          "value": 1.0349153673541136
+        },
+        {
+          "metric": "variantCount",
+          "sourceRefs": [
+            "artifact:backtest/parameter-grid"
+          ],
+          "unit": "count",
+          "value": 14
+        }
+      ]
+    },
+    {
+      "conclusion": "fail",
+      "id": "data-availability",
+      "missingEvidence": [
+        {
+          "reason": "Audit ran in degraded_remove_only mode; HISTORICAL_MEMBER_DATA_UNAVAILABLE — no live historical-member acquisition was attempted. Future constituents were only removed, not re-acquired with PIT snapshots.",
+          "requirement": "Full PIT constituent acquisition for historical members",
+          "sourceRefs": [
+            "artifact:data-availability/pit-audit"
+          ]
+        }
+      ],
+      "moireRefinement": null,
+      "numericEvidence": [
+        {
+          "metric": "affectedRebalances",
+          "sourceRefs": [
+            "artifact:data-availability/pit-audit"
+          ],
+          "unit": "count",
+          "value": 35
+        },
+        {
+          "metric": "contaminatedSelectionRate",
+          "sourceRefs": [
+            "artifact:data-availability/pit-audit"
+          ],
+          "unit": "ratio",
+          "value": 0.22228571428571428
+        },
+        {
+          "metric": "corrected.annualReturn",
+          "sourceRefs": [
+            "artifact:data-availability/pit-audit"
+          ],
+          "unit": "ratio",
+          "value": 0.1769805599561396
+        },
+        {
+          "metric": "corrected.delta",
+          "sourceRefs": [
+            "artifact:data-availability/pit-audit"
+          ],
+          "unit": "ratio",
+          "value": -0.10479778343210744
+        },
+        {
+          "metric": "corrected.sharpe",
+          "sourceRefs": [
+            "artifact:data-availability/pit-audit"
+          ],
+          "unit": "ratio",
+          "value": 0.7768643386238205
+        },
+        {
+          "metric": "futureConstituentCount",
+          "sourceRefs": [
+            "artifact:data-availability/pit-audit"
+          ],
+          "unit": "count",
+          "value": 76
+        },
+        {
+          "metric": "untradableTargets",
+          "sourceRefs": [
+            "artifact:data-availability/pit-audit"
+          ],
+          "unit": "count",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "conclusion": "pass_with_reservations",
+      "id": "cost-stress",
+      "missingEvidence": [],
+      "moireRefinement": "[M2][resolved] 成本结论对成分修正稳健。 original=pass_with_reservations; corrected=pass_with_reservations; sourceRef=artifact:moire/M2/sha256-3f5a86ef075339dc26b5305d950150e87270c45bf3a973f92c087b456741a15d",
+      "numericEvidence": [
+        {
+          "metric": "annualReturn erosion (standard to pessimistic)",
+          "sourceRefs": [
+            "artifact:backtest/cost-stress"
+          ],
+          "unit": "ratio",
+          "value": 0.0389
+        },
+        {
+          "metric": "baseline annualReturn (standard costs)",
+          "sourceRefs": [
+            "artifact:backtest/cost-stress"
+          ],
+          "unit": "ratio",
+          "value": 0.2818
+        },
+        {
+          "metric": "pessimistic annualReturn",
+          "sourceRefs": [
+            "artifact:backtest/cost-stress"
+          ],
+          "unit": "ratio",
+          "value": 0.2429
+        },
+        {
+          "metric": "realistic annualReturn",
+          "sourceRefs": [
+            "artifact:backtest/cost-stress"
+          ],
+          "unit": "ratio",
+          "value": 0.2594
+        },
+        {
+          "metric": "realistic annualTurnover",
+          "sourceRefs": [
+            "artifact:backtest/cost-stress"
+          ],
+          "unit": "ratio",
+          "value": 11.0522
+        }
+      ]
+    },
+    {
+      "conclusion": "pass",
+      "id": "regime-dependency",
+      "missingEvidence": [
+        {
+          "reason": "A return dated t is classified only with index information available through t-1. Trend uses a 200-trading-day moving average; volatility uses 60 trading days and an expanding historical two-thirds quantile. The prepared index-daily cache was unavailable; the cached assay-v9-p1-v1 PIT constituent timeline's equal-weight return was used as the authorized deterministic proxy. A snapshot becomes eligible only after its effective date, so future constituents cannot enter earlier proxy returns. Days before the first cached PIT snapshot remain unlabeled. 79 PIT member(s) absent from the frozen price panel were omitted under the authorized remove-only degradation; each proxy day uses the intersection of its as-of PIT membership and the frozen panel. 176 nonzero-return strategy day(s) preceded the first usable regime label and are excluded from slice metrics. Each reported pnlShare remains its additive contribution divided by full-period P&L, so the reported shares need not sum to 1.",
+          "requirement": "disclose constituent_proxy regime-split assumptions",
+          "sourceRefs": [
+            "artifact:regime-dependency/regime-split"
+          ]
+        },
+        {
+          "reason": "down-high has 11 trading days and cannot support a strong regime conclusion.",
+          "requirement": "down-high must have at least 60 trading days",
+          "sourceRefs": [
+            "artifact:regime-dependency/regime-split"
+          ]
+        },
+        {
+          "reason": "down-normal has 57 trading days and cannot support a strong regime conclusion.",
+          "requirement": "down-normal must have at least 60 trading days",
+          "sourceRefs": [
+            "artifact:regime-dependency/regime-split"
+          ]
+        }
+      ],
+      "moireRefinement": null,
+      "numericEvidence": [
+        {
+          "metric": "dominantEnvironment.pnlShare",
+          "sourceRefs": [
+            "artifact:regime-dependency/regime-split"
+          ],
+          "unit": "fraction_of_total_pnl",
+          "value": 0.7763375737470796
+        },
+        {
+          "metric": "down-high.annualReturn",
+          "sourceRefs": [
+            "artifact:regime-dependency/regime-split"
+          ],
+          "unit": "annualized_decimal",
+          "value": 105.74782414689032
+        },
+        {
+          "metric": "down-high.days",
+          "sourceRefs": [
+            "artifact:regime-dependency/regime-split"
+          ],
+          "unit": "trading_days",
+          "value": 11
+        },
+        {
+          "metric": "down-high.pnlShare",
+          "sourceRefs": [
+            "artifact:regime-dependency/regime-split"
+          ],
+          "unit": "fraction_of_total_pnl",
+          "value": 0.4086663058233876
+        },
+        {
+          "metric": "down-high.sharpe",
+          "sourceRefs": [
+            "artifact:regime-dependency/regime-split"
+          ],
+          "unit": "ratio",
+          "value": 10.254344845075241
+        },
+        {
+          "metric": "down-normal.annualReturn",
+          "sourceRefs": [
+            "artifact:regime-dependency/regime-split"
+          ],
+          "unit": "annualized_decimal",
+          "value": -0.6042854116716305
+        },
+        {
+          "metric": "down-normal.days",
+          "sourceRefs": [
+            "artifact:regime-dependency/regime-split"
+          ],
+          "unit": "trading_days",
+          "value": 57
+        },
+        {
+          "metric": "down-normal.pnlShare",
+          "sourceRefs": [
+            "artifact:regime-dependency/regime-split"
+          ],
+          "unit": "fraction_of_total_pnl",
+          "value": -0.47797366010334297
+        },
+        {
+          "metric": "down-normal.sharpe",
+          "sourceRefs": [
+            "artifact:regime-dependency/regime-split"
+          ],
+          "unit": "ratio",
+          "value": -2.362687052468397
+        },
+        {
+          "metric": "up-high.annualReturn",
+          "sourceRefs": [
+            "artifact:regime-dependency/regime-split"
+          ],
+          "unit": "annualized_decimal",
+          "value": 0.495527939546929
+        },
+        {
+          "metric": "up-high.days",
+          "sourceRefs": [
+            "artifact:regime-dependency/regime-split"
+          ],
+          "unit": "trading_days",
+          "value": 122
+        },
+        {
+          "metric": "up-high.pnlShare",
+          "sourceRefs": [
+            "artifact:regime-dependency/regime-split"
+          ],
+          "unit": "fraction_of_total_pnl",
+          "value": 0.2503101258897003
+        },
+        {
+          "metric": "up-high.sharpe",
+          "sourceRefs": [
+            "artifact:regime-dependency/regime-split"
+          ],
+          "unit": "ratio",
+          "value": 1.3467328386405373
+        },
+        {
+          "metric": "up-normal.annualReturn",
+          "sourceRefs": [
+            "artifact:regime-dependency/regime-split"
+          ],
+          "unit": "annualized_decimal",
+          "value": 0.44236709600268975
+        },
+        {
+          "metric": "up-normal.days",
+          "sourceRefs": [
+            "artifact:regime-dependency/regime-split"
+          ],
+          "unit": "trading_days",
+          "value": 332
+        },
+        {
+          "metric": "up-normal.pnlShare",
+          "sourceRefs": [
+            "artifact:regime-dependency/regime-split"
+          ],
+          "unit": "fraction_of_total_pnl",
+          "value": 0.7763375737470796
+        },
+        {
+          "metric": "up-normal.sharpe",
+          "sourceRefs": [
+            "artifact:regime-dependency/regime-split"
+          ],
+          "unit": "ratio",
+          "value": 1.4911497299933387
+        }
+      ]
+    },
+    {
+      "conclusion": "fail",
+      "id": "homogeneity-decay",
+      "missingEvidence": [],
+      "moireRefinement": null,
+      "numericEvidence": [
+        {
+          "metric": "maxAbsMeanSpearman",
+          "sourceRefs": [
+            "artifact:homogeneity-decay/spearman-ic"
+          ],
+          "unit": "spearman_rho",
+          "value": 1
+        },
+        {
+          "metric": "meanSpearman_momentum_20",
+          "sourceRefs": [
+            "artifact:homogeneity-decay/spearman-ic"
+          ],
+          "unit": "spearman_rho",
+          "value": 1
+        },
+        {
+          "metric": "meanSpearman_reversal_5",
+          "sourceRefs": [
+            "artifact:homogeneity-decay/spearman-ic"
+          ],
+          "unit": "spearman_rho",
+          "value": -0.4337103899333862
+        },
+        {
+          "metric": "meanSpearman_volatility_20",
+          "sourceRefs": [
+            "artifact:homogeneity-decay/spearman-ic"
+          ],
+          "unit": "spearman_rho",
+          "value": 0.21197338713499114
+        },
+        {
+          "metric": "observations_2023",
+          "sourceRefs": [
+            "artifact:homogeneity-decay/spearman-ic"
+          ],
+          "unit": "count",
+          "value": 5
+        },
+        {
+          "metric": "observations_2024",
+          "sourceRefs": [
+            "artifact:homogeneity-decay/spearman-ic"
+          ],
+          "unit": "count",
+          "value": 12
+        },
+        {
+          "metric": "observations_2025",
+          "sourceRefs": [
+            "artifact:homogeneity-decay/spearman-ic"
+          ],
+          "unit": "count",
+          "value": 12
+        },
+        {
+          "metric": "observations_2026",
+          "sourceRefs": [
+            "artifact:homogeneity-decay/spearman-ic"
+          ],
+          "unit": "count",
+          "value": 5
+        },
+        {
+          "metric": "pearsonIc_2023",
+          "sourceRefs": [
+            "artifact:homogeneity-decay/spearman-ic"
+          ],
+          "unit": "ic",
+          "value": 0.030969232887227055
+        },
+        {
+          "metric": "pearsonIc_2024",
+          "sourceRefs": [
+            "artifact:homogeneity-decay/spearman-ic"
+          ],
+          "unit": "ic",
+          "value": -0.007439887021574512
+        },
+        {
+          "metric": "pearsonIc_2025",
+          "sourceRefs": [
+            "artifact:homogeneity-decay/spearman-ic"
+          ],
+          "unit": "ic",
+          "value": 0.09622988036821528
+        },
+        {
+          "metric": "pearsonIc_2026",
+          "sourceRefs": [
+            "artifact:homogeneity-decay/spearman-ic"
+          ],
+          "unit": "ic",
+          "value": 0.20762364973948869
+        },
+        {
+          "metric": "rankIcSlope",
+          "sourceRefs": [
+            "artifact:homogeneity-decay/spearman-ic"
+          ],
+          "unit": "rankIc_per_year",
+          "value": 0.023622446327996465
+        },
+        {
+          "metric": "rankIc_2023",
+          "sourceRefs": [
+            "artifact:homogeneity-decay/spearman-ic"
+          ],
+          "unit": "rankIc",
+          "value": 0.0386705070467836
+        },
+        {
+          "metric": "rankIc_2024",
+          "sourceRefs": [
+            "artifact:homogeneity-decay/spearman-ic"
+          ],
+          "unit": "rankIc",
+          "value": -0.023133672096820036
+        },
+        {
+          "metric": "rankIc_2025",
+          "sourceRefs": [
+            "artifact:homogeneity-decay/spearman-ic"
+          ],
+          "unit": "rankIc",
+          "value": 0.040212371024477805
+        },
+        {
+          "metric": "rankIc_2026",
+          "sourceRefs": [
+            "artifact:homogeneity-decay/spearman-ic"
+          ],
+          "unit": "rankIc",
+          "value": 0.09629664709961863
+        },
+        {
+          "metric": "rebalanceObservations_momentum_20",
+          "sourceRefs": [
+            "artifact:homogeneity-decay/spearman-ic"
+          ],
+          "unit": "count",
+          "value": 35
+        },
+        {
+          "metric": "rebalanceObservations_reversal_5",
+          "sourceRefs": [
+            "artifact:homogeneity-decay/spearman-ic"
+          ],
+          "unit": "count",
+          "value": 35
+        },
+        {
+          "metric": "rebalanceObservations_volatility_20",
+          "sourceRefs": [
+            "artifact:homogeneity-decay/spearman-ic"
+          ],
+          "unit": "count",
+          "value": 35
+        },
+        {
+          "metric": "yearsCovered",
+          "sourceRefs": [
+            "artifact:homogeneity-decay/spearman-ic"
+          ],
+          "unit": "years",
+          "value": 2
+        }
+      ]
+    }
+  ],
+  "claimComparison": {
+    "claimed": {
+      "annualReturn": 0.18,
+      "sharpe": 1.9
+    },
+    "gaps": {
+      "annualReturn": -0.11299487465351538,
+      "sharpe": 0.8237575801078014
+    },
+    "knownConventionDiffs": [],
+    "reproduced": {
+      "annualReturn": 0.29299487465351537,
+      "maxDrawdown": -0.2603841001949464,
+      "sharpe": 1.0762424198921985
+    }
+  },
+  "codeRevision": "8173ed4b6bf1111fdf7fe95c45e6abf19f8605f1",
+  "dataMode": "assay-v9-p1-v1-validated-official-post-cache",
+  "deterministicVerdict": "RETIRE",
+  "input": "沪深 300 每月底买过去 20 天涨幅最大的 50 只，等权持有，宣称年化 18% 夏普 1.9",
+  "moire": {
+    "disputesOpened": 1,
+    "resolved": [
+      "[M2][resolved] 成本结论对成分修正稳健。 original=pass_with_reservations; corrected=pass_with_reservations; sourceRef=artifact:moire/M2/sha256-3f5a86ef075339dc26b5305d950150e87270c45bf3a973f92c087b456741a15d"
+    ],
+    "unresolved": []
+  },
+  "schemaVersion": "assay-v9-real-golden-v1"
+}
