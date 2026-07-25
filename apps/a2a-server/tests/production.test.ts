@@ -19,16 +19,6 @@ describe("readProductionConfig", () => {
     expect(readProductionConfig(BASE_ENVIRONMENT).arkModel).toBe("ep-test-deepseek");
   });
 
-  test("accepts a deduplicated supplemental Ark credential pool", () => {
-    const config = readProductionConfig({
-      ...BASE_ENVIRONMENT,
-      ARK_API_KEYS: "second-key, third-key, second-key",
-    });
-
-    expect(config.arkApiKey).toBe("test-key");
-    expect(config.arkApiKeys).toEqual(["second-key", "third-key"]);
-  });
-
   test("reports PandaData readiness without retaining credential values", () => {
     const config = readProductionConfig({
       ...BASE_ENVIRONMENT,

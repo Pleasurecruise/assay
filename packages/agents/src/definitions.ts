@@ -23,7 +23,7 @@ import {
 } from "./run-experiment-tool";
 import { createRunHomogeneityTool, HOMOGENEITY_AUDIT_SOURCE_REF } from "./run-homogeneity-tool";
 import { createRunRegimeSplitTool, REGIME_SPLIT_SOURCE_REF } from "./run-regime-split-tool";
-import { createSubmitAuditCheckResultTool } from "./submit-audit-check-result-tool";
+import { createSubmitCheckResultTool } from "./submit-audit-check-result-tool";
 
 const medium = "medium" as AgentDefinition["thinkingLevel"];
 const high = "high" as AgentDefinition["thinkingLevel"];
@@ -34,27 +34,18 @@ const sharedGuardrails = `
 并通过 sourceRefs 指向可复核的数据集或计算产物。不得把输出描述为投资建议、收益承诺
 或荐股。缺少数据或工具时返回 insufficient_evidence，不得编造行情、回测结果、因子值或来源。
 
-不要把最终结果作为普通文本输出。完成获批的唯一证据工具调用后，必须且只能调用一次
-submit_audit_check_result；该工具参数就是最终结果，字段必须严格为：
-{"id","conclusion","confidence","evidence","missingEvidence"}。
+不要把最终结果作为普通文本输出；普通文本不会被采用。完成获批的唯一证据工具调用后，
+必须调用 submit_check_result 交卷。该工具参数就是最终结果，字段必须严格为：
+{"conclusion","confidence","evidence","missingEvidence"}；id 由宿主按当前检查注入，
+你不得填写 id。
 conclusion 只能是 pass、pass_with_reservations、fail、insufficient_evidence。
 confidence 必须是 0 到 1 的数字。evidence 项为
 {"metric","value","unit","sourceRefs"}；missingEvidence 项为
 {"requirement","reason","sourceRefs"}。有确定结论时 evidence 至少一项；证据不足时
-missingEvidence 至少一项。调用工具后必须继续完成最终 JSON；不得停在工具结果、空回复或
-仅有思考过程。evidence.value 只能是有限数字、字符串或布尔值，严禁数组、对象或 null；
-区间和列表必须拆成多个标量 evidence（例如 min/max/count 各一项）。sourceRefs 必须始终是
-非空字符串数组，不能写成单个字符串。输出前自行检查这些类型，但不要输出检查过程。
-submit_audit_check_result 成功后立即结束，不再输出第二份结果；宿主只原样验证并留存你的
-提交，不计算或改写 conclusion 与 confidence。
+missingEvidence 至少一项。schema 不合法时，工具会返回具体错误；只可修正并重填一次，
+总提交上限为两次。submit_check_result 成功后立即结束，不再输出第二份结果。宿主只验证、
+注入 id 并留存你的提交，不计算或改写 conclusion 与 confidence。
 `.trim();
-
-function outputIdentityGuard(id: AuditCheckId): string {
-  return `
-最终 JSON 的 "id" 必须严格等于 "${id}"。工具请求中的 kind、工具名称、响应 kind
-或任何内部标签都不是检查 id，不得复制到最终 JSON 的 "id"。
-`.trim();
-}
 
 const checkPrompts: Readonly<Record<AuditCheckId, string>> = {
   "param-robustness": `
@@ -64,22 +55,15 @@ const checkPrompts: Readonly<Record<AuditCheckId, string>> = {
 必须且只能调用一次 run_experiment（kind="grid"，budget.maxVariants=15）。
 canonical StrategySpec 与固定 grid 均由宿主注入；调用中不得提交 spec 或 grid，不得追加
 第二次调用或临时探索新变体。固定 grid 为 window=[14,17,20,23,26] ×
-topN=[30,50,70]。只使用该次响应中的 baseline、parameterSummary 和派生数值；完整变体与
-日收益引用由宿主保留在审计工件中，不得要求展开。
+topN=[30,50,70]。只使用该次响应中的 baseline、variants 和派生数值。
 
 D10_GUIDELINE_VERSION="1.0.0"。neighborhoodSharpeRetention =
 非基线预声明变体 Sharpe 中位数 / 基线 Sharpe；基线 Sharpe 不为正时报告原值并独立判断。
 参考区间：>=70% 倾向 pass；>=40% 且 <70% 倾向 pass_with_reservations；<40% 倾向 fail。
-parameterSummary 只做确定性数值汇总，不替你选择结论。这只是预声明倾向，不是主机裁决器。
-所有确定性结论的 evidence.sourceRefs 必须包含工具
+这只是预声明倾向，不是主机裁决器。所有确定性结论的 evidence.sourceRefs 必须包含工具
 响应中的 summaryRef（固定为 ${PARAMETER_GRID_SOURCE_REF}）。若偏离所在区间的倾向，必须以数值
 evidence（样本量、置信区间、绝对收益差或缺失率）和该引用说明，但输出仍只能使用共同契约
-规定的五个字段。baselineSharpe > 0 时，最终 evidence 至少分别给出 baselineSharpe、
-medianVariantSharpe、neighborhoodSharpeRetention、variantCount 四个有限数值；直接读取
-parameterSummary 中的同名字段，四项均引用
-响应中的 summaryRef。baselineSharpe <= 0 时不得把 null 当 evidence.value，改为报告其余有限
-标量并在 missingEvidence 说明 retention 不可定义。不得把 variants、Sharpe 列表或区间数组
-整体放入 evidence.value。
+规定的五个字段。
 `.trim(),
   "data-availability": `
 你负责数据可得性检查。逐历史时点核对股票池、可交易状态和财务信息可得时间，识别幸存者
@@ -138,18 +122,9 @@ annualReturn < 0 → fail。任一环境 days < ${REGIME_MINIMUM_SLICE_DAYS} 时
 强结论，必须在 missingEvidence 说明；若剩余切片不足以完成判断则返回
 insufficient_evidence。
 
-工具返回给你的精简视图含 classificationInputs、requiredEvidence、
-requiredMissingEvidence 和 sourceRef；完整原始环境结果由宿主保留在审计工件中。
-你仍独立选择 conclusion 与 confidence，classificationInputs 不替你做结论。
-最终 JSON 的 evidence 必须逐项原样复制 requiredEvidence，missingEvidence 必须逐项原样复制
-requiredMissingEvidence；不得把整个数组嵌入某个 evidence.value，也不得改写数值、单位或
-sourceRefs。最终输出形状固定为
-{"id":"regime-dependency","conclusion":"<由你选择>","confidence":<0到1有限数字>,
-"evidence":<requiredEvidence数组>,"missingEvidence":<requiredMissingEvidence数组>}。
-requiredEvidence 已把每个环境的 days、annualReturn、非 null sharpe、pnlShare 以及
-dominantEnvironment.pnlShare 展开为冻结 schema 接受的标量证据，所有 sourceRefs 固定包含
-${REGIME_SPLIT_SOURCE_REF}。mode=constituent_proxy 的 assumptions 已进入
-requiredMissingEvidence，必须如实保留。
+确定性结论必须把每个环境的 days、annualReturn、sharpe（若非 null）、pnlShare 以及
+dominantEnvironment.pnlShare 写成数值 evidence，所有 sourceRefs 固定包含
+${REGIME_SPLIT_SOURCE_REF}。mode=constituent_proxy 时必须如实披露 assumptions。
 `.trim(),
   "homogeneity-decay": `
 你负责同质化与衰减分析。计算信号与平台因子库的相关性，并按年份测算 IC/RankIC 及其衰减，
@@ -221,13 +196,13 @@ export function createAuditCheckAgentDefinitions(
     } else if (experimentKind !== undefined) {
       tools.push(createRunExperimentTool(experimentKind, experimentProcess));
     }
-    tools.push(createSubmitAuditCheckResultTool(id));
+    tools.push(createSubmitCheckResultTool());
     return {
       id,
       name: checkNames[id],
       description: checkPrompts[id],
       thinkingLevel: highThinkingChecks.has(id) ? high : medium,
-      systemPrompt: [sharedGuardrails, outputIdentityGuard(id), checkPrompts[id]],
+      systemPrompt: [sharedGuardrails, checkPrompts[id]],
       tools,
     };
   });

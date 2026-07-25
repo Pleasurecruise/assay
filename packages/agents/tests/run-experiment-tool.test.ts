@@ -79,7 +79,6 @@ describe("run_experiment tool", () => {
         window: 14,
         topN: 30,
         costModel: "standard",
-        dailyReturnsRef: "artifact:backtest/parameter-grid/14-30/daily-returns",
       },
       annualReturn: 0.1,
       sharpe: 1.2,
@@ -211,61 +210,6 @@ describe("run_experiment tool", () => {
       ),
     ).rejects.toThrow("does not accept a caller-supplied grid");
 
-    const gridOutput = await gridTool.execute(
-      "call-grid",
-      {
-        kind: "grid",
-        spec: {
-          specVersion: "1",
-          signal: { params: { window: 20 } },
-          selection: { topN: 50 },
-        },
-        budget: { maxVariants: 15 },
-      },
-      undefined,
-    );
-    const gridAgentView = JSON.parse(contentText(gridOutput)) as {
-      parameterSummary: {
-        medianVariantSharpe: number;
-        neighborhoodSharpeRetention: number;
-      };
-    };
-    expect(gridAgentView).toMatchObject({
-      engineVersion: "mock-v1",
-      summaryRef: PARAMETER_GRID_SOURCE_REF,
-      baseline: {
-        annualReturn: 0.12,
-        sharpe: 1.3,
-        maxDrawdown: -0.09,
-        annualTurnover: 1.8,
-      },
-      parameterSummary: {
-        baselineSharpe: 1.3,
-        variantCount: 14,
-        minVariantSharpe: 1,
-        maxVariantSharpe: 1.2,
-      },
-    });
-    expect(gridAgentView.parameterSummary.medianVariantSharpe).toBeCloseTo(1.1);
-    expect(gridAgentView.parameterSummary.neighborhoodSharpeRetention).toBeCloseTo(1.1 / 1.3);
-    expect(contentText(gridOutput)).not.toContain("dailyReturnsRef");
-    expect(
-      JSON.stringify(
-        (
-          gridOutput.details as {
-            variants: readonly unknown[];
-          }
-        ).variants,
-      ),
-    ).toContain("dailyReturnsRef");
-    expect(
-      (
-        gridOutput.details as {
-          variants: readonly unknown[];
-        }
-      ).variants,
-    ).toHaveLength(15);
-
     const output = await costTool.execute(
       "call-4",
       {
@@ -365,10 +309,5 @@ describe("run_experiment tool", () => {
     expect(cost.systemPrompt.join("\n")).not.toContain("deviatedFromGuideline");
     expect(parameter.systemPrompt.join("\n")).toContain("必须且只能调用一次 run_experiment");
     expect(cost.systemPrompt.join("\n")).toContain("必须且只能调用一次 run_experiment");
-    expect(parameter.systemPrompt.join("\n")).toContain("evidence.value 只能是有限数字");
-    expect(parameter.systemPrompt.join("\n")).toContain("区间和列表必须拆成多个标量 evidence");
-    expect(parameter.systemPrompt.join("\n")).toContain("parameterSummary");
-    expect(parameter.systemPrompt.join("\n")).toContain("medianVariantSharpe");
-    expect(parameter.systemPrompt.join("\n")).toContain("不得把 variants");
   });
 });

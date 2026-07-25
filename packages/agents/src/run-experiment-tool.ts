@@ -39,20 +39,6 @@ export interface RunExperimentResult {
   readonly summaryRef?: typeof PARAMETER_GRID_SOURCE_REF | typeof COST_STRESS_SOURCE_REF;
 }
 
-interface ParameterGridAgentView {
-  readonly engineVersion: string;
-  readonly baseline: Omit<ExperimentResultSummary, "params">;
-  readonly parameterSummary: {
-    readonly baselineSharpe: number;
-    readonly medianVariantSharpe: number;
-    readonly neighborhoodSharpeRetention: number | null;
-    readonly variantCount: number;
-    readonly minVariantSharpe: number;
-    readonly maxVariantSharpe: number;
-  };
-  readonly summaryRef: typeof PARAMETER_GRID_SOURCE_REF;
-}
-
 export interface ExperimentProcessConfig {
   readonly command: string;
   readonly args?: readonly string[];
@@ -216,71 +202,6 @@ function parseResult(stdout: string, kind: ExperimentKind): RunExperimentResult 
       parseResultSummary(variant, `response.variants[${String(index)}]`),
     ),
     ...(expectedSummaryRef === undefined ? {} : { summaryRef: expectedSummaryRef }),
-  };
-}
-
-function gridParameter(params: Readonly<Record<string, unknown>>, name: "window" | "topN"): number {
-  const value = params[name];
-  if (!Number.isSafeInteger(value)) {
-    throw new Error(`run_experiment grid response ${name} parameter must be an integer`);
-  }
-  return value as number;
-}
-
-function median(values: readonly number[]): number {
-  if (values.length === 0) {
-    throw new Error("run_experiment grid response omitted non-baseline variants");
-  }
-  const sorted = [...values].sort((left, right) => left - right);
-  const midpoint = Math.floor(sorted.length / 2);
-  const upper = sorted[midpoint] as number;
-  return sorted.length % 2 === 1 ? upper : ((sorted[midpoint - 1] as number) + upper) / 2;
-}
-
-function parameterGridAgentView(result: RunExperimentResult): ParameterGridAgentView {
-  if (
-    result.summaryRef !== PARAMETER_GRID_SOURCE_REF ||
-    result.variants.length !==
-      SPRINT_PARAMETER_GRID.signalParams.window.length * SPRINT_PARAMETER_GRID.topN.length
-  ) {
-    throw new Error("run_experiment grid response is not the frozen parameter grid");
-  }
-  const baselineWindow = gridParameter(result.baseline.params, "window");
-  const baselineTopN = gridParameter(result.baseline.params, "topN");
-  const baselineEquivalent = result.variants.filter(
-    (variant) =>
-      gridParameter(variant.params, "window") === baselineWindow &&
-      gridParameter(variant.params, "topN") === baselineTopN,
-  );
-  if (baselineEquivalent.length !== 1) {
-    throw new Error(
-      "run_experiment grid response must contain exactly one baseline-equivalent variant",
-    );
-  }
-  const nonBaselineSharpes = result.variants
-    .filter((variant) => variant !== baselineEquivalent[0])
-    .map((variant) => variant.sharpe);
-  const medianVariantSharpe = median(nonBaselineSharpes);
-  const minVariantSharpe = Math.min(...nonBaselineSharpes);
-  const maxVariantSharpe = Math.max(...nonBaselineSharpes);
-  return {
-    engineVersion: result.engineVersion,
-    baseline: {
-      annualReturn: result.baseline.annualReturn,
-      sharpe: result.baseline.sharpe,
-      maxDrawdown: result.baseline.maxDrawdown,
-      annualTurnover: result.baseline.annualTurnover,
-    },
-    parameterSummary: {
-      baselineSharpe: result.baseline.sharpe,
-      medianVariantSharpe,
-      neighborhoodSharpeRetention:
-        result.baseline.sharpe > 0 ? medianVariantSharpe / result.baseline.sharpe : null,
-      variantCount: nonBaselineSharpes.length,
-      minVariantSharpe,
-      maxVariantSharpe,
-    },
-    summaryRef: PARAMETER_GRID_SOURCE_REF,
   };
 }
 
@@ -457,9 +378,8 @@ export function createRunExperimentTool(
           : boundRequest;
       assertRequest(request, kind);
       const result = await runExperimentSubprocess(config, request);
-      const agentView = kind === "grid" ? parameterGridAgentView(result) : result;
       return {
-        content: [{ type: "text", text: JSON.stringify(agentView) }],
+        content: [{ type: "text", text: JSON.stringify(result) }],
         details: result,
       };
     },

@@ -33,7 +33,6 @@ if (
                 window,
                 topN,
                 costModel: baselineParams.costModel,
-                dailyReturnsRef: `artifact:backtest/parameter-grid/${window}-${topN}/daily-returns`,
               },
               annualReturn: 0.1 - index * 0.01,
               sharpe: 1.2 - index * 0.1,

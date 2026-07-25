@@ -25,24 +25,6 @@ import {
 export const HARD_CHECK_DEADLINE_MS = 120_000;
 const DEFAULT_CHECK_TIMEOUT_MS = HARD_CHECK_DEADLINE_MS;
 const CHECK_EXECUTION_FAILURE_REASON = "Check execution failed before a valid result was produced.";
-const CHECK_OUTPUT_INVALID_JSON_REASON =
-  "Check agent completed but did not return one parseable JSON object.";
-const CHECK_OUTPUT_INVALID_SCHEMA_REASON =
-  "Check agent completed but its JSON did not satisfy the frozen check-result schema.";
-const CHECK_OUTPUT_AMBIGUOUS_REASON =
-  "Check agent completed but returned multiple valid check-result objects.";
-const CHECK_OUTPUT_HOST_FIELD_REASON =
-  "Check agent completed but attempted to write a host-only result field.";
-
-class CheckOutputContractError extends Error {
-  readonly safeReason: string;
-
-  constructor(safeReason: string) {
-    super(safeReason);
-    this.name = "CheckOutputContractError";
-    this.safeReason = safeReason;
-  }
-}
 
 export interface AuditCheckTaskRunner {
   run(request: RuntimeTaskRequest, options?: { signal?: AbortSignal }): Promise<RuntimeTaskResult>;
@@ -77,86 +59,26 @@ export interface MoireExperimentExecutor {
   ): Promise<DiscriminativeMoireOutcome>;
 }
 
-function jsonObjectCandidates(output: string): readonly string[] {
-  const candidates: string[] = [];
-  let start = -1;
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let index = 0; index < output.length; index += 1) {
-    const character = output[index];
-    if (start < 0) {
-      if (character === "{") {
-        start = index;
-        depth = 1;
-        inString = false;
-        escaped = false;
-      }
-      continue;
-    }
-    if (inString) {
-      if (escaped) {
-        escaped = false;
-      } else if (character === "\\") {
-        escaped = true;
-      } else if (character === '"') {
-        inString = false;
-      }
-      continue;
-    }
-    if (character === '"') {
-      inString = true;
-    } else if (character === "{") {
-      depth += 1;
-    } else if (character === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        candidates.push(output.slice(start, index + 1));
-        start = -1;
-      }
-    }
+function parseAgentJson(output: string): unknown {
+  const unfenced = output
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
+  const candidates = [unfenced];
+  const objectStart = unfenced.indexOf("{");
+  const objectEnd = unfenced.lastIndexOf("}");
+  if (objectStart >= 0 && objectEnd > objectStart) {
+    candidates.push(unfenced.slice(objectStart, objectEnd + 1));
   }
-  return candidates;
-}
-
-function parseAgentCheckResult(output: string, checkId: AuditCheckId): AuditCheckResult {
-  const valid: AuditCheckResult[] = [];
-  let parseableObjectCount = 0;
-  let attemptedHostField = false;
-  for (const candidate of jsonObjectCandidates(output)) {
-    let value: unknown;
+  for (const candidate of candidates) {
     try {
-      value = JSON.parse(candidate) as unknown;
+      return JSON.parse(candidate) as unknown;
     } catch {
-      continue;
-    }
-    parseableObjectCount += 1;
-    try {
-      const parsed = parseAuditCheckResult(value, checkId);
-      if (parsed.refinedByMoire !== undefined) {
-        attemptedHostField = true;
-      } else {
-        valid.push(parsed);
-      }
-    } catch {
-      // A calculation object may precede the one frozen check result. Keep the
-      // schema strict and accept only a unique object that validates in full.
+      // Keep the result contract strict; only strip common presentation wrappers.
     }
   }
-  if (attemptedHostField) {
-    throw new CheckOutputContractError(CHECK_OUTPUT_HOST_FIELD_REASON);
-  }
-  if (valid.length === 1) {
-    return valid[0] as AuditCheckResult;
-  }
-  if (valid.length > 1) {
-    throw new CheckOutputContractError(CHECK_OUTPUT_AMBIGUOUS_REASON);
-  }
-  throw new CheckOutputContractError(
-    parseableObjectCount === 0
-      ? CHECK_OUTPUT_INVALID_JSON_REASON
-      : CHECK_OUTPUT_INVALID_SCHEMA_REASON,
-  );
+  throw new Error("Check agent returned invalid JSON");
 }
 
 function validateRequest(request: ParallelAuditChecksRequest): void {
@@ -422,9 +344,8 @@ export class ParallelAuditCheckRunner {
       ...(budget === undefined ? {} : { budget }),
     };
 
-    let result: RuntimeTaskResult;
     try {
-      result = await this.#taskRunner.run(
+      const result = await this.#taskRunner.run(
         {
           id: `${request.auditId}:${checkId}`,
           traceId,
@@ -443,6 +364,11 @@ export class ParallelAuditCheckRunner {
         },
         { signal },
       );
+      const parsed = parseAuditCheckResult(parseAgentJson(result.output), checkId);
+      if (parsed.refinedByMoire !== undefined) {
+        throw new Error("Only the host may write refinedByMoire");
+      }
+      return parsed;
     } catch (error) {
       if (signal?.aborted) {
         throw signal.reason ?? error;
@@ -452,16 +378,6 @@ export class ParallelAuditCheckRunner {
         isTimeoutFailure(error)
           ? `Check exceeded its ${String(timeoutMs)}ms deadline before producing a valid result.`
           : CHECK_EXECUTION_FAILURE_REASON,
-      );
-    }
-    try {
-      return parseAgentCheckResult(result.output, checkId);
-    } catch (error) {
-      return insufficientEvidence(
-        checkId,
-        error instanceof CheckOutputContractError
-          ? error.safeReason
-          : CHECK_OUTPUT_INVALID_SCHEMA_REASON,
       );
     }
   }
