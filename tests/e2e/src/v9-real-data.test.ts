@@ -1,8 +1,10 @@
+import { TaskState, type Task } from "@a2a-js/sdk";
 import { expect, test } from "vitest";
 import { loadV9OfflineMechanismFixture } from "./v9-real-data.fixture";
 import {
   assertV9PitTimelineManifest,
   assertV9RealMechanism,
+  assertV9TaskCompleted,
   runV9RealAcceptance,
   V9_REAL_ARTIFACT_PATH,
 } from "./v9-real-data";
@@ -68,6 +70,50 @@ test("freezes 36 completed month ends plus one terminal PIT observation", () => 
       dataAsOf,
     ),
   ).toThrow(/36 completed month ends/u);
+});
+
+test("reports a safe terminal task stage before attempting Artifact extraction", () => {
+  const failed = {
+    status: {
+      state: TaskState.TASK_STATE_FAILED,
+      message: {
+        metadata: {
+          stage: "strategy_intake",
+          correlationId: "1f8f01b7-f69e-4c3a-9f2f-d900648d77a8",
+        },
+      },
+    },
+  } as unknown as Pick<Task, "status">;
+  expect(() => assertV9TaskCompleted(failed)).toThrow(
+    "state=FAILED stage=strategy_intake correlationId=1f8f01b7-f69e-4c3a-9f2f-d900648d77a8",
+  );
+
+  const hostile = {
+    status: {
+      state: TaskState.TASK_STATE_FAILED,
+      message: {
+        metadata: {
+          stage: "sk-live-secret-token",
+          correlationId: "ep-secret-credential",
+        },
+      },
+    },
+  } as unknown as Pick<Task, "status">;
+  let message = "";
+  try {
+    assertV9TaskCompleted(hostile);
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+  expect(message).toContain("stage=unknown correlationId=unavailable");
+  expect(message).not.toMatch(/secret|token|credential/u);
+
+  const completed = {
+    status: {
+      state: TaskState.TASK_STATE_COMPLETED,
+    },
+  } as Pick<Task, "status">;
+  expect(() => assertV9TaskCompleted(completed)).not.toThrow();
 });
 
 liveTest(

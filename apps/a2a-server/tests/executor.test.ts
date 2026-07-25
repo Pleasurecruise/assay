@@ -19,6 +19,7 @@ import {
   type AssayAgentExecutorOptions,
   type ExecutionErrorLogEntry,
 } from "../src/executor";
+import type { ExecutionTimelineEvent, ExecutionTimelineStage } from "../src/execution-timeline";
 
 const completeCandidate = {
   specVersion: "1",
@@ -79,7 +80,10 @@ const unsafeInternalError = new Error(
 );
 
 async function runFailureCase(
-  ports: Pick<AssayAgentExecutorOptions, "intake" | "runner" | "artifactStore">,
+  ports: Pick<
+    AssayAgentExecutorOptions,
+    "intake" | "runner" | "artifactStore" | "executionTimelineLogger"
+  >,
   now: () => Date = () => new Date("2026-07-24T00:00:00Z"),
 ): Promise<{
   events: AgentExecutionEvent[];
@@ -108,6 +112,7 @@ function expectSafeFailedTerminalState(
   events: readonly AgentExecutionEvent[],
   logs: readonly ExecutionErrorLogEntry[],
   expectedError: Error,
+  expectedStage: ExecutionTimelineStage,
 ): void {
   const initialEvent = events[0];
   expect(initialEvent?.kind).toBe("task");
@@ -137,8 +142,14 @@ function expectSafeFailedTerminalState(
   expect(correlationId).toMatch(
     /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
   );
-  expect(failedEvent?.data.status?.message?.metadata?.correlationId).toBe(correlationId);
-
+  expect(failedEvent?.data.status?.message?.metadata).toEqual({
+    correlationId,
+    stage: expectedStage,
+  });
+  expect(failedEvent?.data.metadata).toEqual({
+    correlationId,
+    stage: expectedStage,
+  });
   const outwardFailure = JSON.stringify(failedEvent?.data);
   expect(outwardFailure).not.toMatch(/ARK/i);
   expect(outwardFailure).not.toMatch(/Bearer/i);
@@ -156,8 +167,68 @@ function expectSafeFailedTerminalState(
 }
 
 describe("AssayAgentExecutor", () => {
+  test("rethrows an initial event publication failure after recording a safe stage", async () => {
+    const timeline: ExecutionTimelineEvent[] = [];
+    const executor = new AssayAgentExecutor({
+      intake: {
+        intakeText: async () => ({
+          kind: "early_exit",
+          reasonCode: "insufficient_information",
+          summary: "Required strategy details are missing.",
+          issues: [],
+          missingInformation: [
+            {
+              requirement: "strategy",
+              reason: "Required strategy details are missing.",
+              sourceRefs: ["intake:test"],
+            },
+          ],
+        }),
+      },
+      runner: {
+        run: async () => {
+          throw new Error("Runner must not be called");
+        },
+      },
+      artifactStore: new InMemoryAuditArtifactStore(),
+      dataAsOf: "2026-07-23",
+      codeRevision: "test-revision",
+      now: () => new Date("2026-07-24T00:00:00Z"),
+      executionTimelineLogger: (event) => timeline.push(event),
+    });
+    const failingBus = {
+      publish: () => {
+        throw unsafeInternalError;
+      },
+    } as unknown as ExecutionEventBus;
+
+    await expect(
+      executor.execute(requestContext(userMessage("Audit this strategy")), failingBus),
+    ).rejects.toBe(unsafeInternalError);
+    expect(timeline).toHaveLength(2);
+    expect(timeline.at(-1)).toMatchObject({
+      type: "stage.failed",
+      stage: "a2a_acceptance",
+      failure: {
+        errorType: "Error",
+        errorCode: "internal_error",
+      },
+    });
+    expect(JSON.stringify(timeline)).not.toMatch(
+      /ARK|Bearer|secret|https?:\/\/|vendor\.example|private\/vendor\.ts/i,
+    );
+
+    await expect(
+      executor.execute(
+        requestContext(userMessage("Audit this strategy")),
+        recordingEventBus([], []),
+      ),
+    ).resolves.toBeUndefined();
+  });
+
   test("reproduces submitted claims before fan-out and applies the WATCH cap", async () => {
     const executionOrder: string[] = [];
+    const timeline: ExecutionTimelineEvent[] = [];
     let storedArtifact: AuditArtifact | undefined;
     const candidate = {
       ...completeCandidate,
@@ -225,6 +296,7 @@ describe("AssayAgentExecutor", () => {
       dataAsOf: "2026-07-23",
       codeRevision: "test-revision",
       now: () => new Date("2026-07-24T00:00:00Z"),
+      executionTimelineLogger: (event) => timeline.push(event),
     });
 
     await executor.execute(
@@ -233,6 +305,24 @@ describe("AssayAgentExecutor", () => {
     );
 
     expect(executionOrder).toEqual(["claim", "fan-out"]);
+    expect(timeline.map((event) => `${event.stage}:${event.type}`)).toEqual([
+      "a2a_acceptance:stage.started",
+      "a2a_acceptance:stage.completed",
+      "skeleton_decode:stage.started",
+      "skeleton_decode:stage.completed",
+      "strategy_intake:stage.started",
+      "strategy_intake:stage.completed",
+      "claim_reproduction:stage.started",
+      "claim_reproduction:stage.completed",
+      "parallel_audit_handoff:stage.started",
+      "parallel_audit_handoff:stage.completed",
+      "artifact_finalize:stage.started",
+      "artifact_finalize:stage.completed",
+      "artifact_persist:stage.started",
+      "artifact_persist:stage.completed",
+      "a2a_publish:stage.started",
+      "a2a_publish:stage.completed",
+    ]);
     expect(storedArtifact?.claimComparison?.reproduced.sharpe).toBe(1);
     expect(storedArtifact?.results[0]?.verdict).toBe("WATCH");
     expect(storedArtifact?.results[0]?.recoveryConditions).toContainEqual({
@@ -440,6 +530,7 @@ describe("AssayAgentExecutor", () => {
   test("publishes a credential-safe FAILED terminal status when intake throws", async () => {
     let runnerCalled = false;
     let clockAvailable = true;
+    const timeline: ExecutionTimelineEvent[] = [];
     const result = await runFailureCase(
       {
         intake: {
@@ -455,6 +546,7 @@ describe("AssayAgentExecutor", () => {
           },
         },
         artifactStore: new InMemoryAuditArtifactStore(),
+        executionTimelineLogger: (event) => timeline.push(event),
       },
       () => {
         if (!clockAvailable) {
@@ -465,7 +557,23 @@ describe("AssayAgentExecutor", () => {
     );
 
     expect(runnerCalled).toBe(false);
-    expectSafeFailedTerminalState(result.events, result.logs, unsafeInternalError);
+    expectSafeFailedTerminalState(
+      result.events,
+      result.logs,
+      unsafeInternalError,
+      "strategy_intake",
+    );
+    expect(timeline.at(-1)).toMatchObject({
+      type: "stage.failed",
+      stage: "strategy_intake",
+      failure: {
+        errorType: "Error",
+        errorCode: "internal_error",
+      },
+    });
+    expect(JSON.stringify(timeline)).not.toMatch(
+      /ARK|Bearer|secret|https?:\/\/|vendor\.example|private\/vendor\.ts/i,
+    );
   });
 
   test("redacts unknown error details from the default stderr logger", async () => {
@@ -521,7 +629,12 @@ describe("AssayAgentExecutor", () => {
       artifactStore: new InMemoryAuditArtifactStore(),
     });
 
-    expectSafeFailedTerminalState(result.events, result.logs, unsafeInternalError);
+    expectSafeFailedTerminalState(
+      result.events,
+      result.logs,
+      unsafeInternalError,
+      "parallel_audit_handoff",
+    );
   });
 
   test("publishes a credential-safe FAILED terminal status when Artifact persistence throws", async () => {
@@ -558,6 +671,11 @@ describe("AssayAgentExecutor", () => {
     });
 
     expect(runnerCalled).toBe(false);
-    expectSafeFailedTerminalState(result.events, result.logs, unsafeInternalError);
+    expectSafeFailedTerminalState(
+      result.events,
+      result.logs,
+      unsafeInternalError,
+      "artifact_persist",
+    );
   });
 });

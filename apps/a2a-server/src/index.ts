@@ -3,6 +3,7 @@ import { createProductionA2AApp, readProductionConfig } from "./production";
 export * from "./agent-card";
 export * from "./artifact-store";
 export * from "./audit-orchestrator";
+export * from "./execution-timeline";
 export * from "./executor";
 export * from "./production";
 export * from "./server";

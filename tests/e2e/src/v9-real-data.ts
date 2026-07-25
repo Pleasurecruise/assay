@@ -3,7 +3,7 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
-import { TaskState } from "@a2a-js/sdk";
+import { TaskState, type Task } from "@a2a-js/sdk";
 import { planDiscriminativeMoireExperiments } from "@assay/agents";
 import {
   AUDIT_CHECK_IDS,
@@ -147,6 +147,85 @@ function requireValue(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+const SAFE_V9_TASK_STAGES = new Set([
+  "a2a_acceptance",
+  "skeleton_decode",
+  "strategy_intake",
+  "claim_reproduction",
+  "parallel_audit_handoff",
+  "artifact_finalize",
+  "artifact_persist",
+  "a2a_publish",
+]);
+const CORRELATION_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const SAFE_ACCEPTANCE_ERROR_TYPES = new Set(["AbortError", "Error", "TimeoutError", "TypeError"]);
+
+function safeTaskStage(value: unknown): string | undefined {
+  return typeof value === "string" && SAFE_V9_TASK_STAGES.has(value) ? value : undefined;
+}
+
+function safeCorrelationId(value: unknown): string | undefined {
+  return typeof value === "string" && CORRELATION_ID_PATTERN.test(value) ? value : undefined;
+}
+
+function taskStateLabel(state: TaskState | undefined): string {
+  switch (state) {
+    case TaskState.TASK_STATE_SUBMITTED:
+      return "SUBMITTED";
+    case TaskState.TASK_STATE_WORKING:
+      return "WORKING";
+    case TaskState.TASK_STATE_COMPLETED:
+      return "COMPLETED";
+    case TaskState.TASK_STATE_FAILED:
+      return "FAILED";
+    case TaskState.TASK_STATE_CANCELED:
+      return "CANCELED";
+    case TaskState.TASK_STATE_REJECTED:
+      return "REJECTED";
+    case TaskState.TASK_STATE_INPUT_REQUIRED:
+      return "INPUT_REQUIRED";
+    case TaskState.TASK_STATE_AUTH_REQUIRED:
+      return "AUTH_REQUIRED";
+    default:
+      return "UNSPECIFIED";
+  }
+}
+
+function v9TaskDiagnostics(task: Pick<Task, "status">): {
+  terminalState: string;
+  stage: string;
+  correlationId: string;
+} {
+  const messageMetadata = task.status?.message?.metadata;
+  return {
+    terminalState: taskStateLabel(task.status?.state),
+    stage: safeTaskStage(messageMetadata?.stage) ?? "unknown",
+    correlationId: safeCorrelationId(messageMetadata?.correlationId) ?? "unavailable",
+  };
+}
+
+export function assertV9TaskCompleted(task: Pick<Task, "status">): void {
+  const state = task.status?.state;
+  if (state === TaskState.TASK_STATE_COMPLETED) {
+    return;
+  }
+  const { terminalState, stage, correlationId } = v9TaskDiagnostics(task);
+  throw new Error(
+    `v9 task ended before Artifact: state=${terminalState} stage=${stage} correlationId=${correlationId}`,
+  );
+}
+
+function safeErrorType(error: unknown): string {
+  return error instanceof Error && SAFE_ACCEPTANCE_ERROR_TYPES.has(error.name)
+    ? error.name
+    : "UnknownError";
+}
+
+function writeAcceptanceTimeline(entry: Readonly<Record<string, string | number | boolean>>): void {
+  process.stderr.write(`[assay-a2a] ${JSON.stringify({ scope: "v9_acceptance", ...entry })}\n`);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -827,16 +906,57 @@ export async function runV9RealAcceptance(): Promise<string> {
     const client = await createAssayA2AClient({
       baseUrl: `http://127.0.0.1:${String(address.port)}/a2a`,
     });
-    const submitted = await client.sendTextMessage(V9_REAL_INPUT, {
-      messageId: "assay_v9_real_acceptance",
+    const sendStartedAt = Date.now();
+    writeAcceptanceTimeline({ phase: "send_started" });
+    let submitted: Task;
+    try {
+      submitted = await client.sendTextMessage(V9_REAL_INPUT, {
+        messageId: "assay_v9_real_acceptance",
+      });
+      writeAcceptanceTimeline({
+        phase: "send_finished",
+        outcome: "completed",
+        durationMs: Date.now() - sendStartedAt,
+      });
+    } catch (error) {
+      writeAcceptanceTimeline({
+        phase: "send_finished",
+        outcome: "failed",
+        durationMs: Date.now() - sendStartedAt,
+        errorType: safeErrorType(error),
+      });
+      throw error;
+    }
+    let completed = submitted;
+    if (submitted.status?.state !== TaskState.TASK_STATE_COMPLETED) {
+      const pollStartedAt = Date.now();
+      writeAcceptanceTimeline({ phase: "poll_started" });
+      try {
+        completed = await client.pollTask(submitted.id, {
+          intervalMs: 250,
+          timeoutMs: 300_000,
+        });
+        writeAcceptanceTimeline({
+          phase: "poll_finished",
+          outcome: "completed",
+          durationMs: Date.now() - pollStartedAt,
+          terminalState: taskStateLabel(completed.status?.state),
+        });
+      } catch (error) {
+        writeAcceptanceTimeline({
+          phase: "poll_finished",
+          outcome: "failed",
+          durationMs: Date.now() - pollStartedAt,
+          errorType: safeErrorType(error),
+        });
+        throw error;
+      }
+    }
+    writeAcceptanceTimeline({
+      phase: "task_terminal",
+      ...v9TaskDiagnostics(completed),
     });
-    const completed =
-      submitted.status?.state === TaskState.TASK_STATE_COMPLETED
-        ? submitted
-        : await client.pollTask(submitted.id, {
-            intervalMs: 250,
-            timeoutMs: 300_000,
-          });
+    assertV9TaskCompleted(completed);
     const artifact = extractAuditArtifact(completed);
     requireValue(artifact, "v9 task did not return an audit Artifact");
     const bundle: V9RealAcceptanceBundle = {

@@ -8,6 +8,7 @@ import { createPandaDataTools, PandaDataProcessGateway } from "@assay/finance-to
 import { ArkResponsesStrategyParser, StrategyIntake } from "@assay/intake";
 import { buildModel } from "@oh-my-pi/pi-catalog/build";
 import type { ProductionA2AConfig } from "./configuration";
+import { createExecutionTimelineLogger } from "./execution-timeline";
 import { AssayAgentExecutor } from "./executor";
 import { InMemoryAuditArtifactStore } from "./artifact-store";
 import { SubprocessClaimReproducer } from "./claim-reproducer";
@@ -74,6 +75,7 @@ export function createProductionA2AApp(config: ProductionA2AConfig): AssayA2AApp
     artifactStore: new InMemoryAuditArtifactStore(),
     dataAsOf: config.dataAsOf,
     codeRevision: config.codeRevision,
+    executionTimelineLogger: createExecutionTimelineLogger(),
   });
   return createAssayA2AApp({
     executor,
